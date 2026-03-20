@@ -110,3 +110,14 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Se integraron librerias nativas requeridas por el SDK (`libserial_port.so` para `armeabi-v7a` y `arm64-v8a`).
 - El calibrador ahora permite: OPEN/CLOSE, estado de plataforma, estado de sensores, carga de posiciones guardadas, guardado de Y por filas y prueba de posicion por cm.
 - Build `assembleDebug` exitoso luego de la integracion.
+
+## 2026-03-20 - Mejora estetica del selector de modos
+- Se rediseño `activity_main` (pantalla inicial de 3 opciones) con enfoque kiosk visual: fondo degradado, tarjeta de cabecera, jerarquia de texto y botones tipo tarjeta por modo.
+- Se agregaron drawables dedicados para identidad visual del selector:
+  - `bg_mode_selector_screen`
+  - `bg_mode_header_card`
+  - `bg_mode_button_kiosk`
+  - `bg_mode_button_tester`
+  - `bg_mode_button_calibrator`
+- Se agregaron textos auxiliares en `strings.xml` para subtitulo y tip operativo.
+- Build `assembleDebug` exitoso despues del cambio visual.

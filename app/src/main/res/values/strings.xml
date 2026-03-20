@@ -2,6 +2,8 @@
 <resources>
     <string name="app_name">Vending Kiosk</string>
     <string name="select_mode_title">Selecciona una opcion</string>
+    <string name="select_mode_subtitle">Centro de operaciones de la vending</string>
+    <string name="select_mode_hint">Tip: usa Vending Tester y Vending Calibrator para pruebas tecnicas antes de operar en modo kiosk.</string>
     <string name="mode_vending_kiosk">Vending Kiosk</string>
     <string name="mode_vending_tester">Vending Tester</string>
     <string name="mode_vending_calibrator">Vending Calibrator</string>

@@ -55,6 +55,12 @@
         android:text="Continuar con el siguiente pedido" />
 
     <Button
+        android:id="@+id/btnResetLift"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="RESET LIFT (volver a base)" />
+
+    <Button
         android:id="@+id/btnStop"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -78,4 +84,3 @@
     </ScrollView>
 
 </LinearLayout>
-

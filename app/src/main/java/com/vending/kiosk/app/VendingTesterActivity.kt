@@ -8,6 +8,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.vending.kiosk.R
+import com.vending.kiosk.integration.serial.runtime.CommandSet
 import com.vending.kiosk.integration.serial.runtime.HexUtil
 import com.vending.kiosk.integration.serial.runtime.SerialManager
 import com.vending.kiosk.integration.serial.runtime.VendingFlowController
@@ -27,6 +28,7 @@ class VendingTesterActivity : AppCompatActivity() {
     private lateinit var btnConnect: Button
     private lateinit var btnVendTest: Button
     private lateinit var btnContinue: Button
+    private lateinit var btnResetLift: Button
     private lateinit var btnStop: Button
 
     private val serial = SerialManager()
@@ -172,6 +174,22 @@ class VendingTesterActivity : AppCompatActivity() {
             clearQueue()
             vendFlow.stop()
         }
+
+        btnResetLift.setOnClickListener {
+            if (!serial.isOpen()) {
+                appendLog("Abre el puerto primero.")
+                return@setOnClickListener
+            }
+            waitingForContinue = false
+            setContinueEnabled(false)
+            clearQueue()
+            vendFlow.stop()
+            val resetHex = CommandSet.buildResetLift()
+            appendLog("Intentando RESET LIFT para volver a estado base...")
+            appendLog("TX RESET LIFT: $resetHex")
+            serial.sendHex(resetHex, serialListener)
+            setPromptBody("ResetLift enviado. Verifica si la plataforma vuelve a base.")
+        }
     }
 
     private fun bindViews() {
@@ -184,6 +202,7 @@ class VendingTesterActivity : AppCompatActivity() {
         btnConnect = findViewById(R.id.btnConnect)
         btnVendTest = findViewById(R.id.btnVendTest)
         btnContinue = findViewById(R.id.btnContinue)
+        btnResetLift = findViewById(R.id.btnResetLift)
         btnStop = findViewById(R.id.btnStop)
     }
 
@@ -289,4 +308,3 @@ class VendingTesterActivity : AppCompatActivity() {
         closeLogFile()
     }
 }
-

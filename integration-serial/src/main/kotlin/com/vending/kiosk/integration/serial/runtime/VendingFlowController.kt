@@ -264,4 +264,3 @@ class VendingFlowController(
         private const val IO_SECOND_CLICK = 210
     }
 }
-

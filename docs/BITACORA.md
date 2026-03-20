@@ -81,3 +81,24 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ### Estado de los otros modos
 - `Vending Kiosk`: placeholder (pendiente implementacion funcional)
 - `Vending Calibrator`: placeholder (pendiente implementacion funcional)
+
+## 2026-03-20 - Revision tecnica de Zhong Da SDK
+- Se realizo lectura completa del paquete `Zhong Da SDK English Version` (Demo, SDK, PDF e inspeccion de JAR decompilado).
+- Hallazgo clave: existe `ResetLift` (token `"RESET"`) para reset de elevador/plataforma.
+- Se confirmo que no hay evidencia directa (en esta pasada) de comando documentado de reboot total de placa.
+- Se genero informe detallado en `docs/ANALISIS_ZHONGDA_SDK.md` con riesgos, limites y propuesta de pruebas controladas.
+- Se hizo segunda pasada del PDF del SDK: sin OCR/text extractor disponible, pero se valido el indice interno del PDF (Outlines) con metodos `UBoard`, incluyendo `Board.ResetLift(ResetReplyPara)` y `Code Fault Table`.
+
+## 2026-03-20 - Prueba controlada de saturacion + ResetLift en Vending Tester
+- Se ajusto `POLL_DRIVER_MS` a `200ms` para pruebas de saturacion de polling en `VendingFlowController`.
+- Se agrego comando dedicado `buildResetLift(address=1)` en `CommandSet` (escritura Modbus register `0x1002`, valor `0x0001`, con CRC).
+- Se agrego boton en la UI del tester: `RESET LIFT (volver a base)`.
+- Al presionar `RESET LIFT`, la app:
+  - detiene flujo de venta en curso,
+  - limpia cola/continuacion,
+  - envia solo el comando de reset de lift,
+  - actualiza prompt/log para verificar retorno a base.
+- No se agregaron comandos de calibracion ni cambios de configuracion de placa.
+- Build local por terminal: bloqueado por entorno (`JAVA_HOME`/`java` no disponible en PATH).
+- Prueba en campo completada: se forzo aborto/atasco con polling agresivo; `STOP` + `ResetLift` recupero plataforma a estado base.
+- Se restauraron los tiempos estables de polling en runtime (`driver=950ms`, `io vend=1200ms`, `io pickup=420ms`; retries `140/200/220ms`).

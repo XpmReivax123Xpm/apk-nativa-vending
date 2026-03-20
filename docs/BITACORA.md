@@ -63,3 +63,21 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - vending context
   - kiosk lock task
   - backend de pagos/catalogo/reservas
+
+## 2026-03-20 (selector de modos)
+
+### Hecho en esta iteracion
+- Se agrego selector inicial de opciones en launcher:
+  - Vending Kiosk
+  - Vending Tester
+  - Vending Calibrator
+- Se movio toda la funcionalidad tecnica actual a `VendingTesterActivity`.
+- El flujo actual queda:
+  - operador abre app
+  - ve opciones
+  - elige Vending Tester
+  - entra a interfaz tester con todas las funciones seriales existentes
+
+### Estado de los otros modos
+- `Vending Kiosk`: placeholder (pendiente implementacion funcional)
+- `Vending Calibrator`: placeholder (pendiente implementacion funcional)

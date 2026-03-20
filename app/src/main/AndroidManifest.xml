@@ -7,6 +7,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.VendingKiosk">
         <activity
+            android:name=".app.VendingTesterActivity"
+            android:exported="false" />
+        <activity
             android:name=".app.MainActivity"
             android:exported="true">
             <intent-filter>

@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Vending Kiosk</string>
+    <string name="select_mode_title">Selecciona una opcion</string>
+    <string name="mode_vending_kiosk">Vending Kiosk</string>
+    <string name="mode_vending_tester">Vending Tester</string>
+    <string name="mode_vending_calibrator">Vending Calibrator</string>
 </resources>

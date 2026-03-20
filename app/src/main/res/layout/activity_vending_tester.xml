@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <EditText
+        android:id="@+id/etPort"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="/dev/ttyS1"
+        android:text="/dev/ttyS1" />
+
+    <EditText
+        android:id="@+id/etBaud"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="9600"
+        android:inputType="number"
+        android:text="9600" />
+
+    <EditText
+        android:id="@+id/etCell"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Pedido (ej: 38,40,22)"
+        android:inputType="text" />
+
+    <TextView
+        android:id="@+id/tvPrompt"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:text="" />
+
+    <Button
+        android:id="@+id/btnConnect"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Conectar" />
+
+    <Button
+        android:id="@+id/btnVendTest"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="INICIAR PEDIDO" />
+
+    <Button
+        android:id="@+id/btnContinue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="Continuar con el siguiente pedido" />
+
+    <Button
+        android:id="@+id/btnStop"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="STOP" />
+
+    <ScrollView
+        android:id="@+id/svLog"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="#111111"
+        android:fillViewport="true">
+
+        <TextView
+            android:id="@+id/tvLog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            android:text="LOG:\n"
+            android:textColor="#00FF00" />
+    </ScrollView>
+
+</LinearLayout>
+

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="badge_connected_bg">#e8f7ee</color>
+    <color name="badge_connected_text">#1e7a3f</color>
+    <color name="badge_disconnected_bg">#fdecec</color>
+    <color name="badge_disconnected_text">#b42318</color>
+</resources>
+

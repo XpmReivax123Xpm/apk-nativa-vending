@@ -23,5 +23,6 @@ android {
 
 dependencies {
     implementation(project(":domain"))
+    api(files("libs/usdk_v1.0.jar"))
     implementation("androidx.annotation:annotation:1.8.2")
 }

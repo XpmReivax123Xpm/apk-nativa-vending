@@ -102,3 +102,11 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Build local por terminal: bloqueado por entorno (`JAVA_HOME`/`java` no disponible en PATH).
 - Prueba en campo completada: se forzo aborto/atasco con polling agresivo; `STOP` + `ResetLift` recupero plataforma a estado base.
 - Se restauraron los tiempos estables de polling en runtime (`driver=950ms`, `io vend=1200ms`, `io pickup=420ms`; retries `140/200/220ms`).
+
+## 2026-03-20 - Integracion de Vending Calibrator real
+- La opcion `Vending Calibrator` del menu principal ya abre una pantalla funcional (`VendingCalibratorActivity`) en lugar del placeholder.
+- Se integraron recursos del calibrador (layout y badges de estado) en la app principal.
+- Se integro el SDK oficial de calibracion via `integration-serial/libs/usdk_v1.0.jar` (se descarto el codigo jadx para evitar errores decompilados).
+- Se integraron librerias nativas requeridas por el SDK (`libserial_port.so` para `armeabi-v7a` y `arm64-v8a`).
+- El calibrador ahora permite: OPEN/CLOSE, estado de plataforma, estado de sensores, carga de posiciones guardadas, guardado de Y por filas y prueba de posicion por cm.
+- Build `assembleDebug` exitoso luego de la integracion.

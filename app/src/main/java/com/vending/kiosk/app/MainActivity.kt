@@ -23,8 +23,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, VendingTesterActivity::class.java))
         }
         btnVendingCalibrator.setOnClickListener {
-            Toast.makeText(this, "Vending Calibrator: pendiente de implementacion", Toast.LENGTH_SHORT).show()
+            startActivity(Intent(this, VendingCalibratorActivity::class.java))
         }
     }
 }
-

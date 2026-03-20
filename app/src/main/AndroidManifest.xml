@@ -10,6 +10,9 @@
             android:name=".app.VendingTesterActivity"
             android:exported="false" />
         <activity
+            android:name=".app.VendingCalibratorActivity"
+            android:exported="false" />
+        <activity
             android:name=".app.MainActivity"
             android:exported="true">
             <intent-filter>

@@ -71,6 +71,7 @@ class VendingTesterActivity : AppCompatActivity() {
                 setPromptBody("Error en el proceso. Presiona STOP y vuelve a intentar.")
                 waitingForContinue = false
                 setContinueEnabled(false)
+                setResetLiftEnabled(msg.contains("status 0000"))
                 clearQueue()
             }
 
@@ -108,6 +109,7 @@ class VendingTesterActivity : AppCompatActivity() {
         appendLog("Log guardandose en: ${logFile?.absolutePath ?: "N/A"}")
         setPromptBody("Listo. Escribe pedido ej: 38,40,22 y presiona INICIAR PEDIDO.")
         setContinueEnabled(false)
+        setResetLiftEnabled(false)
 
         btnConnect.setOnClickListener {
             val port = etPort.text.toString().trim()
@@ -147,6 +149,7 @@ class VendingTesterActivity : AppCompatActivity() {
                 pollLogCounter = 0
                 pollIoLogCounter = 0
                 setContinueEnabled(false)
+                setResetLiftEnabled(false)
                 setPromptBody("Pedido cargado: $queue. Ejecutando primer despacho...")
                 startNextFromQueue()
             } catch (ex: Exception) {
@@ -170,6 +173,7 @@ class VendingTesterActivity : AppCompatActivity() {
             pollIoLogCounter = 0
             waitingForContinue = false
             setContinueEnabled(false)
+            setResetLiftEnabled(false)
             setPromptBody("STOP. Pedido cancelado.")
             clearQueue()
             vendFlow.stop()
@@ -188,6 +192,7 @@ class VendingTesterActivity : AppCompatActivity() {
             appendLog("Intentando RESET LIFT para volver a estado base...")
             appendLog("TX RESET LIFT: $resetHex")
             serial.sendHex(resetHex, serialListener)
+            setResetLiftEnabled(false)
             setPromptBody("ResetLift enviado. Verifica si la plataforma vuelve a base.")
         }
     }
@@ -248,6 +253,10 @@ class VendingTesterActivity : AppCompatActivity() {
 
     private fun setContinueEnabled(enabled: Boolean) {
         runOnUiThread { btnContinue.isEnabled = enabled }
+    }
+
+    private fun setResetLiftEnabled(enabled: Boolean) {
+        runOnUiThread { btnResetLift.isEnabled = enabled }
     }
 
     private fun appendLog(msg: String) {

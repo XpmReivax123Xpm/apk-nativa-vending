@@ -1,4 +1,4 @@
-# TODO - apk-nativa-vending
+﻿# TODO - apk-nativa-vending
 
 ## Checklist de aceptacion del bootstrap (primera orden)
 - [x] Existe `apk-nativa-vending/` en la raiz del repo.
@@ -9,14 +9,25 @@
 - [x] No se toco `hola mundo` ni carpetas de codigo recuperado.
 - [x] Se documentaron plan actual, hecho hoy y pendientes.
 
+## Logros ya completados (hasta hoy)
+- [x] Selector de modos con 3 opciones (`Kiosk`, `Tester`, `Calibrator`).
+- [x] Integracion de `Vending Tester` recuperado dentro de la app principal.
+- [x] Integracion de `Vending Calibrator` recuperado dentro de la app principal.
+- [x] Soporte de `RESET LIFT` en tester para retorno a base.
+- [x] Ajustes de seguridad operativa UI en tester:
+  - [x] `/dev/ttyS1` y `9600` no editables.
+  - [x] `Continuar` con estado visual apagado/encendido segun flujo.
+  - [x] `RESET LIFT` solo se habilita al detectar `driver status 0000`.
+- [x] Mejora visual de selector y pantalla tester.
+
 ## Backlog priorizado
 
-### Fase 1 - Especificacion funcional y tecnica
-- [ ] Cerrar especificacion de `operator-auth`.
-- [ ] Cerrar especificacion de `vending-context`.
-- [ ] Cerrar especificacion de `kiosk-control`.
-- [ ] Cerrar modelo de estados de transaccion y entrega.
-- [ ] Definir esquema de errores y eventos observables.
+### Fase 1 - Cierre funcional de negocio (Kiosk)
+- [ ] Definir flujo final de login operador.
+- [ ] Definir seleccion de vending asignada.
+- [ ] Definir activacion de contexto local de vending.
+- [ ] Diseñar UI funcional de catalogo y carrito.
+- [ ] Definir salida protegida de modo kiosk (PIN).
 
 ### Fase 2 - Integracion backend
 - [ ] Definir contratos JSON definitivos con equipo backend.
@@ -25,15 +36,15 @@
 - [ ] Definir endpoint de reporte por item y reporte global.
 - [ ] Definir idempotencia de reportes.
 
-### Fase 3 - Serial/hardware
-- [ ] Recibir protocolo oficial de placa/controladora.
-- [ ] Mapear comandos/respuestas en `MachineProtocolAdapter`.
-- [ ] Definir timeouts operativos por comando.
-- [ ] Definir politica de reintentos seguros.
-- [ ] Definir condiciones de estado incierto.
+### Fase 3 - Robustez serial/hardware
+- [ ] Formalizar contrato del protocolo con placa real (PENDIENTE HW).
+- [ ] Documentar matriz de errores reales observados (driver 0000 y otros).
+- [ ] Definir politica de reintentos seguros por comando.
+- [ ] Definir estrategia de recuperacion local antes de compensacion backend.
+- [ ] Definir condiciones de estado incierto y corte seguro.
 
-### Fase 4 - Flujos de negocio
-- [ ] Flujo completo de compra directa.
+### Fase 4 - Flujos completos E2E
+- [ ] Flujo completo de compra directa (login -> pago -> entrega).
 - [ ] Flujo de recogida por reserva.
 - [ ] Reporte de entrega parcial y abortos.
 - [ ] Reconciliacion post reinicio.
@@ -48,4 +59,3 @@
 - Si una decision depende del protocolo real de hardware, se marca como `PENDIENTE HW`.
 - Si una decision depende de backend, se marca como `PENDIENTE API`.
 - Documentar cada cambio relevante en `docs/BITACORA.md`.
-

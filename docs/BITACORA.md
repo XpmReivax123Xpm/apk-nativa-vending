@@ -121,3 +121,34 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `bg_mode_button_calibrator`
 - Se agregaron textos auxiliares en `strings.xml` para subtitulo y tip operativo.
 - Build `assembleDebug` exitoso despues del cambio visual.
+
+## 2026-03-20 - Rediseno visual de Vending Tester
+- Se rehizo la interfaz de `VendingTesterActivity` con estilo tecnico/kiosk:
+  - cabecera visual
+  - panel de conexion y pedido
+  - botones por jerarquia de accion
+  - consola de log estilizada
+- Se agregaron drawables nuevos para tester:
+  - `bg_tester_screen`
+  - `bg_tester_header`
+  - `bg_tester_panel`
+  - `bg_btn_connect`
+  - `bg_btn_start`
+  - `bg_btn_neutral`
+  - `bg_btn_stop`
+  - `bg_tester_log`
+- Se ajusto para evitar tint automatico de Material en botones (`backgroundTint` en null) y mantener los colores definidos.
+
+## 2026-03-20 - Reglas UI/operacion en Vending Tester
+- `Continuar con el siguiente pedido`:
+  - estado apagado cuando esta deshabilitado
+  - estado encendido (mismo estilo de `Conectar`) cuando se habilita
+- `/dev/ttyS1` y `9600` quedaron bloqueados para operador:
+  - no focus
+  - no edicion
+  - sin cursor/seleccion
+- `RESET LIFT`:
+  - apagado por defecto
+  - solo habilitado cuando aparece error de aborto con `status 0000`
+  - al enviarse reset vuelve a estado apagado
+- Build de validacion generado para vending despues de los cambios.

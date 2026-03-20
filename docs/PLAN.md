@@ -1,4 +1,4 @@
-# PLAN - apk-nativa-vending
+﻿# PLAN - apk-nativa-vending
 
 ## Objetivo
 Construir una app Android nativa tipo kiosk para tablet industrial conectada a una vending machine, actuando como puente confiable entre hardware serial local y backend central.
@@ -24,6 +24,22 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
 - Entrega por items (uno por uno).
 - Soporte de fallo parcial y reporte preciso por item y global.
 
+## Estado actual (implementado)
+- Selector inicial de modos operativo con 3 entradas:
+  - `Vending Kiosk` (placeholder funcional para fase negocio).
+  - `Vending Tester` (integrado y operativo).
+  - `Vending Calibrator` (integrado y operativo).
+- Recuperacion e integracion de flujos tecnicos desde APKs previas (tester/calibrator).
+- `Vending Tester` con:
+  - Conexion serial local (`/dev/ttyS1`, `9600`) y logging de RX/TX.
+  - Flujo de pedido secuencial y control STOP.
+  - `RESET LIFT` operativo para retorno a base (validado en pruebas de campo).
+  - Guardas de UI para operacion segura:
+    - Puerto y baudrate no editables por operador.
+    - Boton `Continuar` deshabilitado por defecto y activo solo cuando corresponde.
+    - Boton `RESET LIFT` deshabilitado por defecto y activo solo ante `driver status 0000`.
+- Mejora estetica de pantallas inicial y tester sin romper funcionalidad.
+
 ## Decisiones vigentes
 - Estrategia de confirmacion de pago: polling con backoff (v1).
 - PIN de salida kiosk: gestionado por backend por vending/operador.
@@ -32,7 +48,7 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
 - Compensacion/reembolso: responsabilidad del backend.
 
 ## Modulos del scaffold
-- `app`: shell Android y punto de arranque.
+- `app`: shell Android, selector de modos y navegacion base.
 - `domain`: modelos y reglas de negocio puras.
 - `data`: capa de implementaciones y coordinacion de repositorios.
 - `integration-backend`: contratos de API/sync con backend.
@@ -49,11 +65,10 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
 - `KioskController`
 
 ## Dependencias tecnicas pendientes
-- Especificacion oficial del protocolo serial de placa/controladora.
+- Especificacion oficial del protocolo serial de placa/controladora (incluyendo recuperacion robusta post-fallo).
 - Formato JSON/API definitivo con equipo backend.
 - Politica final de recuperacion local de hardware en estado incierto.
 - Estrategia exacta de reconciliacion post reinicio electrico.
 
 ## Coordinacion externa
-Este proyecto Android se coordinara con otro Codex/equipo que trabaja backend en otra computadora. Las integraciones de contratos deben cerrarse de forma conjunta.
-
+Este proyecto Android se coordina con otro equipo/Codex de backend. Los contratos de integracion deben cerrarse en conjunto antes de la fase de implementacion de negocio.

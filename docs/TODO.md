@@ -37,6 +37,9 @@
 - [ ] Definir endpoint de reporte por item y reporte global.
 - [ ] Definir idempotencia de reportes.
 
+- [x] Ajustar UX de calibrador: Conectar/Desconectar con estado habilitado/deshabilitado y foco en plataforma.
+- [ ] Cerrar traduccion completa de codigos/errores de placa en calibrador (tabla validada en campo).
+
 ### Fase 3 - Robustez serial/hardware
 - [ ] Formalizar contrato del protocolo con placa real (PENDIENTE HW).
 - [ ] Documentar matriz de errores reales observados (driver 0000 y otros).
@@ -60,6 +63,9 @@
 - Si una decision depende del protocolo real de hardware, se marca como `PENDIENTE HW`.
 - Si una decision depende de backend, se marca como `PENDIENTE API`.
 - Documentar cada cambio relevante en `docs/BITACORA.md`.
+
+
+
 
 
 

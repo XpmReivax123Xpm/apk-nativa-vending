@@ -9,6 +9,7 @@ import android.text.TextWatcher
 import android.view.View
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Button
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import cc.uling.usdk.USDK
@@ -35,6 +36,8 @@ class VendingCalibratorActivity : Activity() {
     private lateinit var tvResult: TextView
     private lateinit var tvLogs: TextView
     private lateinit var tvTestPoints: TextView
+    private lateinit var btnConnect: Button
+    private lateinit var btnDisconnect: Button
     private lateinit var etRowsInUse: EditText
     private lateinit var etTestCm: EditText
 
@@ -53,7 +56,6 @@ class VendingCalibratorActivity : Activity() {
         updateAllRowPointLabels()
         updateTestPointsLabel()
         renderConnectionState(false)
-        addInfo("Listo. Pulsa OPEN, carga datos guardados y ajusta alturas en cm.")
     }
 
     override fun onDestroy() {
@@ -67,6 +69,8 @@ class VendingCalibratorActivity : Activity() {
         tvResult = findViewById(R.id.tv_result)
         tvLogs = findViewById(R.id.tv_logs)
         tvTestPoints = findViewById(R.id.tv_test_points)
+        btnConnect = findViewById(R.id.btn_connect)
+        btnDisconnect = findViewById(R.id.btn_disconnect)
         etRowsInUse = findViewById(R.id.et_rows_in_use)
         etTestCm = findViewById(R.id.et_test_cm)
 
@@ -107,15 +111,15 @@ class VendingCalibratorActivity : Activity() {
     }
 
     private fun bindActions() {
-        findViewById<View>(R.id.btn_connect).setOnClickListener { connectMachine() }
-        findViewById<View>(R.id.btn_disconnect).setOnClickListener { disconnectMachine() }
+        btnConnect.setOnClickListener { connectMachine() }
+        btnDisconnect.setOnClickListener { disconnectMachine() }
         findViewById<View>(R.id.btn_platform_status).setOnClickListener { readPlatformStatus() }
-        findViewById<View>(R.id.btn_sensors_status).setOnClickListener { readSensorsStatus() }
         findViewById<View>(R.id.btn_load_saved).setOnClickListener { loadSavedRows() }
         findViewById<View>(R.id.btn_save_y).setOnClickListener { saveRows() }
         findViewById<View>(R.id.btn_test_y).setOnClickListener { testPosition() }
         findViewById<View>(R.id.btn_clear_log).setOnClickListener {
             tvLogs.text = ""
+            tvResult.visibility = View.GONE
             tvResult.text = "Historial limpio."
         }
 
@@ -165,8 +169,8 @@ class VendingCalibratorActivity : Activity() {
         val para = YSReplyPara(INTERNAL_ADDR)
         board?.GetYStatus(para)
         if (para.isOK) {
-            val status = CodeUtil.getXYStatusMsg(para.runStatus)
-            val fault = CodeUtil.getFaultMsg(para.faultCode)
+            val status = translateBoardText(CodeUtil.getXYStatusMsg(para.runStatus))
+            val fault = translateBoardText(CodeUtil.getFaultMsg(para.faultCode))
             addInfo("Estado plataforma: $status. Error: $fault.")
         } else {
             addErrorSimple("No se pudo consultar estado de plataforma.", para)
@@ -238,9 +242,7 @@ class VendingCalibratorActivity : Activity() {
         if (outOfRangeRows.isEmpty()) {
             addInfo("Cambios guardados. La maquina recibio puntos Y calculados desde cm.")
         } else {
-            val warn = "Guardado con advertencia: fuera del rango recomendado (35 a 120 cm) en ${outOfRangeRows.joinToString(", ")}."
-            tvResult.text = warn
-            appendLog("AVISO", warn)
+            addInfo("Cambios guardados. Revisa filas: ${outOfRangeRows.joinToString(", ")}.")
         }
     }
 
@@ -260,13 +262,7 @@ class VendingCalibratorActivity : Activity() {
             return
         }
 
-        if (isWithinRecommendedCm(cm)) {
-            addInfo("Prueba enviada: ${formatCm(cm)} cm -> $points puntos Y.")
-        } else {
-            val warn = "Prueba enviada: ${formatCm(cm)} cm -> $points puntos Y. Advertencia: fuera del rango recomendado (35 a 120 cm)."
-            tvResult.text = warn
-            appendLog("AVISO", warn)
-        }
+        addInfo("Prueba enviada: ${formatCm(cm)} cm -> $points puntos Y.")
     }
 
     private fun applyRowVisibility() {
@@ -295,10 +291,8 @@ class VendingCalibratorActivity : Activity() {
     private fun updateTestPointsLabel() {
         val raw = etTestCm.text?.toString().orEmpty()
         val cm = parseFloatOrDefault(raw, 0f)
-        val points = max(0, cmToPoints(cm))
-        val okRange = isWithinRecommendedCm(cm)
-        tvTestPoints.text = "Resultado prueba: $points puntos Y" + if (okRange) "" else " | fuera de rango"
-        tvTestPoints.setTextColor(if (okRange) COLOR_OK else COLOR_WARN)
+        tvTestPoints.text = "Probando ${formatCm(cm)} cm"
+        tvTestPoints.setTextColor(COLOR_OK)
     }
 
     private fun parseRowsInUse(): Int {
@@ -313,18 +307,69 @@ class VendingCalibratorActivity : Activity() {
             tvConnection.text = "Conectado"
             tvConnection.setBackgroundResource(R.drawable.bg_status_connected)
             tvConnection.setTextColor(ContextCompat.getColor(this, R.color.badge_connected_text))
+            btnConnect.isEnabled = false
+            btnConnect.alpha = 0.45f
+            btnDisconnect.isEnabled = true
+            btnDisconnect.alpha = 1.0f
+            btnDisconnect.setBackgroundResource(R.drawable.bg_btn_stop)
         } else {
             tvConnection.text = "Desconectado"
             tvConnection.setBackgroundResource(R.drawable.bg_status_disconnected)
             tvConnection.setTextColor(ContextCompat.getColor(this, R.color.badge_disconnected_text))
+            btnConnect.isEnabled = true
+            btnConnect.alpha = 1.0f
+            btnDisconnect.isEnabled = false
+            btnDisconnect.alpha = 0.45f
+            btnDisconnect.setBackgroundResource(R.drawable.bg_btn_close)
         }
     }
 
     private fun checkOpen(): Boolean {
         val b = board
         if (b != null && b.EF_Opened()) return true
-        addWarn("Primero pulsa OPEN.")
+        addWarn("Primero pulsa Conectar.")
         return false
+    }
+
+    private fun translateBoardText(raw: String): String {
+        val text = raw.trim()
+        if (text.isEmpty()) return "Sin dato"
+        val replacements = linkedMapOf(
+            "空闲" to "En reposo",
+            "运行" to "En movimiento",
+            "停止" to "Detenido",
+            "无故障" to "Sin falla",
+            "无效管道编号" to "Numero de carril/canal invalido",
+            "无效货道编号" to "Numero de carril/canal invalido",
+            "电机没有转动" to "Motor sin giro",
+            "无电流通过" to "sin corriente",
+            "插头未插好" to "conector mal insertado",
+            "断线" to "cable cortado",
+            "堵转" to "motor bloqueado/atascado",
+            "通讯" to "falla de comunicacion",
+            "通信" to "falla de comunicacion"
+        )
+
+        var translated = text
+        replacements.forEach { (zh, es) ->
+            translated = translated.replace(zh, es)
+        }
+
+        // Normaliza separadores/ruido despues de reemplazos
+        translated = translated
+            .replace("，", ", ")
+            .replace("。", ".")
+            .replace("（", "(")
+            .replace("）", ")")
+            .replace("  ", " ")
+            .trim()
+
+        // Si todavia contiene CJK, no dejamos chino en UI/log.
+        return if (translated.any { it.code in 0x4E00..0x9FFF }) {
+            "Falla reportada por placa (sin traduccion exacta)."
+        } else {
+            translated
+        }
     }
 
     private fun cmToPoints(cm: Float): Int = (POINTS_PER_CM * cm + POINTS_INTERCEPT).roundToInt()
@@ -344,16 +389,19 @@ class VendingCalibratorActivity : Activity() {
     private fun formatCm(cm: Float): String = String.format(Locale.US, "%.2f", cm)
 
     private fun addInfo(msg: String) {
+        tvResult.visibility = View.VISIBLE
         tvResult.text = msg
         appendLog("INFO", msg)
     }
 
     private fun addWarn(msg: String) {
+        tvResult.visibility = View.VISIBLE
         tvResult.text = msg
         appendLog("AVISO", msg)
     }
 
     private fun addErrorSimple(msg: String, para: BaseClsPara) {
+        tvResult.visibility = View.VISIBLE
         tvResult.text = msg
         appendLog("ERROR", "$msg (codigo ${para.resultCode})")
     }
@@ -378,8 +426,7 @@ class VendingCalibratorActivity : Activity() {
         private const val POINTS_PER_CM = 53.67f
         private const val POINTS_INTERCEPT = -43.74f
 
-        private val COLOR_OK = Color.parseColor("#555555")
-        private val COLOR_WARN = Color.parseColor("#B00020")
+        private val COLOR_OK = Color.parseColor("#DDEBFF")
+        private val COLOR_WARN = Color.parseColor("#FFCA76")
     }
 }
-

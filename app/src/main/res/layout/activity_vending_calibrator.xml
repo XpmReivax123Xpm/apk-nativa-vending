@@ -1,34 +1,66 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:background="#f2f5f9"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:background="@drawable/bg_mode_selector_screen"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fillViewport="true">
     <LinearLayout
         android:orientation="vertical"
-        android:padding="12dp"
+        android:padding="14dp"
+        android:layout_margin="12dp"
+        android:background="@drawable/bg_mode_frame"
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
-        <TextView
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:textColor="#1f2937"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Calibracion de Plataforma"/>
-        <TextView
-            android:textColor="#64748b"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Ingresa centimetros por fila. La app convierte a puntos Y automaticamente."/>
-        <TextView
-            android:textStyle="bold"
-            android:textColor="#b42318"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:text="Rango recomendado: 35 a 120 cm"/>
+            android:background="@drawable/bg_tester_header"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="14dp">
+
+            <ImageView
+                android:layout_width="58dp"
+                android:layout_height="58dp"
+                android:background="@drawable/bg_icon_badge"
+                android:padding="12dp"
+                android:src="@android:drawable/ic_menu_manage"
+                android:tint="#1F73C9" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-black"
+                    android:text="Calibracion de Plataforma"
+                    android:textColor="#68DBF8"
+                    android:textSize="22sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Ingresa centimetros por fila. La app convierte a puntos Y automaticamente."
+                    android:textColor="#D6E9FF"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:text="Rango recomendado: 35 a 120 cm"
+                    android:textColor="#FFCA76"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </LinearLayout>
+        </LinearLayout>
         <TextView
             android:textStyle="bold"
             android:id="@+id/tv_connection"
@@ -48,42 +80,51 @@
             <Button
                 android:id="@+id/btn_connect"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:text="OPEN"
+                android:layout_height="54dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_btn_connect"
+                android:backgroundTint="@null"
+                app:backgroundTint="@null"
+                android:text="CONECTAR"
+                android:textColor="#FFFFFF"
                 android:layout_weight="1"/>
             <Button
                 android:id="@+id/btn_disconnect"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:text="CLOSE"
+                android:layout_height="54dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_btn_close"
+                android:backgroundTint="@null"
+                app:backgroundTint="@null"
+                android:text="DESCONECTAR"
+                android:textColor="#FFFFFF"
                 android:layout_weight="1"/>
         </LinearLayout>
-        <LinearLayout
-            android:orientation="horizontal"
+        <Button
+            android:id="@+id/btn_platform_status"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp">
-            <Button
-                android:id="@+id/btn_platform_status"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:text="ESTADO PLATAFORMA"
-                android:layout_weight="1"/>
-            <Button
-                android:id="@+id/btn_sensors_status"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:text="ESTADO SENSORES"
-                android:layout_weight="1"/>
-        </LinearLayout>
+            android:layout_height="54dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_btn_platform"
+            android:backgroundTint="@null"
+            app:backgroundTint="@null"
+            android:text="ESTADO PLATAFORMA"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btn_sensors_status"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:visibility="gone" />
         <TextView
-            android:textColor="#223247"
+            android:textColor="#DFF0FF"
             android:id="@+id/tv_result"
-            android:background="#eef4ff"
+            android:background="@drawable/bg_tester_panel"
             android:padding="10dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"/>
+            android:layout_marginTop="8dp"
+            android:visibility="gone"/>
         <LinearLayout
             android:orientation="horizontal"
             android:layout_width="match_parent"
@@ -91,7 +132,7 @@
             android:layout_marginTop="10dp">
             <TextView
                 android:textStyle="bold"
-                android:textColor="#1f2937"
+                android:textColor="#FFFFFF"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:text="Filas en uso"
@@ -101,12 +142,16 @@
                 android:id="@+id/et_rows_in_use"
                 android:layout_width="72dp"
                 android:layout_height="wrap_content"
+                android:background="@drawable/bg_calibrator_editable_input"
                 android:text="4"
+                android:textStyle="bold"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#D6E9FF"
                 android:inputType="number"/>
         </LinearLayout>
         <TextView
             android:textStyle="bold"
-            android:textColor="#64748b"
+            android:textColor="#D6E9FF"
             android:id="@+id/tv_columns"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -114,7 +159,7 @@
             android:text="Columnas fijas de maquina: 9"/>
         <TextView
             android:textStyle="bold"
-            android:textColor="#1f2937"
+            android:textColor="#FFFFFF"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
@@ -122,7 +167,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f1"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -150,7 +195,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f1_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -160,7 +205,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f2"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -188,7 +233,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f2_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -198,7 +243,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f3"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -226,7 +271,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f3_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -236,7 +281,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f4"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -264,7 +309,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f4_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -274,7 +319,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f5"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -302,7 +347,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f5_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -312,7 +357,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f6"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -340,7 +385,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f6_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -350,7 +395,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f7"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -378,7 +423,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f7_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -388,7 +433,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f8"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -416,7 +461,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f8_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -426,7 +471,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f9"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -454,7 +499,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f9_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -464,7 +509,7 @@
         <LinearLayout
             android:orientation="vertical"
             android:id="@+id/row_f10"
-            android:background="#ffffff"
+            android:background="@drawable/bg_calibrator_row_card"
             android:padding="8dp"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -492,7 +537,7 @@
                     android:text=" cm"/>
             </LinearLayout>
             <TextView
-                android:textColor="#64748b"
+                android:textColor="#D6E9FF"
                 android:id="@+id/tv_f10_points"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -507,19 +552,29 @@
             <Button
                 android:id="@+id/btn_load_saved"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="54dp"
+                android:layout_marginEnd="6dp"
+                android:background="@drawable/bg_btn_connect"
+                android:backgroundTint="@null"
+                app:backgroundTint="@null"
                 android:text="DATOS GUARDADOS"
+                android:textColor="#FFFFFF"
                 android:layout_weight="1"/>
             <Button
                 android:id="@+id/btn_save_y"
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="54dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/bg_btn_login_orange"
+                android:backgroundTint="@null"
+                app:backgroundTint="@null"
                 android:text="GUARDAR CAMBIOS"
+                android:textColor="#FFFFFF"
                 android:layout_weight="1"/>
         </LinearLayout>
         <TextView
             android:textStyle="bold"
-            android:textColor="#1f2937"
+            android:textColor="#FFFFFF"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
@@ -533,17 +588,24 @@
                 android:id="@+id/et_test_cm"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:background="@android:color/transparent"
                 android:text="94"
                 android:layout_weight="1"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#D6E9FF"
                 android:inputType="numberDecimal"/>
             <Button
                 android:id="@+id/btn_test_y"
                 android:layout_width="180dp"
-                android:layout_height="wrap_content"
+                android:layout_height="54dp"
+                android:background="@drawable/bg_btn_connect"
+                android:backgroundTint="@null"
+                app:backgroundTint="@null"
+                android:textColor="#FFFFFF"
                 android:text="PROBAR POSICION"/>
         </LinearLayout>
         <TextView
-            android:textColor="#64748b"
+            android:textColor="#D6E9FF"
             android:id="@+id/tv_test_points"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -556,7 +618,7 @@
             android:layout_marginTop="10dp">
             <TextView
                 android:textStyle="bold"
-                android:textColor="#1f2937"
+                android:textColor="#FFFFFF"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:text="Historial"
@@ -564,18 +626,23 @@
             <Button
                 android:id="@+id/btn_clear_log"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="54dp"
+                android:background="@drawable/bg_btn_neutral"
+                android:backgroundTint="@null"
+                app:backgroundTint="@null"
+                android:textColor="#FFFFFF"
                 android:text="LIMPIAR"/>
         </LinearLayout>
         <TextView
             android:textSize="12sp"
             android:typeface="monospace"
-            android:textColor="#e2e8f0"
+            android:textColor="#DDEBFF"
             android:id="@+id/tv_logs"
-            android:background="#0f172a"
+            android:background="@drawable/bg_tester_log"
             android:padding="10dp"
             android:layout_width="match_parent"
             android:layout_height="220dp"
             android:layout_marginTop="6dp"/>
     </LinearLayout>
 </ScrollView>
+

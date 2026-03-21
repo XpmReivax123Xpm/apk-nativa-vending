@@ -210,3 +210,22 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ## 2026-03-21 - Build y despliegue
 - Multiples ciclos `assembleDebug` exitosos tras cada ajuste.
 - Instalaciones por ADB exitosas (`adb install -r`) en dispositivo de pruebas.
+
+## 2026-03-21 - Calibrator: ajustes UX/operacion y pendientes
+- Se actualizo nomenclatura de accion:
+  - `OPEN` -> `CONECTAR`
+  - `CLOSE` -> `DESCONECTAR`
+- Se implemento estado visual de conexion:
+  - Conectado: `CONECTAR` deshabilitado, `DESCONECTAR` habilitado en rojo.
+  - Desconectado: `DESCONECTAR` deshabilitado, `CONECTAR` habilitado.
+- Se removio de la UI el boton `ESTADO SENSORES` para enfocar calibracion de altura de plataforma.
+- Se simplifico mensajeria de prueba:
+  - sin advertencia larga de rango recomendado
+  - texto de apoyo: `Probando X.XX cm`
+- Se mejoro la traduccion de mensajes de placa en `Estado plataforma`:
+  - se agregaron mapeos adicionales (incluye variantes de carril/canal invalido)
+  - fallback para evitar exponer chino en UI: `Falla reportada por placa (sin traduccion exacta).`
+
+### Pendientes abiertos (acordados)
+- Consolidar tabla final de traducciones tecnico-funcionales para todos los codigos/fallos reales de placa.
+- Revisar si se reintroduce diagnostico de sensores en una vista tecnica separada (no en flujo principal de calibracion).

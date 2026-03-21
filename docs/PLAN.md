@@ -26,7 +26,7 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
 
 ## Estado actual (implementado)
 - Selector inicial de modos operativo con 3 entradas:
-  - `Vending Kiosk` (placeholder funcional para fase negocio).
+  - `Vending Kiosk` (ya conectado a pantalla de login backend).
   - `Vending Tester` (integrado y operativo).
   - `Vending Calibrator` (integrado y operativo).
 - Recuperacion e integracion de flujos tecnicos desde APKs previas (tester/calibrator).
@@ -39,6 +39,9 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
     - Boton `Continuar` deshabilitado por defecto y activo solo cuando corresponde.
     - Boton `RESET LIFT` deshabilitado por defecto y activo solo ante `driver status 0000`.
 - Mejora estetica de pantallas inicial y tester sin romper funcionalidad.
+- Inicio de modulo Login Kiosk conectado al backend BP (POST /api/login) con guardado de token + expiracion, validado en dispositivo real.
+- Login Kiosk con branding BoxiPago aplicado (logo real), animacion de entrada secuencial y mensajes UX refinados para operacion.
+
 
 ## Decisiones vigentes
 - Estrategia de confirmacion de pago: polling con backoff (v1).
@@ -72,3 +75,8 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
 
 ## Coordinacion externa
 Este proyecto Android se coordina con otro equipo/Codex de backend. Los contratos de integracion deben cerrarse en conjunto antes de la fase de implementacion de negocio.
+
+
+
+
+

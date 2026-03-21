@@ -23,7 +23,8 @@
 ## Backlog priorizado
 
 ### Fase 1 - Cierre funcional de negocio (Kiosk)
-- [ ] Definir flujo final de login operador.
+- [x] Definir e implementar flujo inicial de login operador (pantalla + POST /api/login + guardado de token), validado en vending.
+- [x] Pulido UI/UX de login kiosk (branding BoxiPago, animaciones de entrada, mensajes operativos y eliminacion de acento rosado).
 - [ ] Definir seleccion de vending asignada.
 - [ ] Definir activacion de contexto local de vending.
 - [ ] Diseñar UI funcional de catalogo y carrito.
@@ -59,3 +60,7 @@
 - Si una decision depende del protocolo real de hardware, se marca como `PENDIENTE HW`.
 - Si una decision depende de backend, se marca como `PENDIENTE API`.
 - Documentar cada cambio relevante en `docs/BITACORA.md`.
+
+
+
+

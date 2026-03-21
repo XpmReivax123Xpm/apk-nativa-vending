@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bp_bg_blue">#0B5FA6</color>
+    <color name="bp_primary_blue">#0965AF</color>
+    <color name="bp_cyan">#56C3EA</color>
+    <color name="bp_orange">#F28E1B</color>
+    <color name="bp_surface">#1F5AA8</color>
+    <color name="bp_on_dark">#FFFFFF</color>
+    <color name="bp_highlight">#3356C3EA</color>
+</resources>

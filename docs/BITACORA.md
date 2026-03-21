@@ -152,3 +152,61 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - solo habilitado cuando aparece error de aborto con `status 0000`
   - al enviarse reset vuelve a estado apagado
 - Build de validacion generado para vending despues de los cambios.
+
+## 2026-03-20 - Inicio de login real para Vending Kiosk (backend BP)
+- Se reemplazo el placeholder de `Vending Kiosk` por navegacion real hacia `KioskLoginActivity`.
+- Se implemento consumo HTTP real de `POST /api/login` contra `http://192.168.0.9:8001/api/login`.
+- Request JSON implementado con campos exactos:
+  - `tcCorreo`
+  - `tcPassword`
+- Parseo de respuesta implementado con validacion de:
+  - `error`
+  - `status`
+  - `message`
+  - `values.accessToken`
+  - `values.tokenType`
+  - `values.expiresInMinutes`
+- Se implemento almacenamiento local de sesion (`AuthSessionManager`):
+  - token
+  - token type
+  - expiracion calculada en epoch millis
+- Se agrego helper para encabezado `Authorization: Bearer <token>` cuando la sesion sigue vigente.
+- Se agregaron permisos y config de red para entorno LAN HTTP:
+  - `INTERNET`
+  - `usesCleartextTraffic=true`
+- Estado actual de este modulo:
+  - login funcional en codigo y listo para pruebas en dispositivo con backend LAN activo.
+  - build local en esta maquina bloqueado por entorno (`JAVA_HOME`/`java` no disponible).
+
+## 2026-03-20 - Validacion de login en dispositivo (vending)
+- Se compilo APK debug con JDK de Android Studio en sesion local (`JAVA_HOME` temporal en terminal, sin cambios globales del sistema).
+- Se instalo por ADB en celular/tablet de pruebas con `adb install -r`.
+- Resultado funcional validado en campo:
+  - Operador entra a `Vending Kiosk`.
+  - Se muestra pantalla de login.
+  - Login exitoso contra backend BP (`POST /api/login`).
+  - Sesion/token guardados correctamente tras autenticacion.
+- Estado: primer objetivo del modulo `Vending Kiosk` completado (conexion y autenticacion backend confirmadas).
+
+## 2026-03-21 - Pulido visual/UX de login kiosk (branding BoxiPago)
+- Se reemplazo cabecera inicial por logo real `BoxiPago (2).png` integrado como recurso local (`@drawable/boxipago_logo`).
+- Se ajusto el formulario para mantener paleta corporativa y eliminar contenedores oscuros no deseados.
+- Se corrigio tinte de controles para evitar acentos rosados/purpura heredados de tema por defecto.
+- Se redefinio paleta global en `themes` (day/night) para estabilidad visual de la app completa.
+
+## 2026-03-21 - Animaciones de entrada en Vending Kiosk
+- Se implemento secuencia de intro al abrir login:
+  - logo aparece con `fade in`
+  - logo sube suavemente a posicion final
+  - formulario (`correo`, `contrasena`, `ingresar`) aparece despues con `fade + translate`
+- Se agregaron contenedores identificados para orquestar animacion: `logoContainer` y `loginContainer`.
+
+## 2026-03-21 - Mensajeria de login refinada
+- Durante autenticacion ahora muestra: `Ingresando...`.
+- Mensaje de exito simplificado a: `Conexión exitosa`.
+- Se retiro toast tecnico: `Login correcto y token guardado`.
+- Indicador de carga (`ProgressBar`) mantiene comportamiento, pero con color de paleta (sin rosado).
+
+## 2026-03-21 - Build y despliegue
+- Multiples ciclos `assembleDebug` exitosos tras cada ajuste.
+- Instalaciones por ADB exitosas (`adb install -r`) en dispositivo de pruebas.

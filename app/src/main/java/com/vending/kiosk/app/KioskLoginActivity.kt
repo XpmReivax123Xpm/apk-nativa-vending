@@ -1,5 +1,6 @@
 ﻿package com.vending.kiosk.app
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.animation.DecelerateInterpolator
@@ -101,6 +102,8 @@ class KioskLoginActivity : AppCompatActivity() {
                         expiresInMinutes = result.expiresInMinutes
                     )
                     tvStatus.text = "Conexión exitosa"
+                    startActivity(Intent(this@KioskLoginActivity, KioskMachinesActivity::class.java))
+                    finish()
                 }
 
                 is LoginResult.Error -> {
@@ -112,7 +115,7 @@ class KioskLoginActivity : AppCompatActivity() {
     }
 
     private fun doLogin(correo: String, password: String): LoginResult {
-        val endpoint = "http://192.168.0.9:8001/api/login"
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/login"
         var connection: HttpURLConnection? = null
 
         return try {

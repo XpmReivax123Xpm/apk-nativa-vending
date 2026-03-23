@@ -42,6 +42,16 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
 - Inicio de modulo Login Kiosk conectado al backend BP (POST /api/login) con guardado de token + expiracion, validado en dispositivo real.
 - Login Kiosk con branding BoxiPago aplicado (logo real), animacion de entrada secuencial y mensajes UX refinados para operacion.
 - Vending Calibrator alineado al lenguaje visual del tester y con UX operativa de conexion/desconexion (toggle de botones + diagnostico de plataforma traducido).
+- Flujo `Kiosk` extendido:
+  - listado de maquinas asignadas via backend
+  - seleccion de maquina activa
+  - carga de catalogo por planograma/celdas
+- Base backend actualizada a dominio:
+  - `https://boxipagobackend.pagofacil.com.bo/`
+- Compatibilidad operativa para vending Android `7.1.2` en pantalla de catalogo:
+  - layout legacy dedicado
+  - fallback seguro de inflado
+  - carrusel seguro legacy (rotacion por codigo)
 
 
 ## Decisiones vigentes
@@ -73,6 +83,7 @@ Construir una app Android nativa tipo kiosk para tablet industrial conectada a u
 - Formato JSON/API definitivo con equipo backend.
 - Politica final de recuperacion local de hardware en estado incierto.
 - Estrategia exacta de reconciliacion post reinicio electrico.
+- Integracion futura de carrusel con imagenes reales (backend/CDN) en lugar de placeholders locales.
 
 ## Coordinacion externa
 Este proyecto Android se coordina con otro equipo/Codex de backend. Los contratos de integracion deben cerrarse en conjunto antes de la fase de implementacion de negocio.

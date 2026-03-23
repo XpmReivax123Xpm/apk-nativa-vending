@@ -25,9 +25,11 @@
 ### Fase 1 - Cierre funcional de negocio (Kiosk)
 - [x] Definir e implementar flujo inicial de login operador (pantalla + POST /api/login + guardado de token), validado en vending.
 - [x] Pulido UI/UX de login kiosk (branding BoxiPago, animaciones de entrada, mensajes operativos y eliminacion de acento rosado).
-- [ ] Definir seleccion de vending asignada.
+- [x] Definir seleccion de vending asignada (listado de maquinas backend + seleccion de activa).
 - [ ] Definir activacion de contexto local de vending.
-- [ ] Diseñar UI funcional de catalogo y carrito.
+- [~] Diseñar UI funcional de catalogo y carrito.
+- [x] Catalogo base por planograma/celdas implementado (sin carrito aun).
+- [ ] Integrar imagenes reales de carrusel/catalogo.
 - [ ] Definir salida protegida de modo kiosk (PIN).
 
 ### Fase 2 - Integracion backend
@@ -36,6 +38,7 @@
 - [ ] Definir endpoint y semantica para polling de pago.
 - [ ] Definir endpoint de reporte por item y reporte global.
 - [ ] Definir idempotencia de reportes.
+- [x] Migrar base URL de entorno LAN a dominio backend productivo.
 
 - [x] Ajustar UX de calibrador: Conectar/Desconectar con estado habilitado/deshabilitado y foco en plataforma.
 - [ ] Cerrar traduccion completa de codigos/errores de placa en calibrador (tabla validada en campo).
@@ -63,6 +66,7 @@
 - Si una decision depende del protocolo real de hardware, se marca como `PENDIENTE HW`.
 - Si una decision depende de backend, se marca como `PENDIENTE API`.
 - Documentar cada cambio relevante en `docs/BITACORA.md`.
+- Android vending objetivo actual: `7.1.2` (API 25). Evitar componentes UI inestables para esa API.
 
 
 

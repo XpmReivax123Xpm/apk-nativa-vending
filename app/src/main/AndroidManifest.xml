@@ -10,6 +10,12 @@
         android:theme="@style/Theme.VendingKiosk"
         android:usesCleartextTraffic="true">
         <activity
+            android:name=".app.KioskCatalogActivity"
+            android:exported="false" />
+        <activity
+            android:name=".app.KioskMachinesActivity"
+            android:exported="false" />
+        <activity
             android:name=".app.KioskLoginActivity"
             android:exported="false" />
         <activity

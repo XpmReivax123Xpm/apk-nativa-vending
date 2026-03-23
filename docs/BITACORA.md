@@ -80,7 +80,7 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 
 ### Estado de los otros modos
 - `Vending Kiosk`: placeholder (pendiente implementacion funcional)
-- `Vending Calibrator`: placeholder (pendiente implementacion funcional)
+- `@`: placeholder (pendiente implementacion funcional)
 
 ## 2026-03-20 - Revision tecnica de Zhong Da SDK
 - Se realizo lectura completa del paquete `Zhong Da SDK English Version` (Demo, SDK, PDF e inspeccion de JAR decompilado).
@@ -229,3 +229,29 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ### Pendientes abiertos (acordados)
 - Consolidar tabla final de traducciones tecnico-funcionales para todos los codigos/fallos reales de placa.
 - Revisar si se reintroduce diagnostico de sensores en una vista tecnica separada (no en flujo principal de calibracion).
+
+## 2026-03-23 - Kiosk: maquinas + catalogo + compatibilidad Android 7.1.2
+- Se implemento flujo post-login:
+  - Login exitoso abre pantalla `Maquinas asignadas`.
+  - Consumo de `GET /api/maquinas` con `Authorization: Bearer <token>`.
+  - Render de lista de maquinas y estado (activa/inactiva).
+- Se implemento apertura de catalogo por maquina activa:
+  - Navegacion a `KioskCatalogActivity` al seleccionar maquina.
+  - Consumo de `GET /api/maquinas/{tnMaquina}/planograma`.
+  - Parseo desde `values.celdas` (con tolerancia a variantes de payload).
+- Se aplico rediseno de UI de catalogo:
+  - codigo de maquina arriba izquierda
+  - ubicacion arriba derecha
+  - bloque de carrusel/promos
+  - productos en grilla 2 columnas con tarjeta casi cuadrada y espacio reservado para imagen.
+- Se atendio estabilidad en tablet vending Android `7.1.2`:
+  - separacion de layout `legacy` para API 25.
+  - fallback de seguridad en catalogo ante error de inflado.
+  - ajuste de recurso incompatible en Android 7 (`gradient angle` de `30` a `45`).
+  - carrusel legacy en modo seguro (sin `ViewFlipper`) con rotacion por `Handler`.
+- Se cambio backend base de IP LAN a dominio productivo:
+  - `https://boxipagobackend.pagofacil.com.bo/`
+  - aplicado en login, listado de maquinas y planograma.
+- Resultado actual:
+  - flujo kiosk llega a catalogo y carga celdas.
+  - continuidad de ajustes visuales pendiente segun validacion en vending real.

@@ -1,20 +1,33 @@
 ﻿package com.vending.kiosk.app
 
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.graphics.Color
+import android.util.Base64
+import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ViewFlipper
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
+import com.vending.kiosk.integration.serial.runtime.SerialManager
+import com.vending.kiosk.integration.serial.runtime.VendingFlowController
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -27,11 +40,14 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var tvTitle: TextView
     private lateinit var tvSubtitle: TextView
     private lateinit var tvStatus: TextView
+    private lateinit var tvCartBadge: TextView
     private lateinit var promoCarousel: View
     private var tvPromoTitle: TextView? = null
     private var tvPromoSubtitle: TextView? = null
     private lateinit var contentContainer: LinearLayout
+
     private val authSessionManager by lazy { AuthSessionManager(this) }
+
     private var useLegacyCarousel = false
     private val carouselHandler = Handler(Looper.getMainLooper())
     private val carouselIntervalMs = 5_000L
@@ -41,6 +57,27 @@ class KioskCatalogActivity : AppCompatActivity() {
         LegacySlide(R.drawable.bg_catalog_promo_2, "Nuevos productos", "Carrusel preparado para imagenes"),
         LegacySlide(R.drawable.bg_catalog_promo_3, "Avisos", "Descuentos, mantenimiento y novedades")
     )
+
+    private var machineId: Int = 0
+    private var authHeader: String = ""
+    private var catalogItems: List<CeldaUi> = emptyList()
+    private val cartItems = linkedMapOf<Int, CartLine>()
+
+    private val serial = SerialManager()
+    private lateinit var vendFlow: VendingFlowController
+    private var dispensingQueue: List<Int> = emptyList()
+    private var dispensingCursor = 0
+    private var dispensingInProgress = false
+    private var clearCartOnDispenseFinish = false
+
+    private var qrPollingJob: Job? = null
+
+    private var dispenseDialog: AlertDialog? = null
+    private var tvDispenseStatus: TextView? = null
+    private var tvDispenseTitle: TextView? = null
+    private var progressDispense: ProgressBar? = null
+    private var btnDispenseClose: Button? = null
+
     private val carouselTicker = object : Runnable {
         override fun run() {
             try {
@@ -49,9 +86,59 @@ class KioskCatalogActivity : AppCompatActivity() {
                 carouselIndex++
                 carouselHandler.postDelayed(this, carouselIntervalMs)
             } catch (_: Throwable) {
-                // Failsafe Android 7.1.2: si algo falla en la animacion, detenemos ticker y dejamos slide actual.
                 carouselHandler.removeCallbacks(this)
             }
+        }
+    }
+
+    private val serialListener = object : SerialManager.Listener {
+        override fun onRx(data: ByteArray, size: Int) {
+            if (::vendFlow.isInitialized) {
+                vendFlow.onRx(data, size)
+            }
+        }
+
+        override fun onError(e: Exception) {
+            if (dispensingInProgress) {
+                runOnUiThread {
+                    onDispenseError("Error serial: ${e.message ?: "sin detalle"}")
+                }
+            }
+        }
+
+        override fun onStatus(msg: String) {
+            if (dispensingInProgress && msg.startsWith("TX:")) {
+                runOnUiThread {
+                    tvDispenseStatus?.text = "Enviando comando a maquina..."
+                }
+            }
+        }
+    }
+
+    private val vendingUi = object : VendingFlowController.Ui {
+        override fun onLog(msg: String) {
+            // Se mantiene silencioso para no saturar UI en modo kiosk.
+        }
+
+        override fun onNeedRetrieve(msg: String) {
+            runOnUiThread {
+                if (dispensingInProgress) {
+                    val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
+                    tvDispenseStatus?.text = "Retira el producto. Preparando siguiente item ($current/${dispensingQueue.size})..."
+                }
+            }
+        }
+
+        override fun onDone() {
+            runOnUiThread { onDispenseItemDone() }
+        }
+
+        override fun onError(msg: String) {
+            runOnUiThread { onDispenseError(msg) }
+        }
+
+        override fun onStep(stepMsg: String) {
+            // Sin salida visual por ahora.
         }
     }
 
@@ -74,7 +161,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvTitle = findViewById(R.id.tvCatalogTitle)
         tvSubtitle = findViewById(R.id.tvCatalogSubtitle)
         tvStatus = findViewById(R.id.tvCatalogStatus)
+        tvCartBadge = findViewById(R.id.tvCartBadge)
         promoCarousel = findViewById(R.id.vfPromoCarousel)
+        contentContainer = findViewById(R.id.llCatalogContainer)
+
         if (useLegacyCarousel) {
             tvPromoTitle = findViewById(R.id.tvPromoTitle)
             tvPromoSubtitle = findViewById(R.id.tvPromoSubtitle)
@@ -85,11 +175,13 @@ class KioskCatalogActivity : AppCompatActivity() {
                 flipInterval = carouselIntervalMs.toInt()
             }
         }
-        contentContainer = findViewById(R.id.llCatalogContainer)
+
+        setupDispenseRuntime()
+        setupCartBadge()
         applyCarouselHeight()
         setupCarouselTouchControls()
 
-        val machineId = intent.getIntExtra(EXTRA_MACHINE_ID, 0)
+        machineId = intent.getIntExtra(EXTRA_MACHINE_ID, 0)
         val machineCode = intent.getStringExtra(EXTRA_MACHINE_CODE).orEmpty()
         val machineLocation = intent.getStringExtra(EXTRA_MACHINE_LOCATION).orEmpty()
 
@@ -100,8 +192,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvTitle.text = machineCode
         tvSubtitle.text = machineLocation
 
-        val authHeader = authSessionManager.getAuthorizationHeader()
-        if (authHeader.isNullOrBlank()) {
+        authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
+        if (authHeader.isBlank()) {
             throw IllegalStateException("Sesion expirada. Inicia sesion nuevamente.")
         }
 
@@ -130,8 +222,22 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        qrPollingJob?.cancel()
         carouselHandler.removeCallbacks(carouselTicker)
+        if (::vendFlow.isInitialized) {
+            runCatching { vendFlow.stop() }
+        }
+        runCatching { serial.close() }
         super.onDestroy()
+    }
+
+    private fun setupDispenseRuntime() {
+        vendFlow = VendingFlowController(serial, serialListener, vendingUi)
+    }
+
+    private fun setupCartBadge() {
+        updateCartBadge()
+        tvCartBadge.setOnClickListener { showCartDialog() }
     }
 
     private fun showSafeFallback(error: Throwable) {
@@ -153,11 +259,13 @@ class KioskCatalogActivity : AppCompatActivity() {
 
             when (result) {
                 is CatalogResult.Success -> {
+                    catalogItems = result.celdas
                     if (result.celdas.isEmpty()) {
                         tvStatus.visibility = View.VISIBLE
                         tvStatus.text = "Sin productos disponibles (0 celdas recibidas)"
                     } else {
                         tvStatus.visibility = View.GONE
+                        syncCartWithCatalog(result.celdas)
                         renderCatalog(result.celdas)
                     }
                 }
@@ -248,14 +356,30 @@ class KioskCatalogActivity : AppCompatActivity() {
             val nombreProducto = producto?.optString("tcNombre", "")?.trim().orEmpty()
             val precio = producto?.optDouble("tnPrecio", 0.0) ?: 0.0
 
+            val codigo = celda.optString("tcCodigo", "--")
+            val planogramaCeldaId = when {
+                celda.has("tnPlanogramaCelda") -> celda.optInt("tnPlanogramaCelda", 0)
+                celda.has("tnCelda") -> celda.optInt("tnCelda", 0)
+                else -> 0
+            }
+            val productoId = when {
+                producto?.has("tnProducto") == true -> producto.optInt("tnProducto", 0)
+                celda.has("tnProducto") -> celda.optInt("tnProducto", 0)
+                else -> 0
+            }
+
             val vendible = esActiva && estadoCeldaActiva && producto != null && productoActivo
+            val physicalCell = mapCellCodeToPhysical(codigo) ?: 0
 
             celdas += CeldaUi(
-                codigoCelda = celda.optString("tcCodigo", "--"),
+                planogramaCeldaId = planogramaCeldaId,
+                productoId = productoId,
+                codigoCelda = codigo,
                 producto = if (nombreProducto.isBlank()) "Sin producto" else nombreProducto,
                 precio = precio,
                 stockDisponible = stockDisponible,
-                vendible = vendible
+                vendible = vendible,
+                physicalCell = physicalCell
             )
         }
 
@@ -298,16 +422,27 @@ class KioskCatalogActivity : AppCompatActivity() {
                             card.findViewById<TextView>(R.id.tvCellCode).text = item.codigoCelda
                             card.findViewById<TextView>(R.id.tvCellProduct).text = item.producto
                             card.findViewById<TextView>(R.id.tvCellPrice).text =
-                                if (item.precio > 0.0) "Bs ${"%.2f".format(item.precio)}" else "Sin precio"
+                                if (item.precio > 0.0) "Bs ${formatPrice(item.precio)}" else "Sin precio"
                             card.findViewById<TextView>(R.id.tvCellStock).text = "Stock: ${item.stockDisponible}"
+
+                            val available = isCellSellable(item)
                             card.findViewById<TextView>(R.id.tvCellState).apply {
-                                if (item.vendible) {
+                                if (available) {
                                     visibility = View.GONE
                                 } else {
                                     visibility = View.VISIBLE
                                     text = "No disponible"
                                     setBackgroundResource(R.drawable.bg_status_disconnected)
                                     setTextColor(resources.getColor(R.color.badge_disconnected_text, theme))
+                                }
+                            }
+
+                            card.alpha = if (available) 1f else 0.78f
+                            card.setOnClickListener {
+                                if (!available) {
+                                    Toast.makeText(this, "Celda no disponible", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    showProductDialog(item)
                                 }
                             }
 
@@ -337,6 +472,719 @@ class KioskCatalogActivity : AppCompatActivity() {
             tvStatus.visibility = View.VISIBLE
             tvStatus.text = "Error de render: ${error.message ?: "sin detalle"}"
         }
+    }
+
+    private fun showProductDialog(item: CeldaUi) {
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_product_detail, null)
+        val tvCode = view.findViewById<TextView>(R.id.tvDialogProductCode)
+        val tvName = view.findViewById<TextView>(R.id.tvDialogProductName)
+        val tvStock = view.findViewById<TextView>(R.id.tvDialogProductStock)
+        val tvQty = view.findViewById<TextView>(R.id.tvDialogQty)
+        val btnMinus = view.findViewById<Button>(R.id.btnQtyMinus)
+        val btnPlus = view.findViewById<Button>(R.id.btnQtyPlus)
+        val btnAddCart = view.findViewById<Button>(R.id.btnAddCart)
+        val btnBuyNow = view.findViewById<Button>(R.id.btnBuyNow)
+        val ivPreview = view.findViewById<ImageView>(R.id.ivProductPreview)
+
+        tvCode.text = "${item.codigoCelda} - ${item.producto}"
+        tvName.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
+        tvStock.text = "Stock disponible: ${item.stockDisponible}"
+        ivPreview.setImageResource(android.R.drawable.ic_menu_gallery)
+
+        var qty = 1
+        tvQty.text = qty.toString()
+
+        btnMinus.setOnClickListener {
+            if (qty > 1) {
+                qty--
+                tvQty.text = qty.toString()
+            }
+        }
+
+        btnPlus.setOnClickListener {
+            if (qty < item.stockDisponible) {
+                qty++
+                tvQty.text = qty.toString()
+            } else {
+                Toast.makeText(this, "No puedes superar el stock", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .create()
+
+        btnAddCart.setOnClickListener {
+            addToCart(item, qty)
+            dialog.dismiss()
+        }
+
+        btnBuyNow.setOnClickListener {
+            dialog.dismiss()
+            openCheckoutDialog(listOf(PurchaseSelection(item, qty)), fromCart = false)
+        }
+
+        dialog.show()
+    }
+
+    private fun addToCart(item: CeldaUi, qtyToAdd: Int) {
+        val current = cartItems[item.planogramaCeldaId]
+        val currentQty = current?.quantity ?: 0
+        if (currentQty >= item.stockDisponible) {
+            Toast.makeText(this, "Stock maximo alcanzado en carrito", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val newQty = (currentQty + qtyToAdd).coerceAtMost(item.stockDisponible)
+        if (current == null) {
+            cartItems[item.planogramaCeldaId] = CartLine(item, newQty)
+        } else {
+            current.item = item
+            current.quantity = newQty
+        }
+        updateCartBadge()
+        Toast.makeText(this, "Agregado al carrito", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showCartDialog() {
+        if (cartItems.isEmpty()) {
+            Toast.makeText(this, "Carrito vacio", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val lines = cartItems.values.joinToString("\n") {
+            "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
+        }
+        val total = cartItems.values.sumOf { it.item.precio * it.quantity }
+        val summary = "$lines\n\nTotal: Bs ${formatPrice(total)}"
+
+        AlertDialog.Builder(this)
+            .setTitle("Carrito")
+            .setMessage(summary)
+            .setPositiveButton("Comprar") { _, _ ->
+                val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
+                openCheckoutDialog(selections, fromCart = true)
+            }
+            .setNeutralButton("Vaciar") { _, _ ->
+                cartItems.clear()
+                updateCartBadge()
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun openCheckoutDialog(selections: List<PurchaseSelection>, fromCart: Boolean) {
+        if (selections.isEmpty()) return
+
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_checkout_qr, null)
+        val tvSummary = view.findViewById<TextView>(R.id.tvCheckoutSummary)
+        val tvMethod = view.findViewById<TextView>(R.id.tvCheckoutMethod)
+        val etName = view.findViewById<EditText>(R.id.etCheckoutName)
+        val etPhone = view.findViewById<EditText>(R.id.etCheckoutPhone)
+        val etCi = view.findViewById<EditText>(R.id.etCheckoutCi)
+        val tvError = view.findViewById<TextView>(R.id.tvCheckoutError)
+        val progress = view.findViewById<ProgressBar>(R.id.progressCheckout)
+        val btnCancel = view.findViewById<Button>(R.id.btnCheckoutCancel)
+        val btnGenerate = view.findViewById<Button>(R.id.btnCheckoutGenerate)
+
+        val lines = selections.joinToString("\n") {
+            "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
+        }
+        val total = selections.sumOf { it.item.precio * it.quantity }
+
+        tvSummary.text = "$lines\n\nTotal: Bs ${formatPrice(total)}"
+        tvMethod.text = "Metodo de pago: QR BCP"
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .create()
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        btnGenerate.setOnClickListener {
+            val name = etName.text?.toString()?.trim().orEmpty()
+            val phone = etPhone.text?.toString()?.trim().orEmpty()
+            val ci = etCi.text?.toString()?.trim().orEmpty()
+
+            if (name.isBlank() || phone.isBlank() || ci.isBlank()) {
+                tvError.visibility = View.VISIBLE
+                tvError.text = "Completa nombre, telefono y CI"
+                return@setOnClickListener
+            }
+
+            setCheckoutLoading(
+                loading = true,
+                progress = progress,
+                btnGenerate = btnGenerate,
+                btnCancel = btnCancel,
+                etName = etName,
+                etPhone = etPhone,
+                etCi = etCi
+            )
+            tvError.visibility = View.GONE
+
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    createOrderAndGenerateQr(
+                        machineId = machineId,
+                        authHeader = authHeader,
+                        customerName = name,
+                        customerPhone = phone,
+                        customerCi = ci,
+                        items = selections
+                    )
+                }
+
+                setCheckoutLoading(
+                    loading = false,
+                    progress = progress,
+                    btnGenerate = btnGenerate,
+                    btnCancel = btnCancel,
+                    etName = etName,
+                    etPhone = etPhone,
+                    etCi = etCi
+                )
+
+                when (result) {
+                    is QrGenerationResult.Success -> {
+                        dialog.dismiss()
+                        openQrDialog(result, selections, fromCart)
+                    }
+
+                    is QrGenerationResult.Error -> {
+                        tvError.visibility = View.VISIBLE
+                        tvError.text = result.message
+                    }
+                }
+            }
+        }
+
+        dialog.show()
+    }
+
+    private fun setCheckoutLoading(
+        loading: Boolean,
+        progress: ProgressBar,
+        btnGenerate: Button,
+        btnCancel: Button,
+        etName: EditText,
+        etPhone: EditText,
+        etCi: EditText
+    ) {
+        progress.visibility = if (loading) View.VISIBLE else View.GONE
+        btnGenerate.isEnabled = !loading
+        btnCancel.isEnabled = !loading
+        etName.isEnabled = !loading
+        etPhone.isEnabled = !loading
+        etCi.isEnabled = !loading
+    }
+
+    private fun createOrderAndGenerateQr(
+        machineId: Int,
+        authHeader: String,
+        customerName: String,
+        customerPhone: String,
+        customerCi: String,
+        items: List<PurchaseSelection>
+    ): QrGenerationResult {
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/crear-y-generar-qr"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 14_000
+                readTimeout = 14_000
+                doOutput = true
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val itemsJson = JSONArray()
+            items.forEach { selection ->
+                itemsJson.put(
+                    JSONObject().apply {
+                        put("tnPlanogramaCelda", selection.item.planogramaCeldaId)
+                        put("tnProducto", selection.item.productoId)
+                        put("tnCantidad", selection.quantity)
+                    }
+                )
+            }
+
+            val payload = JSONObject().apply {
+                put("tnMaquina", machineId)
+                put("tcNombreCliente", customerName)
+                put("tcTelefonoCliente", customerPhone)
+                put("tcNITCliente", customerCi)
+                put("tnPaymentMethodId", QR_PAYMENT_METHOD_ID)
+                put("taItems", itemsJson)
+            }.toString()
+
+            connection.outputStream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                return QrGenerationResult.Error("Respuesta vacia al generar QR (HTTP $statusCode)")
+            }
+
+            val json = JSONObject(rawBody)
+            val backendError = json.opt("error")?.toString()?.toIntOrNull()
+            val backendStatus = json.opt("status")?.toString()?.toIntOrNull()
+
+            if (statusCode !in 200..299) {
+                return QrGenerationResult.Error(
+                    buildBackendErrorMessage(
+                        statusCode = statusCode,
+                        rawBody = rawBody,
+                        fallbackMessage = "Fallo al generar QR"
+                    )
+                )
+            }
+
+            if (backendError != null && backendError != 0) {
+                return QrGenerationResult.Error(
+                    buildBackendErrorMessage(
+                        statusCode = statusCode,
+                        rawBody = rawBody,
+                        fallbackMessage = "Backend reporto error al generar QR"
+                    )
+                )
+            }
+
+            if (backendStatus != null && backendStatus != 1) {
+                return QrGenerationResult.Error(
+                    buildBackendErrorMessage(
+                        statusCode = statusCode,
+                        rawBody = rawBody,
+                        fallbackMessage = "Backend no confirmo estado exitoso al generar QR"
+                    )
+                )
+            }
+
+            val values = json.optJSONObject("values") ?: json
+            val pedidoId = extractIntFrom(
+                values,
+                "taPedido.tnPedido",
+                "pedido.tnPedido",
+                "tnPedido"
+            )
+
+            val qrBase64 = extractStringFrom(
+                values,
+                "taQr.tcQrBase64",
+                "taQr.qrBase64",
+                "qr.tcQrBase64",
+                "qr.qrBase64",
+                "tcQrBase64",
+                "qrBase64"
+            )
+
+            val expiration = extractStringFrom(
+                values,
+                "taQr.ltExpirationDate",
+                "taQr.expirationDate",
+                "qr.ltExpirationDate",
+                "qr.expirationDate",
+                "ltExpirationDate",
+                "expirationDate"
+            )
+
+            if (pedidoId <= 0) {
+                return QrGenerationResult.Error("Respuesta sin tnPedido valido. Body: $rawBody")
+            }
+            if (qrBase64.isBlank()) {
+                return QrGenerationResult.Error("Respuesta sin QR base64. Body: $rawBody")
+            }
+
+            QrGenerationResult.Success(
+                pedidoId = pedidoId,
+                qrBase64 = qrBase64,
+                expiration = expiration
+            )
+        } catch (ex: Exception) {
+            QrGenerationResult.Error("Fallo de conexion al generar QR: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun extractIntFrom(source: JSONObject?, vararg paths: String): Int {
+        if (source == null) return 0
+        for (path in paths) {
+            val value = resolvePath(source, path)
+            when (value) {
+                is Number -> return value.toInt()
+                is String -> value.toIntOrNull()?.let { return it }
+            }
+        }
+        return 0
+    }
+
+    private fun extractStringFrom(source: JSONObject?, vararg paths: String): String {
+        if (source == null) return ""
+        for (path in paths) {
+            val value = resolvePath(source, path)
+            val text = value?.toString()?.trim().orEmpty()
+            if (text.isNotBlank()) return text
+        }
+        return ""
+    }
+
+    private fun resolvePath(source: JSONObject, path: String): Any? {
+        val parts = path.split(".")
+        var current: Any? = source
+        for (part in parts) {
+            current = when (current) {
+                is JSONObject -> if (current.has(part) && !current.isNull(part)) current.opt(part) else null
+                else -> null
+            }
+            if (current == null) return null
+        }
+        return current
+    }
+
+    private fun buildBackendErrorMessage(statusCode: Int, rawBody: String, fallbackMessage: String): String {
+        return try {
+            val json = JSONObject(rawBody)
+            val message = json.optString("message", fallbackMessage).ifBlank { fallbackMessage }
+            val errorsObj = json.optJSONObject("errors")
+            if (errorsObj == null || errorsObj.length() == 0) {
+                "$message (HTTP $statusCode)"
+            } else {
+                val details = mutableListOf<String>()
+                val keys = errorsObj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = errorsObj.opt(key)
+                    when (value) {
+                        is JSONArray -> {
+                            val joined = (0 until value.length()).joinToString("; ") { idx ->
+                                value.optString(idx)
+                            }
+                            details += "$key: $joined"
+                        }
+
+                        else -> details += "$key: ${value?.toString().orEmpty()}"
+                    }
+                }
+                "$message\n${details.joinToString("\n")}".trim()
+            }
+        } catch (_: Exception) {
+            if (rawBody.isBlank()) "$fallbackMessage (HTTP $statusCode)" else rawBody
+        }
+    }
+
+    private fun openQrDialog(result: QrGenerationResult.Success, selections: List<PurchaseSelection>, fromCart: Boolean) {
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_qr_payment, null)
+        val ivQr = view.findViewById<ImageView>(R.id.ivPaymentQr)
+        val tvExpiration = view.findViewById<TextView>(R.id.tvQrExpiration)
+        val tvQrStatus = view.findViewById<TextView>(R.id.tvQrStatus)
+        val progressQr = view.findViewById<ProgressBar>(R.id.progressQrPolling)
+        val btnClose = view.findViewById<Button>(R.id.btnCloseQrDialog)
+
+        val bitmap = decodeQrBase64(result.qrBase64)
+        if (bitmap == null) {
+            Toast.makeText(this, "No se pudo convertir el QR", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val minSide = resources.displayMetrics.widthPixels.coerceAtMost(resources.displayMetrics.heightPixels)
+        val targetPx = (minSide * 0.72f).toInt().coerceIn(dp(260), dp(520))
+        ivQr.layoutParams = ivQr.layoutParams.apply {
+            width = targetPx
+            height = targetPx
+        }
+        ivQr.scaleType = ImageView.ScaleType.FIT_CENTER
+        ivQr.setImageBitmap(bitmap)
+        tvExpiration.text = if (result.expiration.isBlank()) "Expira: -" else "Expira: ${result.expiration}"
+        tvQrStatus.text = "Esperando pago..."
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        btnClose.setOnClickListener {
+            qrPollingJob?.cancel()
+            dialog.dismiss()
+        }
+
+        dialog.show()
+
+        qrPollingJob?.cancel()
+        qrPollingJob = lifecycleScope.launch {
+            val started = System.currentTimeMillis()
+            while (isActive && System.currentTimeMillis() - started <= PAYMENT_TIMEOUT_MS) {
+                val pollResult = withContext(Dispatchers.IO) {
+                    fetchPaymentStatus(result.pedidoId, authHeader)
+                }
+
+                when (pollResult) {
+                    is PaymentPollResult.Paid -> {
+                        progressQr.visibility = View.GONE
+                        tvQrStatus.text = "Pago confirmado"
+                        delay(500)
+                        dialog.dismiss()
+                        showDispenseDialogAndStart(selections, fromCart)
+                        return@launch
+                    }
+
+                    is PaymentPollResult.Pending -> {
+                        tvQrStatus.text = pollResult.message.ifBlank { "Esperando confirmacion de pago..." }
+                    }
+
+                    is PaymentPollResult.Failed -> {
+                        progressQr.visibility = View.GONE
+                        tvQrStatus.text = pollResult.message
+                        btnClose.text = "Cerrar"
+                        return@launch
+                    }
+
+                    is PaymentPollResult.Error -> {
+                        tvQrStatus.text = pollResult.message
+                    }
+                }
+
+                delay(PAYMENT_POLL_INTERVAL_MS)
+            }
+
+            if (isActive) {
+                progressQr.visibility = View.GONE
+                tvQrStatus.text = "Tiempo de espera agotado"
+                dialog.dismiss()
+                loadCatalog(machineId, authHeader)
+                Toast.makeText(this@KioskCatalogActivity, "QR vencido, vuelve a intentar", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun fetchPaymentStatus(pedidoId: Int, authHeader: String): PaymentPollResult {
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/$pedidoId/estado-pago"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                return PaymentPollResult.Error("Sin respuesta de estado pago (HTTP $statusCode)")
+            }
+
+            val json = JSONObject(rawBody)
+            val backendError = json.optInt("error", -1)
+            val backendStatus = json.optInt("status", 0)
+            val backendMessage = json.optString("message", "Consultando estado...")
+
+            if (statusCode !in 200..299 || backendError != 0 || backendStatus != 1) {
+                return PaymentPollResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
+            }
+
+            val values = json.optJSONObject("values") ?: JSONObject()
+            val lbPagado = values.optBoolean("lbPagado", false)
+            val tnEstadoPedido = values.optInt("tnEstadoPedido", values.optInt("estado", 1))
+
+            return when {
+                lbPagado || tnEstadoPedido == 2 -> PaymentPollResult.Paid
+                tnEstadoPedido == 3 -> PaymentPollResult.Failed("Pago cancelado")
+                tnEstadoPedido == 4 -> PaymentPollResult.Failed("Pago fallido")
+                else -> PaymentPollResult.Pending(backendMessage)
+            }
+        } catch (ex: Exception) {
+            PaymentPollResult.Error("Error consultando estado de pago: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun showDispenseDialogAndStart(selections: List<PurchaseSelection>, fromCart: Boolean) {
+        val queue = mutableListOf<Int>()
+        selections.forEach { selection ->
+            val physical = selection.item.physicalCell.takeIf { it in 10..68 }
+                ?: mapCellCodeToPhysical(selection.item.codigoCelda)
+            if (physical == null) {
+                Toast.makeText(this, "No se pudo mapear la celda ${selection.item.codigoCelda}", Toast.LENGTH_LONG).show()
+                return
+            }
+            repeat(selection.quantity) { queue += physical }
+        }
+
+        if (queue.isEmpty()) {
+            Toast.makeText(this, "No hay celdas para dispensar", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!ensureSerialConnection()) {
+            Toast.makeText(this, "No se pudo abrir puerto serial /dev/ttyS1", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_progress, null)
+        tvDispenseTitle = view.findViewById(R.id.tvDispenseTitle)
+        tvDispenseStatus = view.findViewById(R.id.tvDispenseStatus)
+        progressDispense = view.findViewById(R.id.progressDispense)
+        btnDispenseClose = view.findViewById(R.id.btnDispenseClose)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        btnDispenseClose?.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        dialog.show()
+        dispenseDialog = dialog
+
+        dispensingQueue = queue
+        dispensingCursor = 0
+        dispensingInProgress = true
+        clearCartOnDispenseFinish = fromCart
+
+        tvDispenseTitle?.text = "Pago realizado"
+        tvDispenseStatus?.text = "La maquina esta dispensando tu compra..."
+        progressDispense?.visibility = View.VISIBLE
+        btnDispenseClose?.visibility = View.GONE
+
+        startNextDispenseItem()
+    }
+
+    private fun ensureSerialConnection(): Boolean {
+        if (serial.isOpen()) return true
+        serial.open(DEFAULT_PORT, DEFAULT_BAUD, serialListener)
+        return serial.isOpen()
+    }
+
+    private fun startNextDispenseItem() {
+        if (!dispensingInProgress) return
+        if (dispensingCursor >= dispensingQueue.size) {
+            onDispenseFinished()
+            return
+        }
+
+        val currentCell = dispensingQueue[dispensingCursor]
+        val currentNumber = dispensingCursor + 1
+        val total = dispensingQueue.size
+        tvDispenseStatus?.text = "Dispensando producto $currentNumber de $total (celda $currentCell)..."
+        vendFlow.start(currentCell)
+    }
+
+    private fun onDispenseItemDone() {
+        if (!dispensingInProgress) return
+        dispensingCursor++
+        startNextDispenseItem()
+    }
+
+    private fun onDispenseError(message: String) {
+        dispensingInProgress = false
+        runCatching { vendFlow.stop() }
+
+        tvDispenseTitle?.text = "Incidencia en dispensado"
+        tvDispenseStatus?.text = message
+        progressDispense?.visibility = View.GONE
+        btnDispenseClose?.visibility = View.VISIBLE
+    }
+
+    private fun onDispenseFinished() {
+        dispensingInProgress = false
+        runCatching { vendFlow.stop() }
+
+        tvDispenseTitle?.text = "Gracias por su compra"
+        tvDispenseStatus?.text = "Dispensado completado correctamente."
+        progressDispense?.visibility = View.GONE
+        btnDispenseClose?.visibility = View.VISIBLE
+
+        if (clearCartOnDispenseFinish) {
+            cartItems.clear()
+            updateCartBadge()
+        }
+
+        loadCatalog(machineId, authHeader)
+    }
+
+    private fun decodeQrBase64(rawBase64: String): android.graphics.Bitmap? {
+        return try {
+            val clean = rawBase64.substringAfter("base64,", rawBase64).trim()
+            val bytes = Base64.decode(clean, Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun syncCartWithCatalog(latestCatalog: List<CeldaUi>) {
+        if (cartItems.isEmpty()) return
+        val byId = latestCatalog.associateBy { it.planogramaCeldaId }
+        val iterator = cartItems.entries.iterator()
+        while (iterator.hasNext()) {
+            val entry = iterator.next()
+            val latest = byId[entry.key]
+            if (latest == null || !isCellSellable(latest)) {
+                iterator.remove()
+                continue
+            }
+            val adjustedQty = entry.value.quantity.coerceAtMost(latest.stockDisponible)
+            if (adjustedQty <= 0) {
+                iterator.remove()
+            } else {
+                entry.value.item = latest
+                entry.value.quantity = adjustedQty
+            }
+        }
+        updateCartBadge()
+    }
+
+    private fun updateCartBadge() {
+        val qty = cartItems.values.sumOf { it.quantity }
+        tvCartBadge.text = "Carrito ($qty)"
+        tvCartBadge.alpha = if (qty > 0) 1f else 0.6f
+    }
+
+    private fun isCellSellable(item: CeldaUi): Boolean {
+        return item.vendible && item.stockDisponible > 0 && item.planogramaCeldaId > 0 && item.productoId > 0
+    }
+
+    private fun formatPrice(value: Double): String = String.format(java.util.Locale.US, "%.2f", value)
+
+    private fun mapCellCodeToPhysical(code: String): Int? {
+        val clean = code.trim().uppercase()
+        clean.toIntOrNull()?.let { direct ->
+            if (direct in 10..68) return direct
+        }
+
+        val match = Regex("^([A-F])(\\d{1,2})$").find(clean) ?: return null
+        val letter = match.groupValues[1][0]
+        val column = match.groupValues[2].toIntOrNull() ?: return null
+        if (column !in 1..9) return null
+
+        val rowIndex = letter - 'A'
+        if (rowIndex !in 0..5) return null
+
+        return ((rowIndex + 1) * 10) + (column - 1)
     }
 
     private fun dp(value: Int): Int {
@@ -376,6 +1224,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     downX = event.x
                     true
                 }
+
                 MotionEvent.ACTION_UP -> {
                     val deltaX = event.x - downX
                     val threshold = dp(36).toFloat()
@@ -384,19 +1233,23 @@ class KioskCatalogActivity : AppCompatActivity() {
                             showNextPromoSlide()
                             true
                         }
+
                         deltaX > threshold -> {
                             showPreviousPromoSlide()
                             true
                         }
+
                         else -> true
                     }
                     resumeAutoCarousel()
                     handled
                 }
+
                 MotionEvent.ACTION_CANCEL -> {
                     resumeAutoCarousel()
                     true
                 }
+
                 else -> true
             }
         }
@@ -478,6 +1331,13 @@ class KioskCatalogActivity : AppCompatActivity() {
         const val EXTRA_MACHINE_ID = "extra_machine_id"
         const val EXTRA_MACHINE_CODE = "extra_machine_code"
         const val EXTRA_MACHINE_LOCATION = "extra_machine_location"
+
+        private const val QR_PAYMENT_METHOD_ID = 4
+        private const val PAYMENT_POLL_INTERVAL_MS = 5_000L
+        private const val PAYMENT_TIMEOUT_MS = 120_000L
+
+        private const val DEFAULT_PORT = "/dev/ttyS1"
+        private const val DEFAULT_BAUD = 9600
     }
 }
 
@@ -488,14 +1348,44 @@ private data class LegacySlide(
 )
 
 private data class CeldaUi(
+    val planogramaCeldaId: Int,
+    val productoId: Int,
     val codigoCelda: String,
     val producto: String,
     val precio: Double,
     val stockDisponible: Int,
-    val vendible: Boolean
+    val vendible: Boolean,
+    val physicalCell: Int
+)
+
+private data class CartLine(
+    var item: CeldaUi,
+    var quantity: Int
+)
+
+private data class PurchaseSelection(
+    val item: CeldaUi,
+    val quantity: Int
 )
 
 private sealed interface CatalogResult {
     data class Success(val celdas: List<CeldaUi>) : CatalogResult
     data class Error(val message: String) : CatalogResult
+}
+
+private sealed interface QrGenerationResult {
+    data class Success(
+        val pedidoId: Int,
+        val qrBase64: String,
+        val expiration: String
+    ) : QrGenerationResult
+
+    data class Error(val message: String) : QrGenerationResult
+}
+
+private sealed interface PaymentPollResult {
+    data object Paid : PaymentPollResult
+    data class Pending(val message: String) : PaymentPollResult
+    data class Failed(val message: String) : PaymentPollResult
+    data class Error(val message: String) : PaymentPollResult
 }

@@ -93,3 +93,24 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 
 
 
+
+## Protocolo operativo vigente (desde 2026-03-24)
+- El responsable de `git commit` es el usuario.
+- Toda iteracion de cambios debe seguir este orden:
+  1. Declarar archivos a tocar.
+  2. Ejecutar cambios pequenos y verificables.
+  3. Reportar `git diff --name-only` y resumen breve.
+- Si una iteracion falla, se revierte solo el bloque afectado al ultimo punto estable, evitando cambios destructivos globales.
+
+## Estado de pagos QR (actualizado 2026-03-24)
+- Flujo implementado en APK:
+  1. seleccion de producto(s) y cantidad con control de stock
+  2. creacion de pedido + generacion QR
+  3. visualizacion de QR en modal
+  4. polling de estado de pago
+  5. dispensado secuencial post-confirmacion
+- Criterio objetivo de confirmacion para esta etapa:
+  - `tnEstadoPedido == 2`.
+- Al expirar el tiempo del QR:
+  - el modal se cierra automaticamente
+  - se refresca el catalogo.

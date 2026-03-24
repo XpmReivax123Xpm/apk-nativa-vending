@@ -1,4 +1,4 @@
-# BITACORA - apk-nativa-vending
+﻿# BITACORA - apk-nativa-vending
 
 ## 2026-03-19
 
@@ -112,7 +112,7 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Build `assembleDebug` exitoso luego de la integracion.
 
 ## 2026-03-20 - Mejora estetica del selector de modos
-- Se rediseño `activity_main` (pantalla inicial de 3 opciones) con enfoque kiosk visual: fondo degradado, tarjeta de cabecera, jerarquia de texto y botones tipo tarjeta por modo.
+- Se rediseÃ±o `activity_main` (pantalla inicial de 3 opciones) con enfoque kiosk visual: fondo degradado, tarjeta de cabecera, jerarquia de texto y botones tipo tarjeta por modo.
 - Se agregaron drawables dedicados para identidad visual del selector:
   - `bg_mode_selector_screen`
   - `bg_mode_header_card`
@@ -203,7 +203,7 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 
 ## 2026-03-21 - Mensajeria de login refinada
 - Durante autenticacion ahora muestra: `Ingresando...`.
-- Mensaje de exito simplificado a: `Conexión exitosa`.
+- Mensaje de exito simplificado a: `ConexiÃ³n exitosa`.
 - Se retiro toast tecnico: `Login correcto y token guardado`.
 - Indicador de carga (`ProgressBar`) mantiene comportamiento, pero con color de paleta (sin rosado).
 
@@ -255,3 +255,39 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Resultado actual:
   - flujo kiosk llega a catalogo y carga celdas.
   - continuidad de ajustes visuales pendiente segun validacion en vending real.
+
+## 2026-03-24 - Incidente de edicion y nuevo protocolo de trabajo
+- Incidente registrado:
+  - En una iteracion de cambios sobre `KioskCatalogActivity.kt`, se aplico una edicion defectuosa que comprometio el archivo.
+  - Impacto: perdida de estabilidad en esa rama de trabajo.
+- Accion de recuperacion ejecutada:
+  - Se restauro el proyecto al commit estable `b6d3f42` (`a punto de comenzar con las ventas xd`).
+  - Se limpio el arbol de trabajo para eliminar residuos de la iteracion fallida.
+- Regla de colaboracion acordada con el usuario (vigente desde hoy):
+  - El usuario queda a cargo exclusivo de `git commit`.
+  - Antes de editar: declarar exactamente que archivos se tocarán.
+  - Despues de editar: reportar `git diff --name-only` + resumen corto.
+  - Aplicar cambios pequenos y verificables (sin bloques masivos de alto riesgo).
+  - Si falla una iteracion, rollback solo del bloque afectado al ultimo estado estable.
+  - Evitar ediciones grandes no solicitadas y no repetir cambios destructivos.
+
+## 2026-03-24 - Kiosk QR/pago: integracion minima + ajustes de operacion
+- Se implemento flujo de compra desde catalogo:
+  - modal de producto con cantidad (`+`/`-`) limitada por stock
+  - acciones `Comprar ahora` y `Agregar carrito`
+  - carrito operativo para compra multiple
+- Se implemento checkout QR BCP:
+  - captura de datos cliente (nombre, telefono, CI)
+  - `POST /api/pedido/crear-y-generar-qr`
+  - render de QR desde base64 en modal
+- Se integro polling de estado de pago cada 5s (timeout 120s) con `GET /api/pedido/{tnPedido}/estado-pago`.
+- Se integro dispensado secuencial post-pago reutilizando runtime serial (`VendingFlowController`) y avance automatico al siguiente item al completar ciclo (`onDone`, evento asociado a 2do click / D2).
+- Ajustes UX recientes:
+  - QR ampliado para mejor lectura en tablet vending.
+  - Se oculto boton `Cancelar` en modal QR para evitar percances.
+  - Al vencer timeout de pago, el modal QR se cierra automaticamente y se refresca catalogo.
+
+### Nota de contrato/pago (pendiente de cierre con backend)
+- Se detecto diferencia entre respuesta esperada y parsing de confirmacion en algunos escenarios.
+- Para el entorno actual, la regla objetivo acordada es confirmar con `tnEstadoPedido == 2`.
+- Queda pendiente cerrar la lectura final de estados para no depender de campos legacy.

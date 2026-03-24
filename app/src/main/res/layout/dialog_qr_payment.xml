@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <ImageView
+        android:id="@+id/ivPaymentQr"
+        android:layout_width="250dp"
+        android:layout_height="250dp"
+        android:background="#F2F6FA"
+        android:contentDescription="qr"
+        android:padding="8dp" />
+
+    <TextView
+        android:id="@+id/tvQrExpiration"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:text="Expira: --"
+        android:textColor="#5C7997"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/tvQrStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:text="Esperando pago..."
+        android:textColor="#20344D"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/progressQrPolling"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" />
+
+    <Button
+        android:id="@+id/btnCloseQrDialog"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:layout_marginTop="14dp"
+        android:enabled="false"
+        android:text="Cancelar"
+        android:visibility="gone" />
+
+</LinearLayout>

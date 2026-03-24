@@ -4,10 +4,13 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.graphics.Color
+import android.view.MotionEvent
 import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.ViewFlipper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
@@ -31,6 +34,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private val authSessionManager by lazy { AuthSessionManager(this) }
     private var useLegacyCarousel = false
     private val carouselHandler = Handler(Looper.getMainLooper())
+    private val carouselIntervalMs = 5_000L
     private var carouselIndex = 0
     private val legacySlides = listOf(
         LegacySlide(R.drawable.bg_catalog_promo_1, "Promociones", "Espacio para ofertas y anuncios"),
@@ -41,12 +45,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun run() {
             try {
                 if (!useLegacyCarousel || tvPromoTitle == null || tvPromoSubtitle == null) return
-                val slide = legacySlides[carouselIndex % legacySlides.size]
-                promoCarousel.setBackgroundResource(slide.backgroundRes)
-                tvPromoTitle?.text = slide.title
-                tvPromoSubtitle?.text = slide.subtitle
+                showLegacySlide(carouselIndex % legacySlides.size)
                 carouselIndex++
-                carouselHandler.postDelayed(this, 3200L)
+                carouselHandler.postDelayed(this, carouselIntervalMs)
             } catch (_: Throwable) {
                 // Failsafe Android 7.1.2: si algo falla en la animacion, detenemos ticker y dejamos slide actual.
                 carouselHandler.removeCallbacks(this)
@@ -61,6 +62,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun initializeScreen() {
+        applyCatalogSystemBars()
         val layoutRes = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.N_MR1) {
             R.layout.activity_kiosk_catalog_legacy
         } else {
@@ -76,9 +78,16 @@ class KioskCatalogActivity : AppCompatActivity() {
         if (useLegacyCarousel) {
             tvPromoTitle = findViewById(R.id.tvPromoTitle)
             tvPromoSubtitle = findViewById(R.id.tvPromoSubtitle)
+        } else {
+            (promoCarousel as? ViewFlipper)?.apply {
+                isAutoStart = false
+                stopFlipping()
+                flipInterval = carouselIntervalMs.toInt()
+            }
         }
         contentContainer = findViewById(R.id.llCatalogContainer)
         applyCarouselHeight()
+        setupCarouselTouchControls()
 
         val machineId = intent.getIntExtra(EXTRA_MACHINE_ID, 0)
         val machineCode = intent.getStringExtra(EXTRA_MACHINE_CODE).orEmpty()
@@ -103,12 +112,15 @@ class KioskCatalogActivity : AppCompatActivity() {
         super.onResume()
         if (useLegacyCarousel && tvPromoTitle != null && tvPromoSubtitle != null) {
             carouselHandler.removeCallbacks(carouselTicker)
-            carouselTicker.run()
+            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
+        } else {
+            (promoCarousel as? ViewFlipper)?.startFlipping()
         }
     }
 
     override fun onPause() {
         carouselHandler.removeCallbacks(carouselTicker)
+        (promoCarousel as? ViewFlipper)?.stopFlipping()
         super.onPause()
     }
 
@@ -205,7 +217,11 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             val celdas = parseCeldas(celdasJson)
-            val ordenadas = celdas.sortedWith(compareBy<CeldaUi> { it.codigoCelda.length }.thenBy { it.codigoCelda })
+            val ordenadas = celdas.sortedWith(
+                compareBy<CeldaUi> { parseCellCode(it.codigoCelda).first }
+                    .thenBy { parseCellCode(it.codigoCelda).second }
+                    .thenBy { it.codigoCelda }
+            )
             CatalogResult.Success(ordenadas)
         } catch (ex: Exception) {
             CatalogResult.Error("Fallo de conexion: ${ex.message ?: "sin detalle"}")
@@ -248,55 +264,74 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun renderCatalog(celdas: List<CeldaUi>) {
         runCatching {
-            var rowLayout: LinearLayout? = null
+            val columns = 3
+            val rows = 6
+            val itemsPerPage = columns * rows
+            val pageWidth = resources.displayMetrics.widthPixels - dp(24)
 
-            celdas.forEachIndexed { index, item ->
-                if (index % 2 == 0) {
-                    rowLayout = LinearLayout(this).apply {
+            celdas.chunked(itemsPerPage).forEachIndexed { pageIndex, pageItems ->
+                val page = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        pageWidth,
+                        LinearLayout.LayoutParams.MATCH_PARENT
+                    ).also {
+                        if (pageIndex > 0) it.leftMargin = dp(10)
+                    }
+                }
+
+                for (rowIndex in 0 until rows) {
+                    val row = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).also { it.bottomMargin = dp(12) }
+                            0,
+                            1f
+                        ).also { it.bottomMargin = if (rowIndex == rows - 1) 0 else dp(8) }
                     }
-                    contentContainer.addView(rowLayout)
-                }
 
-                val card = layoutInflater.inflate(R.layout.item_catalog_cell, rowLayout, false)
-                card.findViewById<TextView>(R.id.tvCellCode).text = item.codigoCelda
-                card.findViewById<TextView>(R.id.tvCellProduct).text = item.producto
-                card.findViewById<TextView>(R.id.tvCellPrice).text =
-                    if (item.precio > 0.0) "Bs ${"%.2f".format(item.precio)}" else "Sin precio"
-                card.findViewById<TextView>(R.id.tvCellStock).text = "Stock: ${item.stockDisponible}"
-                card.findViewById<TextView>(R.id.tvCellState).apply {
-                    if (item.vendible) {
-                        text = "Disponible"
-                        setBackgroundResource(R.drawable.bg_status_connected)
-                        setTextColor(resources.getColor(R.color.badge_connected_text, theme))
-                    } else {
-                        text = "No vendible"
-                        setBackgroundResource(R.drawable.bg_status_disconnected)
-                        setTextColor(resources.getColor(R.color.badge_disconnected_text, theme))
+                    for (columnIndex in 0 until columns) {
+                        val cellIndex = rowIndex * columns + columnIndex
+                        if (cellIndex < pageItems.size) {
+                            val item = pageItems[cellIndex]
+                            val card = layoutInflater.inflate(R.layout.item_catalog_cell, row, false)
+                            card.findViewById<TextView>(R.id.tvCellCode).text = item.codigoCelda
+                            card.findViewById<TextView>(R.id.tvCellProduct).text = item.producto
+                            card.findViewById<TextView>(R.id.tvCellPrice).text =
+                                if (item.precio > 0.0) "Bs ${"%.2f".format(item.precio)}" else "Sin precio"
+                            card.findViewById<TextView>(R.id.tvCellStock).text = "Stock: ${item.stockDisponible}"
+                            card.findViewById<TextView>(R.id.tvCellState).apply {
+                                if (item.vendible) {
+                                    visibility = View.GONE
+                                } else {
+                                    visibility = View.VISIBLE
+                                    text = "No disponible"
+                                    setBackgroundResource(R.drawable.bg_status_disconnected)
+                                    setTextColor(resources.getColor(R.color.badge_disconnected_text, theme))
+                                }
+                            }
+
+                            val margin = dp(4)
+                            card.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
+                                if (columnIndex == 0) {
+                                    setMargins(0, 0, margin, 0)
+                                } else if (columnIndex == columns - 1) {
+                                    setMargins(margin, 0, 0, 0)
+                                } else {
+                                    setMargins(margin, 0, margin, 0)
+                                }
+                            }
+                            row.addView(card)
+                        } else {
+                            val spacer = View(this).apply {
+                                layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+                            }
+                            row.addView(spacer)
+                        }
                     }
+                    page.addView(row)
                 }
-
-                val margin = dp(6)
-                val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    if (index % 2 == 0) {
-                        setMargins(0, 0, margin, 0)
-                    } else {
-                        setMargins(margin, 0, 0, 0)
-                    }
-                }
-                card.layoutParams = params
-                rowLayout?.addView(card)
-            }
-
-            if (celdas.size % 2 == 1) {
-                val spacer = View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
-                }
-                rowLayout?.addView(spacer)
+                contentContainer.addView(page)
             }
         }.onFailure { error ->
             tvStatus.visibility = View.VISIBLE
@@ -308,15 +343,135 @@ class KioskCatalogActivity : AppCompatActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
+    private fun parseCellCode(code: String): Pair<String, Int> {
+        val match = Regex("^([A-Za-z]+)(\\d+)$").find(code.trim())
+        if (match != null) {
+            val row = match.groupValues[1].uppercase()
+            val column = match.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE
+            return row to column
+        }
+        return code.uppercase() to Int.MAX_VALUE
+    }
+
     private fun applyCarouselHeight() {
         val screenHeight = resources.displayMetrics.heightPixels
-        val desired = (screenHeight * 0.30f).toInt()
-        val minHeight = dp(180)
-        val maxHeight = dp(420)
+        val screenWidth = resources.displayMetrics.widthPixels
+        val isLandscape = screenWidth > screenHeight
+        val factor = if (isLandscape) 0.22f else 0.30f
+        val desired = (screenHeight * factor).toInt()
+        val minHeight = if (isLandscape) dp(150) else dp(180)
+        val maxHeight = if (isLandscape) dp(320) else dp(420)
         val target = desired.coerceIn(minHeight, maxHeight)
         promoCarousel.layoutParams = promoCarousel.layoutParams.apply {
             height = target
         }
+    }
+
+    private fun setupCarouselTouchControls() {
+        var downX = 0f
+        promoCarousel.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    pauseAutoCarousel()
+                    downX = event.x
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    val deltaX = event.x - downX
+                    val threshold = dp(36).toFloat()
+                    val handled = when {
+                        deltaX < -threshold -> {
+                            showNextPromoSlide()
+                            true
+                        }
+                        deltaX > threshold -> {
+                            showPreviousPromoSlide()
+                            true
+                        }
+                        else -> true
+                    }
+                    resumeAutoCarousel()
+                    handled
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    resumeAutoCarousel()
+                    true
+                }
+                else -> true
+            }
+        }
+    }
+
+    private fun showNextPromoSlide() {
+        if (useLegacyCarousel) {
+            carouselIndex = (carouselIndex + 1) % legacySlides.size
+            showLegacySlide(carouselIndex)
+            carouselHandler.removeCallbacks(carouselTicker)
+            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
+            return
+        }
+
+        (promoCarousel as? ViewFlipper)?.let { flipper ->
+            flipper.setInAnimation(this, R.anim.carousel_in_right)
+            flipper.setOutAnimation(this, R.anim.carousel_out_left)
+            flipper.showNext()
+        }
+    }
+
+    private fun showPreviousPromoSlide() {
+        if (useLegacyCarousel) {
+            carouselIndex = if (carouselIndex - 1 < 0) legacySlides.lastIndex else carouselIndex - 1
+            showLegacySlide(carouselIndex)
+            carouselHandler.removeCallbacks(carouselTicker)
+            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
+            return
+        }
+
+        (promoCarousel as? ViewFlipper)?.let { flipper ->
+            flipper.setInAnimation(this, R.anim.carousel_in_left)
+            flipper.setOutAnimation(this, R.anim.carousel_out_right)
+            flipper.showPrevious()
+        }
+    }
+
+    private fun pauseAutoCarousel() {
+        carouselHandler.removeCallbacks(carouselTicker)
+        (promoCarousel as? ViewFlipper)?.stopFlipping()
+    }
+
+    private fun resumeAutoCarousel() {
+        if (useLegacyCarousel) {
+            carouselHandler.removeCallbacks(carouselTicker)
+            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
+        } else {
+            (promoCarousel as? ViewFlipper)?.startFlipping()
+        }
+    }
+
+    private fun showLegacySlide(index: Int) {
+        val slide = legacySlides[index % legacySlides.size]
+        promoCarousel.setBackgroundResource(slide.backgroundRes)
+        tvPromoTitle?.text = slide.title
+        tvPromoSubtitle?.text = slide.subtitle
+    }
+
+    private fun applyCatalogSystemBars() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.statusBarColor = Color.parseColor("#FFFFFF")
+            window.navigationBarColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Color.parseColor("#FFFFFF")
+            } else {
+                Color.parseColor("#3F546D")
+            }
+        }
+        var flags = window.decorView.systemUiVisibility
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        }
+        window.decorView.systemUiVisibility = flags
     }
 
     companion object {

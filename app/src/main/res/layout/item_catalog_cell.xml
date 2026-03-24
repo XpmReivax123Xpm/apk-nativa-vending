@@ -1,14 +1,14 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="match_parent"
     android:background="@drawable/bg_catalog_product_card"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:padding="8dp">
 
     <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="92dp"
+        android:layout_height="54dp"
         android:background="@drawable/bg_catalog_image_placeholder">
 
         <TextView
@@ -18,22 +18,23 @@
             android:layout_gravity="top|start"
             android:layout_margin="8dp"
             android:text="A1"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp"
+            android:textColor="#27496D"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvCellState"
-            android:layout_width="wrap_content"
+            android:layout_width="74dp"
             android:layout_height="wrap_content"
             android:layout_gravity="top|end"
             android:layout_margin="8dp"
+            android:gravity="center"
             android:paddingLeft="8dp"
             android:paddingTop="4dp"
             android:paddingRight="8dp"
             android:paddingBottom="4dp"
             android:text="Disponible"
-            android:textSize="12sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
     </FrameLayout>
 
@@ -42,10 +43,12 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
+        android:ellipsize="end"
         android:maxLines="2"
+        android:minLines="2"
         android:text="Producto"
-        android:textColor="#F5F8FF"
-        android:textSize="15sp"
+        android:textColor="#1C2E43"
+        android:textSize="14sp"
         android:textStyle="bold" />
 
     <TextView
@@ -53,9 +56,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="1"
         android:text="Bs 0.00"
-        android:textColor="#FFC861"
-        android:textSize="16sp"
+        android:textColor="#C86A00"
+        android:textSize="15sp"
         android:textStyle="bold" />
 
     <TextView
@@ -63,7 +68,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
+        android:maxLines="1"
         android:text="Stock: 0"
-        android:textColor="#BFD1E8"
-        android:textSize="13sp" />
+        android:textColor="#5E748F"
+        android:textSize="12sp" />
 </LinearLayout>

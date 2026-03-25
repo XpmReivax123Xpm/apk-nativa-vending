@@ -7,70 +7,71 @@
     android:padding="16dp">
 
     <TextView
+        android:id="@+id/tvCartDialogTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Selecciona metodo de pago"
+        android:text="Carrito"
         android:textColor="#0965AF"
-        android:textSize="18sp"
+        android:textSize="22sp"
         android:textStyle="bold" />
 
-    <RadioGroup
-        android:id="@+id/rgPaymentMethods"
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="vertical">
+        android:layout_height="260dp"
+        android:layout_marginTop="10dp"
+        android:overScrollMode="ifContentScrolls">
 
-        <RadioButton
-            android:id="@+id/rbPaymentQrBcp"
+        <LinearLayout
+            android:id="@+id/llCartItemsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:buttonTint="#F28E1B"
-            android:checked="true"
-            android:drawableStart="@drawable/ic_qr_method"
-            android:drawableLeft="@drawable/ic_qr_method"
-            android:drawablePadding="10dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp"
-            android:text="QR"
-            android:textColor="#20344D"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-    </RadioGroup>
+            android:orientation="vertical" />
+    </ScrollView>
 
     <TextView
-        android:id="@+id/tvPaymentMethodError"
+        android:id="@+id/tvCartDialogTotal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:textColor="#B3261E"
-        android:textSize="13sp"
-        android:visibility="gone" />
+        android:layout_marginTop="10dp"
+        android:text="Total: Bs 0.00"
+        android:textColor="#F28E1B"
+        android:textSize="20sp"
+        android:textStyle="bold" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
+        android:layout_marginTop="12dp"
         android:orientation="horizontal">
 
         <Button
-            android:id="@+id/btnPaymentMethodCancel"
+            android:id="@+id/btnCartClear"
             android:layout_width="0dp"
             android:layout_height="46dp"
-            android:layout_marginRight="6dp"
+            android:layout_marginEnd="6dp"
             android:layout_weight="1"
             android:backgroundTint="#0965AF"
-            android:text="Cancelar"
+            android:text="Vaciar"
             android:textColor="#FFFFFF" />
 
         <Button
-            android:id="@+id/btnPaymentMethodContinue"
+            android:id="@+id/btnCartClose"
             android:layout_width="0dp"
             android:layout_height="46dp"
-            android:layout_marginLeft="6dp"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1"
+            android:backgroundTint="#7A8A99"
+            android:text="Cerrar"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btnCartBuy"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:backgroundTint="#F28E1B"
-            android:text="Continuar"
+            android:text="Comprar"
             android:textColor="#FFFFFF" />
     </LinearLayout>
 

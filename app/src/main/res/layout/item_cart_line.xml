@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="10dp"
+    android:background="@drawable/bg_catalog_product_card"
+    android:orientation="horizontal"
+    android:padding="10dp">
+
+    <FrameLayout
+        android:layout_width="84dp"
+        android:layout_height="84dp"
+        android:background="@drawable/bg_catalog_image_placeholder">
+
+        <ImageView
+            android:id="@+id/ivCartItemPreview"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_gravity="center"
+            android:contentDescription="preview"
+            android:src="@android:drawable/ic_menu_gallery" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvCartItemName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="A1 - Producto"
+            android:textColor="#20344D"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvCartItemPrice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Unitario: Bs 0.00"
+            android:textColor="#5C7997"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/btnCartQtyMinus"
+                android:layout_width="42dp"
+                android:layout_height="40dp"
+                android:backgroundTint="#0965AF"
+                android:contentDescription="restar"
+                android:padding="8dp"
+                android:src="@drawable/ic_minus_white" />
+
+            <TextView
+                android:id="@+id/tvCartQty"
+                android:layout_width="36dp"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="1"
+                android:textColor="#0965AF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/btnCartQtyPlus"
+                android:layout_width="42dp"
+                android:layout_height="40dp"
+                android:backgroundTint="#F28E1B"
+                android:contentDescription="sumar"
+                android:padding="8dp"
+                android:src="@drawable/ic_plus_white" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

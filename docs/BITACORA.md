@@ -308,3 +308,15 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - por ahora se habilita solo `QR BCP`.
   - flujo preparado para agregar nuevos metodos sin rehacer checkout.
 - Se compilo `assembleDebug` y se valido instalacion por ADB (`adb install -r`) en dispositivo de pruebas.
+
+## 2026-03-25 - Catalogo: UX de carrito y ajuste visual de modal
+- Se movio el acceso al carrito a formato flotante superior derecho para no quitar espacio al carrusel.
+- Se reemplazo el chip de texto por icono SVG de carrito, dejando solo contador en burbuja cuando hay items.
+- Se reemplazo el modal simple de carrito por modal grande y util para operacion:
+  - lista de productos del carrito,
+  - placeholder de imagen por item,
+  - cantidad editable por item (`+` / `-`),
+  - total recalculado en vivo,
+  - acciones `Vaciar`, `Cerrar`, `Comprar`.
+- Se corrigio visibilidad de controles `+/-` en carrito usando iconos vectoriales dedicados.
+- Se mantuvo compatibilidad de UI para Android 7.1.2 (layout normal + legacy).

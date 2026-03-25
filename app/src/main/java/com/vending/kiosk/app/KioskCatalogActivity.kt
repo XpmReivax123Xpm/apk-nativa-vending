@@ -11,8 +11,10 @@ import android.util.Base64
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -42,6 +44,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var tvTitle: TextView
     private lateinit var tvSubtitle: TextView
     private lateinit var tvStatus: TextView
+    private lateinit var cartFabContainer: View
     private lateinit var tvCartBadge: TextView
     private lateinit var promoCarousel: View
     private var tvPromoTitle: TextView? = null
@@ -163,6 +166,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvTitle = findViewById(R.id.tvCatalogTitle)
         tvSubtitle = findViewById(R.id.tvCatalogSubtitle)
         tvStatus = findViewById(R.id.tvCatalogStatus)
+        cartFabContainer = findViewById(R.id.cartFabContainer)
         tvCartBadge = findViewById(R.id.tvCartBadge)
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         contentContainer = findViewById(R.id.llCatalogContainer)
@@ -239,7 +243,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun setupCartBadge() {
         updateCartBadge()
-        tvCartBadge.setOnClickListener { showCartDialog() }
+        cartFabContainer.setOnClickListener { showCartDialog() }
     }
 
     private fun showSafeFallback(error: Throwable) {
@@ -554,26 +558,86 @@ class KioskCatalogActivity : AppCompatActivity() {
             Toast.makeText(this, "Carrito vacio", Toast.LENGTH_SHORT).show()
             return
         }
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_cart, null)
+        val itemsContainer = view.findViewById<LinearLayout>(R.id.llCartItemsContainer)
+        val tvTotal = view.findViewById<TextView>(R.id.tvCartDialogTotal)
+        val btnClear = view.findViewById<Button>(R.id.btnCartClear)
+        val btnClose = view.findViewById<Button>(R.id.btnCartClose)
+        val btnBuy = view.findViewById<Button>(R.id.btnCartBuy)
 
-        val lines = cartItems.values.joinToString("\n") {
-            "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(true)
+            .create()
+
+        fun bindCartUi() {
+            if (cartItems.isEmpty()) {
+                dialog.dismiss()
+                Toast.makeText(this, "Carrito vacio", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            itemsContainer.removeAllViews()
+            cartItems.values.forEach { line ->
+                val itemView = LayoutInflater.from(this).inflate(R.layout.item_cart_line, itemsContainer, false)
+                val tvName = itemView.findViewById<TextView>(R.id.tvCartItemName)
+                val tvPrice = itemView.findViewById<TextView>(R.id.tvCartItemPrice)
+                val tvQty = itemView.findViewById<TextView>(R.id.tvCartQty)
+                val btnMinus = itemView.findViewById<ImageButton>(R.id.btnCartQtyMinus)
+                val btnPlus = itemView.findViewById<ImageButton>(R.id.btnCartQtyPlus)
+                val ivPreview = itemView.findViewById<ImageView>(R.id.ivCartItemPreview)
+
+                tvName.text = "${line.item.codigoCelda} - ${line.item.producto}"
+                tvPrice.text = "Unitario: ${if (line.item.precio > 0) "Bs ${formatPrice(line.item.precio)}" else "Sin precio"}"
+                tvQty.text = line.quantity.toString()
+                ivPreview.setImageResource(android.R.drawable.ic_menu_gallery)
+
+                btnMinus.setOnClickListener {
+                    if (line.quantity > 1) {
+                        line.quantity--
+                    } else {
+                        cartItems.remove(line.item.planogramaCeldaId)
+                    }
+                    updateCartBadge()
+                    bindCartUi()
+                }
+
+                btnPlus.setOnClickListener {
+                    if (line.quantity < line.item.stockDisponible) {
+                        line.quantity++
+                        updateCartBadge()
+                        bindCartUi()
+                    } else {
+                        Toast.makeText(this, "No puedes superar el stock", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                itemsContainer.addView(itemView)
+            }
+
+            val total = cartItems.values.sumOf { it.item.precio * it.quantity }
+            tvTotal.text = "Total: Bs ${formatPrice(total)}"
         }
-        val total = cartItems.values.sumOf { it.item.precio * it.quantity }
-        val summary = "$lines\n\nTotal: Bs ${formatPrice(total)}"
 
-        AlertDialog.Builder(this)
-            .setTitle("Carrito")
-            .setMessage(summary)
-            .setPositiveButton("Comprar") { _, _ ->
-                val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
-                openPaymentMethodDialog(selections, fromCart = true)
-            }
-            .setNeutralButton("Vaciar") { _, _ ->
-                cartItems.clear()
-                updateCartBadge()
-            }
-            .setNegativeButton("Cerrar", null)
-            .show()
+        btnClear.setOnClickListener {
+            cartItems.clear()
+            updateCartBadge()
+            bindCartUi()
+        }
+        btnClose.setOnClickListener { dialog.dismiss() }
+        btnBuy.setOnClickListener {
+            val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
+            dialog.dismiss()
+            openPaymentMethodDialog(selections, fromCart = true)
+        }
+
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels * 0.94f).toInt(),
+            WindowManager.LayoutParams.WRAP_CONTENT
+        )
+        bindCartUi()
     }
 
     private fun openPaymentMethodDialog(selections: List<PurchaseSelection>, fromCart: Boolean) {
@@ -1202,8 +1266,8 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun updateCartBadge() {
         val qty = cartItems.values.sumOf { it.quantity }
-        tvCartBadge.text = "Carrito ($qty)"
-        tvCartBadge.alpha = if (qty > 0) 1f else 0.6f
+        tvCartBadge.text = qty.toString()
+        tvCartBadge.visibility = if (qty > 0) View.VISIBLE else View.GONE
     }
 
     private fun isCellSellable(item: CeldaUi): Boolean {
@@ -1410,7 +1474,7 @@ private data class PurchaseSelection(
 )
 
 private enum class PaymentMethodOption(val id: Int, val label: String) {
-    QR_BCP(4, "QR BCP")
+    QR_BCP(4, "QR")
 }
 
 private sealed interface CatalogResult {

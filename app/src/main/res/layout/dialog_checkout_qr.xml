@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content">
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_modal_surface">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,7 +15,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Resumen"
-            android:textColor="#20344D"
+            android:textColor="#0965AF"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -24,7 +25,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="Metodo de pago: QR BCP"
-            android:textColor="#2A6EA8"
+            android:textColor="#F28E1B"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -33,7 +34,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
+            android:backgroundTint="#0965AF"
             android:hint="Nombre completo"
+            android:textColor="#1D2B36"
+            android:textColorHint="#6E7E8B"
             android:inputType="textPersonName" />
 
         <EditText
@@ -41,7 +45,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:backgroundTint="#0965AF"
             android:hint="Telefono"
+            android:textColor="#1D2B36"
+            android:textColorHint="#6E7E8B"
             android:inputType="phone" />
 
         <EditText
@@ -49,7 +56,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:backgroundTint="#0965AF"
             android:hint="CI / NIT"
+            android:textColor="#1D2B36"
+            android:textColorHint="#6E7E8B"
             android:inputType="text" />
 
         <TextView
@@ -67,6 +77,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="10dp"
+            android:indeterminateTint="#F28E1B"
             android:visibility="gone" />
 
         <LinearLayout
@@ -81,6 +92,8 @@
                 android:layout_height="46dp"
                 android:layout_marginRight="6dp"
                 android:layout_weight="1"
+                android:backgroundTint="#0965AF"
+                android:textColor="#FFFFFF"
                 android:text="Cancelar" />
 
             <Button
@@ -89,6 +102,8 @@
                 android:layout_height="46dp"
                 android:layout_marginLeft="6dp"
                 android:layout_weight="1"
+                android:backgroundTint="#F28E1B"
+                android:textColor="#FFFFFF"
                 android:text="Generar QR" />
         </LinearLayout>
 

@@ -18,7 +18,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="MQ-2103"
-            android:textColor="#20344D"
+            android:textColor="#0965AF"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -27,7 +27,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Madrejon"
-            android:textColor="#5C7997"
+            android:textColor="#F28E1B"
             android:textSize="16sp" />
     </LinearLayout>
 
@@ -71,7 +71,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Promo del dia"
-                android:textColor="#1E3852"
+                android:textColor="#0965AF"
                 android:textSize="28sp"
                 android:textStyle="bold" />
 
@@ -80,7 +80,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="Espacio para ofertas y anuncios"
-                android:textColor="#3D5D7E"
+                android:textColor="#0965AF"
                 android:textSize="18sp" />
         </LinearLayout>
 
@@ -96,7 +96,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Nuevos productos"
-                android:textColor="#1C4A3A"
+                android:textColor="#0965AF"
                 android:textSize="28sp"
                 android:textStyle="bold" />
 
@@ -105,7 +105,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="Carrusel preparado para imagenes"
-                android:textColor="#356C58"
+                android:textColor="#0965AF"
                 android:textSize="18sp" />
         </LinearLayout>
 
@@ -121,7 +121,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Avisos"
-                android:textColor="#6C3A06"
+                android:textColor="#F28E1B"
                 android:textSize="28sp"
                 android:textStyle="bold" />
 
@@ -130,7 +130,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="Descuentos, mantenimiento y novedades"
-                android:textColor="#8B510F"
+                android:textColor="#F28E1B"
                 android:textSize="18sp" />
         </LinearLayout>
     </ViewFlipper>
@@ -143,7 +143,7 @@
         android:background="@drawable/bg_catalog_status"
         android:padding="10dp"
         android:text="Cargando catalogo..."
-        android:textColor="#3D5670"
+        android:textColor="#0965AF"
         android:textSize="16sp" />
 
     <HorizontalScrollView

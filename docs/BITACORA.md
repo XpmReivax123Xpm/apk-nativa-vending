@@ -291,3 +291,20 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Se detecto diferencia entre respuesta esperada y parsing de confirmacion en algunos escenarios.
 - Para el entorno actual, la regla objetivo acordada es confirmar con `tnEstadoPedido == 2`.
 - Queda pendiente cerrar la lectura final de estados para no depender de campos legacy.
+
+## 2026-03-25 - UI pagos: paleta unificada + modal de metodo de pago
+- Se alinearon modales de compra/pago a la paleta acordada:
+  - fondo `#FFFFFF`
+  - primario `#0965AF`
+  - acento `#F28E1B`
+- Se ajustaron modales:
+  - `dialog_product_detail`
+  - `dialog_checkout_qr`
+  - `dialog_qr_payment`
+  - `dialog_dispense_progress`
+- Se forzo fondo transparente de ventana (`AlertDialog`) para eliminar bloque oscuro heredado del tema en Android 7.1.2.
+- Se implemento paso intermedio para escalabilidad de pagos:
+  - nuevo modal `Selecciona metodo de pago` antes del formulario de checkout.
+  - por ahora se habilita solo `QR BCP`.
+  - flujo preparado para agregar nuevos metodos sin rehacer checkout.
+- Se compilo `assembleDebug` y se valido instalacion por ADB (`adb install -r`) en dispositivo de pruebas.

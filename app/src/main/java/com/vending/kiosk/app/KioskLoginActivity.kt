@@ -79,7 +79,7 @@ class KioskLoginActivity : AppCompatActivity() {
         val password = etPassword.text?.toString().orEmpty()
 
         if (correo.isBlank() || password.isBlank()) {
-            Toast.makeText(this, "Completa correo y password", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Completa correo y contraseña", Toast.LENGTH_SHORT).show()
             return
         }
 

@@ -18,7 +18,7 @@
             android:layout_gravity="top|start"
             android:layout_margin="8dp"
             android:text="A1"
-            android:textColor="#27496D"
+            android:textColor="#0965AF"
             android:textSize="16sp"
             android:textStyle="bold" />
 
@@ -47,7 +47,7 @@
         android:maxLines="2"
         android:minLines="2"
         android:text="Producto"
-        android:textColor="#1C2E43"
+        android:textColor="#0965AF"
         android:textSize="14sp"
         android:textStyle="bold" />
 
@@ -59,7 +59,7 @@
         android:ellipsize="end"
         android:maxLines="1"
         android:text="Bs 0.00"
-        android:textColor="#C86A00"
+        android:textColor="#F28E1B"
         android:textSize="15sp"
         android:textStyle="bold" />
 
@@ -70,6 +70,6 @@
         android:layout_marginTop="2dp"
         android:maxLines="1"
         android:text="Stock: 0"
-        android:textColor="#5E748F"
+        android:textColor="#0965AF"
         android:textSize="12sp" />
 </LinearLayout>

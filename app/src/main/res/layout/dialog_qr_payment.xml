@@ -2,6 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@drawable/bg_modal_surface"
     android:gravity="center_horizontal"
     android:orientation="vertical"
     android:padding="16dp">
@@ -10,7 +11,7 @@
         android:id="@+id/ivPaymentQr"
         android:layout_width="250dp"
         android:layout_height="250dp"
-        android:background="#F2F6FA"
+        android:background="#FFFFFF"
         android:contentDescription="qr"
         android:padding="8dp" />
 
@@ -21,7 +22,7 @@
         android:layout_marginTop="12dp"
         android:gravity="center"
         android:text="Expira: --"
-        android:textColor="#5C7997"
+        android:textColor="#0965AF"
         android:textSize="13sp" />
 
     <TextView
@@ -31,7 +32,7 @@
         android:layout_marginTop="8dp"
         android:gravity="center"
         android:text="Esperando pago..."
-        android:textColor="#20344D"
+        android:textColor="#F28E1B"
         android:textSize="14sp"
         android:textStyle="bold" />
 
@@ -39,7 +40,8 @@
         android:id="@+id/progressQrPolling"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp" />
+        android:layout_marginTop="10dp"
+        android:indeterminateTint="#F28E1B" />
 
     <Button
         android:id="@+id/btnCloseQrDialog"

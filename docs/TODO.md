@@ -88,6 +88,8 @@
 - [x] Polling de estado de pago cada 5s (timeout 120s).
 - [~] Cerrar criterio final de confirmacion con backend (`tnEstadoPedido == 2`) y eliminar dependencias de campos legacy.
 - [x] Cierre automatico de modal QR al timeout + refresh de catalogo.
+- [x] Insertar modal intermedio de seleccion de metodo de pago (v1: solo `QR BCP`) para escalar a nuevos metodos.
+- [x] Unificar paleta visual de modales de compra/pago con tema kiosk claro.
 
 ### Fase 4 - Flujos completos E2E
 - [~] Compra directa: implementada hasta pago y disparo de dispensado secuencial; falta endurecer manejo de estados excepcionales/reporteria final.

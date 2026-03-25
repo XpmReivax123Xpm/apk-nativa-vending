@@ -2,6 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@drawable/bg_modal_surface"
     android:orientation="vertical"
     android:padding="16dp">
 
@@ -25,7 +26,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:text="A1"
-        android:textColor="#20344D"
+        android:textColor="#0965AF"
         android:textSize="18sp"
         android:textStyle="bold" />
 
@@ -35,7 +36,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:text="Producto"
-        android:textColor="#20344D"
+        android:textColor="#0965AF"
         android:textSize="16sp" />
 
     <TextView
@@ -44,7 +45,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:text="Stock disponible: 0"
-        android:textColor="#5C7997"
+        android:textColor="#F28E1B"
         android:textSize="14sp" />
 
     <LinearLayout
@@ -59,6 +60,8 @@
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_weight="1"
+            android:backgroundTint="#0965AF"
+            android:textColor="#FFFFFF"
             android:text="-" />
 
         <TextView
@@ -67,7 +70,7 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="1"
-            android:textColor="#20344D"
+            android:textColor="#0965AF"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -76,6 +79,8 @@
             android:layout_width="0dp"
             android:layout_height="44dp"
             android:layout_weight="1"
+            android:backgroundTint="#0965AF"
+            android:textColor="#FFFFFF"
             android:text="+" />
     </LinearLayout>
 
@@ -91,6 +96,8 @@
             android:layout_height="46dp"
             android:layout_marginRight="6dp"
             android:layout_weight="1"
+            android:backgroundTint="#0965AF"
+            android:textColor="#FFFFFF"
             android:text="Agregar carrito" />
 
         <Button
@@ -99,6 +106,8 @@
             android:layout_height="46dp"
             android:layout_marginLeft="6dp"
             android:layout_weight="1"
+            android:backgroundTint="#F28E1B"
+            android:textColor="#FFFFFF"
             android:text="Comprar ahora" />
     </LinearLayout>
 

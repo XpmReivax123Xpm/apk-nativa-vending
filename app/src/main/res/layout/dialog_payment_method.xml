@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_modal_surface"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Selecciona metodo de pago"
+        android:textColor="#0965AF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <RadioGroup
+        android:id="@+id/rgPaymentMethods"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="vertical">
+
+        <RadioButton
+            android:id="@+id/rbPaymentQrBcp"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:buttonTint="#F28E1B"
+            android:checked="true"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:text="QR BCP"
+            android:textColor="#20344D"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </RadioGroup>
+
+    <TextView
+        android:id="@+id/tvPaymentMethodError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:textColor="#B3261E"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnPaymentMethodCancel"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_marginRight="6dp"
+            android:layout_weight="1"
+            android:backgroundTint="#0965AF"
+            android:text="Cancelar"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btnPaymentMethodContinue"
+            android:layout_width="0dp"
+            android:layout_height="46dp"
+            android:layout_marginLeft="6dp"
+            android:layout_weight="1"
+            android:backgroundTint="#F28E1B"
+            android:text="Continuar"
+            android:textColor="#FFFFFF" />
+    </LinearLayout>
+
+</LinearLayout>

@@ -2,6 +2,7 @@
 
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -15,6 +16,7 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.ViewFlipper
@@ -109,7 +111,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun onStatus(msg: String) {
             if (dispensingInProgress && msg.startsWith("TX:")) {
                 runOnUiThread {
-                    tvDispenseStatus?.text = "Enviando comando a maquina..."
+                    tvDispenseStatus?.text = "Ejecutando pedido..."
                 }
             }
         }
@@ -124,7 +126,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             runOnUiThread {
                 if (dispensingInProgress) {
                     val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
-                    tvDispenseStatus?.text = "Retira el producto. Preparando siguiente item ($current/${dispensingQueue.size})..."
+                    tvDispenseStatus?.text = " Por favor retira el producto. Preparando siguiente item ($current/${dispensingQueue.size})..."
                 }
             }
         }
@@ -432,8 +434,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                                 } else {
                                     visibility = View.VISIBLE
                                     text = "No disponible"
-                                    setBackgroundResource(R.drawable.bg_status_disconnected)
-                                    setTextColor(resources.getColor(R.color.badge_disconnected_text, theme))
+                                    setBackgroundResource(R.drawable.bg_catalog_unavailable_badge)
+                                    setTextColor(Color.parseColor("#F28E1B"))
                                 }
                             }
 
@@ -521,10 +523,11 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         btnBuyNow.setOnClickListener {
             dialog.dismiss()
-            openCheckoutDialog(listOf(PurchaseSelection(item, qty)), fromCart = false)
+            openPaymentMethodDialog(listOf(PurchaseSelection(item, qty)), fromCart = false)
         }
 
         dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     }
 
     private fun addToCart(item: CeldaUi, qtyToAdd: Int) {
@@ -563,7 +566,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             .setMessage(summary)
             .setPositiveButton("Comprar") { _, _ ->
                 val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
-                openCheckoutDialog(selections, fromCart = true)
+                openPaymentMethodDialog(selections, fromCart = true)
             }
             .setNeutralButton("Vaciar") { _, _ ->
                 cartItems.clear()
@@ -573,7 +576,41 @@ class KioskCatalogActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun openCheckoutDialog(selections: List<PurchaseSelection>, fromCart: Boolean) {
+    private fun openPaymentMethodDialog(selections: List<PurchaseSelection>, fromCart: Boolean) {
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_payment_method, null)
+        val rgMethods = view.findViewById<RadioGroup>(R.id.rgPaymentMethods)
+        val tvError = view.findViewById<TextView>(R.id.tvPaymentMethodError)
+        val btnCancel = view.findViewById<Button>(R.id.btnPaymentMethodCancel)
+        val btnContinue = view.findViewById<Button>(R.id.btnPaymentMethodContinue)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(true)
+            .create()
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        btnContinue.setOnClickListener {
+            val checked = rgMethods.checkedRadioButtonId
+            if (checked == View.NO_ID) {
+                tvError.visibility = View.VISIBLE
+                tvError.text = "Selecciona un metodo de pago"
+                return@setOnClickListener
+            }
+
+            val method = PaymentMethodOption.QR_BCP
+            dialog.dismiss()
+            openCheckoutDialog(selections, fromCart, method)
+        }
+
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+    }
+
+    private fun openCheckoutDialog(
+        selections: List<PurchaseSelection>,
+        fromCart: Boolean,
+        paymentMethod: PaymentMethodOption
+    ) {
         if (selections.isEmpty()) return
 
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_checkout_qr, null)
@@ -593,7 +630,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         val total = selections.sumOf { it.item.precio * it.quantity }
 
         tvSummary.text = "$lines\n\nTotal: Bs ${formatPrice(total)}"
-        tvMethod.text = "Metodo de pago: QR BCP"
+        tvMethod.text = "Metodo de pago: ${paymentMethod.label}"
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
@@ -627,6 +664,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     createOrderAndGenerateQr(
                         machineId = machineId,
                         authHeader = authHeader,
+                        paymentMethodId = paymentMethod.id,
                         customerName = name,
                         customerPhone = phone,
                         customerCi = ci,
@@ -659,6 +697,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     }
 
     private fun setCheckoutLoading(
@@ -681,6 +720,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun createOrderAndGenerateQr(
         machineId: Int,
         authHeader: String,
+        paymentMethodId: Int,
         customerName: String,
         customerPhone: String,
         customerCi: String,
@@ -716,7 +756,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 put("tcNombreCliente", customerName)
                 put("tcTelefonoCliente", customerPhone)
                 put("tcNITCliente", customerCi)
-                put("tnPaymentMethodId", QR_PAYMENT_METHOD_ID)
+                put("tnPaymentMethodId", paymentMethodId)
                 put("taItems", itemsJson)
             }.toString()
 
@@ -920,6 +960,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
         qrPollingJob?.cancel()
         qrPollingJob = lifecycleScope.launch {
@@ -1058,6 +1099,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dispenseDialog = dialog
 
         dispensingQueue = queue
@@ -1332,7 +1374,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         const val EXTRA_MACHINE_CODE = "extra_machine_code"
         const val EXTRA_MACHINE_LOCATION = "extra_machine_location"
 
-        private const val QR_PAYMENT_METHOD_ID = 4
         private const val PAYMENT_POLL_INTERVAL_MS = 5_000L
         private const val PAYMENT_TIMEOUT_MS = 120_000L
 
@@ -1367,6 +1408,10 @@ private data class PurchaseSelection(
     val item: CeldaUi,
     val quantity: Int
 )
+
+private enum class PaymentMethodOption(val id: Int, val label: String) {
+    QR_BCP(4, "QR BCP")
+}
 
 private sealed interface CatalogResult {
     data class Success(val celdas: List<CeldaUi>) : CatalogResult

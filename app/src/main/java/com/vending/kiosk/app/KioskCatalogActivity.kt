@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -36,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -67,6 +69,12 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var authHeader: String = ""
     private var catalogItems: List<CeldaUi> = emptyList()
     private val cartItems = linkedMapOf<Int, CartLine>()
+    private val imageCache by lazy {
+        object : LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
+            override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
+        }
+    }
+    private val imageTargetsByUrl = mutableMapOf<String, MutableList<ImageView>>()
 
     private val serial = SerialManager()
     private lateinit var vendFlow: VendingFlowController
@@ -361,6 +369,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
             val nombreProducto = producto?.optString("tcNombre", "")?.trim().orEmpty()
             val precio = producto?.optDouble("tnPrecio", 0.0) ?: 0.0
+            val imagenUrl = producto?.optString("tcImagenUrlPrincipal", "")?.trim().orEmpty()
 
             val codigo = celda.optString("tcCodigo", "--")
             val planogramaCeldaId = when {
@@ -385,7 +394,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                 precio = precio,
                 stockDisponible = stockDisponible,
                 vendible = vendible,
-                physicalCell = physicalCell
+                physicalCell = physicalCell,
+                imagenUrl = imagenUrl
             )
         }
 
@@ -394,12 +404,20 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun renderCatalog(celdas: List<CeldaUi>) {
         runCatching {
+            val visibles = celdas.filter { isCellSellable(it) }
+            if (visibles.isEmpty()) {
+                tvStatus.visibility = View.VISIBLE
+                tvStatus.text = "Sin productos disponibles para venta"
+                contentContainer.removeAllViews()
+                return
+            }
+
             val columns = 3
             val rows = 6
             val itemsPerPage = columns * rows
             val pageWidth = resources.displayMetrics.widthPixels - dp(24)
 
-            celdas.chunked(itemsPerPage).forEachIndexed { pageIndex, pageItems ->
+            visibles.chunked(itemsPerPage).forEachIndexed { pageIndex, pageItems ->
                 val page = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(
@@ -430,6 +448,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                             card.findViewById<TextView>(R.id.tvCellPrice).text =
                                 if (item.precio > 0.0) "Bs ${formatPrice(item.precio)}" else "Sin precio"
                             card.findViewById<TextView>(R.id.tvCellStock).text = "Stock: ${item.stockDisponible}"
+                            val ivProduct = card.findViewById<ImageView>(R.id.ivCellProductImage)
+                            loadProductImage(item.imagenUrl, ivProduct)
 
                             val available = isCellSellable(item)
                             card.findViewById<TextView>(R.id.tvCellState).apply {
@@ -495,7 +515,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvCode.text = "${item.codigoCelda} - ${item.producto}"
         tvName.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
         tvStock.text = "Stock disponible: ${item.stockDisponible}"
-        ivPreview.setImageResource(android.R.drawable.ic_menu_gallery)
+        loadProductImage(item.imagenUrl, ivPreview)
 
         var qty = 1
         tvQty.text = qty.toString()
@@ -590,7 +610,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 tvName.text = "${line.item.codigoCelda} - ${line.item.producto}"
                 tvPrice.text = "Unitario: ${if (line.item.precio > 0) "Bs ${formatPrice(line.item.precio)}" else "Sin precio"}"
                 tvQty.text = line.quantity.toString()
-                ivPreview.setImageResource(android.R.drawable.ic_menu_gallery)
+                loadProductImage(line.item.imagenUrl, ivPreview)
 
                 btnMinus.setOnClickListener {
                     if (line.quantity > 1) {
@@ -1109,13 +1129,19 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             val values = json.optJSONObject("values") ?: JSONObject()
-            val lbPagado = values.optBoolean("lbPagado", false)
-            val tnEstadoPedido = values.optInt("tnEstadoPedido", values.optInt("estado", 1))
+            val tnEstadoPago = values.optInt("tnEstadoPago", Int.MIN_VALUE)
+            val tnEstadoPedido = values.optInt("tnEstadoPedido", Int.MIN_VALUE)
+            val estadoFallback = values.optInt("estado", 1)
+            val effectiveState = when {
+                tnEstadoPago != Int.MIN_VALUE -> tnEstadoPago
+                tnEstadoPedido != Int.MIN_VALUE -> tnEstadoPedido
+                else -> estadoFallback
+            }
 
-            return when {
-                lbPagado || tnEstadoPedido == 2 -> PaymentPollResult.Paid
-                tnEstadoPedido == 3 -> PaymentPollResult.Failed("Pago cancelado")
-                tnEstadoPedido == 4 -> PaymentPollResult.Failed("Pago fallido")
+            return when (effectiveState) {
+                2 -> PaymentPollResult.Paid
+                3 -> PaymentPollResult.Failed("Pago cancelado")
+                4 -> PaymentPollResult.Failed("Pago fallido")
                 else -> PaymentPollResult.Pending(backendMessage)
             }
         } catch (ex: Exception) {
@@ -1240,6 +1266,105 @@ class KioskCatalogActivity : AppCompatActivity() {
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun loadProductImage(imageUrl: String, imageView: ImageView) {
+        imageView.setImageResource(android.R.drawable.ic_menu_gallery)
+        imageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
+        if (imageUrl.isBlank()) return
+
+        imageView.tag = imageUrl
+        imageCache.get(imageUrl)?.let { bitmap ->
+            imageView.setImageBitmap(bitmap)
+            imageView.scaleType = ImageView.ScaleType.FIT_CENTER
+            return
+        }
+
+        var shouldStartDownload = false
+        synchronized(imageTargetsByUrl) {
+            val targets = imageTargetsByUrl.getOrPut(imageUrl) { mutableListOf() }
+            targets.add(imageView)
+            if (targets.size == 1) shouldStartDownload = true
+        }
+        if (!shouldStartDownload) return
+
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 240) }
+            if (bitmap != null) {
+                imageCache.put(imageUrl, bitmap)
+            }
+            val targets = synchronized(imageTargetsByUrl) {
+                imageTargetsByUrl.remove(imageUrl).orEmpty()
+            }
+            targets.forEach { target ->
+                if (target.tag == imageUrl && bitmap != null) {
+                    target.setImageBitmap(bitmap)
+                    target.scaleType = ImageView.ScaleType.FIT_CENTER
+                }
+            }
+        }
+    }
+
+    private fun downloadBitmap(rawUrl: String, targetSizePx: Int): android.graphics.Bitmap? {
+        val primary = rawUrl.trim()
+        val alternatives = buildList {
+            add(primary)
+            if (primary.startsWith("http://", ignoreCase = true)) {
+                add(primary.replaceFirst("http://", "https://", ignoreCase = true))
+            }
+        }
+
+        for (candidate in alternatives) {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL(candidate).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 10_000
+                    readTimeout = 10_000
+                    instanceFollowRedirects = true
+                    doInput = true
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "BoxiPago-Android/1.0")
+                }
+                connection.connect()
+                if (connection.responseCode !in 200..299) continue
+                val bytes = connection.inputStream.use { input ->
+                    val buffer = ByteArray(8 * 1024)
+                    val output = ByteArrayOutputStream()
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                    }
+                    output.toByteArray()
+                }
+                decodeSampledBitmap(bytes, targetSizePx)?.let { bitmap ->
+                    return bitmap
+                }
+            } catch (_: Exception) {
+                // continue with next alternative
+            } finally {
+                connection?.disconnect()
+            }
+        }
+        return null
+    }
+
+    private fun decodeSampledBitmap(data: ByteArray, targetSizePx: Int): android.graphics.Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var inSampleSize = 1
+        while (bounds.outWidth / inSampleSize > targetSizePx * 2 || bounds.outHeight / inSampleSize > targetSizePx * 2) {
+            inSampleSize *= 2
+        }
+
+        val options = BitmapFactory.Options().apply {
+            this.inSampleSize = inSampleSize
+            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+        }
+        return BitmapFactory.decodeByteArray(data, 0, data.size, options)
     }
 
     private fun syncCartWithCatalog(latestCatalog: List<CeldaUi>) {
@@ -1460,7 +1585,8 @@ private data class CeldaUi(
     val precio: Double,
     val stockDisponible: Int,
     val vendible: Boolean,
-    val physicalCell: Int
+    val physicalCell: Int,
+    val imagenUrl: String
 )
 
 private data class CartLine(

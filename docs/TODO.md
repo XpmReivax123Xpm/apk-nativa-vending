@@ -88,7 +88,7 @@
 - [x] Crear pedido + generar QR desde APK.
 - [x] Mostrar QR base64 como imagen en modal de pago.
 - [x] Polling de estado de pago cada 5s (timeout 120s).
-- [~] Cerrar criterio final de confirmacion con backend (`tnEstadoPedido == 2`) y eliminar dependencias de campos legacy.
+- [~] Cerrar criterio final de confirmacion con backend (actualmente compatibilidad temporal: `tnEstadoPago == 2` o `tnEstadoPedido == 2`, con fallback `estado == 2`) y eliminar dependencias de campos legacy.
 - [x] Cierre automatico de modal QR al timeout + refresh de catalogo.
 - [x] Insertar modal intermedio de seleccion de metodo de pago (v1: solo `QR BCP`) para escalar a nuevos metodos.
 - [x] Unificar paleta visual de modales de compra/pago con tema kiosk claro.

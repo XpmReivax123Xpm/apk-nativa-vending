@@ -320,3 +320,23 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - acciones `Vaciar`, `Cerrar`, `Comprar`.
 - Se corrigio visibilidad de controles `+/-` en carrito usando iconos vectoriales dedicados.
 - Se mantuvo compatibilidad de UI para Android 7.1.2 (layout normal + legacy).
+
+## 2026-03-26 - Catalogo: ajustes visuales para tablet vending Android 7.1.2
+- Se ajusto la tarjeta de producto del planograma a esquinas rectas para evitar artefactos visuales en Android `7.1.2`.
+- Se reemplazaron fondos redondeados por variantes rectas en la celda de catalogo.
+- Se simplifico el render de imagen para evitar doble redondeo (UI + bitmap) y reducir deformaciones.
+- Se cambio el escalado de imagen de producto a `FIT_CENTER` para evitar efecto de zoom excesivo.
+- Se ocultaron del planograma las celdas no vendibles/no disponibles, mostrando solo productos comprables.
+- Se ejecutaron compilaciones `assembleDebug` exitosas para validacion en vending.
+
+## 2026-03-26 - Pago QR: compatibilidad temporal de estados backend
+- Se detecto divergencia de contrato en confirmacion de pago entre escenarios de compra.
+- Se implemento compatibilidad temporal en polling para aceptar estado desde:
+  - `values.tnEstadoPago`
+  - `values.tnEstadoPedido`
+  - fallback `values.estado`
+- Regla de interpretacion vigente en APK:
+  - `2`: pagado
+  - `3`: cancelado
+  - `4`: fallido
+- Se mantiene pendiente de cierre con backend un contrato unico y estable para evitar ambiguedad en multiples items.

@@ -110,7 +110,13 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   4. polling de estado de pago
   5. dispensado secuencial post-confirmacion
 - Criterio objetivo de confirmacion para esta etapa:
-  - `tnEstadoPedido == 2`.
+  - compatibilidad temporal: `tnEstadoPago == 2` o `tnEstadoPedido == 2` (con fallback `estado == 2`).
 - Al expirar el tiempo del QR:
   - el modal se cierra automaticamente
   - se refresca el catalogo.
+
+## Ajustes recientes de catalogo (actualizado 2026-03-26)
+- UI de planograma adaptada para Android `7.1.2` con enfoque de estabilidad visual:
+  - tarjetas e imagenes con esquinas rectas
+  - imagen de producto con `FIT_CENTER` para evitar zoom excesivo
+  - ocultamiento de celdas no disponibles en la grilla visible

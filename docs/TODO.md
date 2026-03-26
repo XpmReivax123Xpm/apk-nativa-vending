@@ -32,7 +32,8 @@
 - [x] Carrito mejorado con modal operativo por item (ajuste cantidad `+/-`, total en vivo y compra directa).
 - [x] Acceso a carrito con icono flotante sin afectar area de carrusel.
 - [ ] Integrar imagenes reales de carrusel/catalogo.
-- [ ] Definir salida protegida de modo kiosk (PIN).
+- [x] Definir salida protegida de modo kiosk (PIN) con validacion backend.
+- [~] Endurecer bloqueo total de navegacion del sistema segun politica del dispositivo (Device Owner / launcher kiosk).
 
 ### Fase 2 - Integracion backend
 - [ ] Definir contratos JSON definitivos con equipo backend.
@@ -95,3 +96,9 @@
 
 ### Fase 4 - Flujos completos E2E
 - [~] Compra directa: implementada hasta pago y disparo de dispensado secuencial; falta endurecer manejo de estados excepcionales/reporteria final.
+
+### Fase 5 - Operacion kiosk
+- [x] Activar bloqueo kiosk al entrar a planograma.
+- [x] Implementar gesto de salida segura (hold 2s en titulo de maquina + PIN).
+- [x] Implementar teclado propio para `Nombre`, `Telefono`, `CI/NIT` y `PIN`.
+- [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

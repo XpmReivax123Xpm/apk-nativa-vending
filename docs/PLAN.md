@@ -120,3 +120,15 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - tarjetas e imagenes con esquinas rectas
   - imagen de producto con `FIT_CENTER` para evitar zoom excesivo
   - ocultamiento de celdas no disponibles en la grilla visible
+
+## Modo kiosk en planograma (actualizado 2026-03-26)
+- Al ingresar al planograma se activa bloqueo kiosk desde app:
+  - lock task (cuando el dispositivo lo permite)
+  - modo inmersivo con re-aplicacion para esconder navegacion del sistema
+  - bloqueo de acciones de salida por teclas de navegacion en la activity
+- Salida controlada:
+  - gesto de 2 segundos sobre titulo de maquina
+  - modal de PIN
+  - validacion remota en `POST /api/maquinas/acceso`
+- Entrada de datos en checkout/desbloqueo:
+  - teclado propio modal para no depender del IME del sistema

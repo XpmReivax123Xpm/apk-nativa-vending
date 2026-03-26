@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.util.LruCache
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -66,6 +67,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     )
 
     private var machineId: Int = 0
+    private var machineCode: String = ""
     private var authHeader: String = ""
     private var catalogItems: List<CeldaUi> = emptyList()
     private val cartItems = linkedMapOf<Int, CartLine>()
@@ -90,6 +92,10 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvDispenseTitle: TextView? = null
     private var progressDispense: ProgressBar? = null
     private var btnDispenseClose: Button? = null
+    private var kioskLocked = false
+    private var lockTaskStarted = false
+    private val unlockHoldHandler = Handler(Looper.getMainLooper())
+    private var unlockHoldTriggered = false
 
     private val carouselTicker = object : Runnable {
         override fun run() {
@@ -196,7 +202,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         setupCarouselTouchControls()
 
         machineId = intent.getIntExtra(EXTRA_MACHINE_ID, 0)
-        val machineCode = intent.getStringExtra(EXTRA_MACHINE_CODE).orEmpty()
+        machineCode = intent.getStringExtra(EXTRA_MACHINE_CODE).orEmpty()
         val machineLocation = intent.getStringExtra(EXTRA_MACHINE_LOCATION).orEmpty()
 
         if (machineId <= 0) {
@@ -205,6 +211,8 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         tvTitle.text = machineCode
         tvSubtitle.text = machineLocation
+        setupUnlockGestureOnMachineTitle()
+        enterKioskMode()
 
         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
         if (authHeader.isBlank()) {
@@ -216,6 +224,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        applyImmersiveKioskUi()
         if (useLegacyCarousel && tvPromoTitle != null && tvPromoSubtitle != null) {
             carouselHandler.removeCallbacks(carouselTicker)
             carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
@@ -225,6 +234,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
         (promoCarousel as? ViewFlipper)?.stopFlipping()
         super.onPause()
@@ -237,12 +247,31 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         qrPollingJob?.cancel()
+        unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
         if (::vendFlow.isInitialized) {
             runCatching { vendFlow.stop() }
         }
         runCatching { serial.close() }
         super.onDestroy()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && kioskLocked) {
+            applyImmersiveKioskUi()
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (kioskLocked && event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_BACK,
+                KeyEvent.KEYCODE_APP_SWITCH,
+                KeyEvent.KEYCODE_MENU -> return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     private fun setupDispenseRuntime() {
@@ -252,6 +281,195 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun setupCartBadge() {
         updateCartBadge()
         cartFabContainer.setOnClickListener { showCartDialog() }
+    }
+
+    override fun onBackPressed() {
+        if (kioskLocked) {
+            Toast.makeText(this, "Modo kiosk activo", Toast.LENGTH_SHORT).show()
+            return
+        }
+        super.onBackPressed()
+    }
+
+    private fun setupUnlockGestureOnMachineTitle() {
+        val holdRunnable = Runnable {
+            if (!kioskLocked) return@Runnable
+            unlockHoldTriggered = true
+            showUnlockPinDialog()
+        }
+
+        tvTitle.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    unlockHoldTriggered = false
+                    unlockHoldHandler.removeCallbacksAndMessages(null)
+                    unlockHoldHandler.postDelayed(holdRunnable, 2_000L)
+                    true
+                }
+
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    unlockHoldHandler.removeCallbacksAndMessages(null)
+                    unlockHoldTriggered
+                }
+
+                else -> false
+            }
+        }
+    }
+
+    private fun enterKioskMode() {
+        kioskLocked = true
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyImmersiveKioskUi()
+        runCatching {
+            startLockTask()
+            lockTaskStarted = true
+        }
+    }
+
+    private fun exitKioskMode() {
+        kioskLocked = false
+        if (lockTaskStarted) {
+            runCatching { stopLockTask() }
+            lockTaskStarted = false
+        }
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        Toast.makeText(this, "Modo kiosk desbloqueado", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun applyImmersiveKioskUi() {
+        var flags = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            flags = flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        }
+        window.decorView.systemUiVisibility = flags
+    }
+
+    private fun showUnlockPinDialog() {
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_unlock_pin, null)
+        val etPin = view.findViewById<EditText>(R.id.etUnlockPin)
+        val tvError = view.findViewById<TextView>(R.id.tvUnlockError)
+        val progress = view.findViewById<ProgressBar>(R.id.progressUnlock)
+        val btnCancel = view.findViewById<Button>(R.id.btnUnlockCancel)
+        val btnConfirm = view.findViewById<Button>(R.id.btnUnlockConfirm)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        fun setLoading(loading: Boolean) {
+            progress.visibility = if (loading) View.VISIBLE else View.GONE
+            etPin.isEnabled = !loading
+            btnCancel.isEnabled = !loading
+            btnConfirm.isEnabled = !loading
+        }
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        btnConfirm.setOnClickListener {
+            val pin = etPin.text?.toString()?.trim().orEmpty()
+            if (pin.isBlank()) {
+                tvError.visibility = View.VISIBLE
+                tvError.text = "Ingresa el PIN"
+                return@setOnClickListener
+            }
+
+            setLoading(true)
+            tvError.visibility = View.GONE
+            lifecycleScope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    validateMachineAccess(machineCode, pin)
+                }
+                setLoading(false)
+                when (result) {
+                    is MachineAccessResult.Granted -> {
+                        dialog.dismiss()
+                        exitKioskMode()
+                    }
+
+                    is MachineAccessResult.Denied -> {
+                        tvError.visibility = View.VISIBLE
+                        tvError.text = result.message
+                    }
+
+                    is MachineAccessResult.Error -> {
+                        tvError.visibility = View.VISIBLE
+                        tvError.text = result.message
+                    }
+                }
+            }
+        }
+
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+    }
+
+    private fun validateMachineAccess(machineCode: String, pin: String): MachineAccessResult {
+        if (machineCode.isBlank()) return MachineAccessResult.Error("Codigo de maquina invalido")
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/acceso"
+        var connection: HttpURLConnection? = null
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val payload = JSONObject().apply {
+                put("tcCodigoMaquina", machineCode)
+                put("tcPin", pin)
+            }.toString()
+
+            connection.outputStream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                return MachineAccessResult.Error("Sin respuesta de validacion de PIN")
+            }
+
+            val json = JSONObject(rawBody)
+            val backendError = json.optInt("error", -1)
+            val backendStatus = json.optInt("status", 0)
+            val backendMessage = json.optString("message", "No se pudo validar acceso")
+            val values = json.optJSONObject("values") ?: JSONObject()
+            val acceso = values.optInt("tnAcceso", 0)
+
+            return if (statusCode in 200..299 && backendError == 0 && backendStatus == 1 && acceso == 1) {
+                MachineAccessResult.Granted
+            } else if (acceso == 0 || backendError != 0 || backendStatus != 1) {
+                MachineAccessResult.Denied(backendMessage.ifBlank { "PIN invalido" })
+            } else {
+                MachineAccessResult.Error("$backendMessage (HTTP $statusCode)")
+            }
+        } catch (ex: Exception) {
+            MachineAccessResult.Error("Error validando acceso: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
+        }
     }
 
     private fun showSafeFallback(error: Throwable) {
@@ -1623,4 +1841,10 @@ private sealed interface PaymentPollResult {
     data class Pending(val message: String) : PaymentPollResult
     data class Failed(val message: String) : PaymentPollResult
     data class Error(val message: String) : PaymentPollResult
+}
+
+private sealed interface MachineAccessResult {
+    data object Granted : MachineAccessResult
+    data class Denied(val message: String) : MachineAccessResult
+    data class Error(val message: String) : MachineAccessResult
 }

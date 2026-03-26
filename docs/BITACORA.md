@@ -340,3 +340,23 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `3`: cancelado
   - `4`: fallido
 - Se mantiene pendiente de cierre con backend un contrato unico y estable para evitar ambiguedad en multiples items.
+
+## 2026-03-26 - Kiosk lock en planograma + salida por PIN
+- Se implemento entrada en modo kiosk al abrir `KioskCatalogActivity`:
+  - intento de `startLockTask()`
+  - ocultamiento de barras del sistema en modo inmersivo
+  - re-aplicacion periodica de flags para minimizar escape visual en Android `7.1.2`
+  - bloqueo de `back`, `app switch` y `menu` desde la activity
+- Se implemento gesto de seguridad para salida:
+  - mantener presionado 2 segundos sobre el codigo/nombre de maquina (arriba izquierda)
+  - abre modal de desbloqueo por PIN
+- Se implemento validacion de PIN contra backend:
+  - `POST /api/maquinas/acceso`
+  - payload: `tcCodigoMaquina`, `tcPin`
+  - desbloquea solo cuando `tnAcceso == 1`
+- Se agrego teclado propio modal para evitar depender del teclado del sistema en:
+  - nombre
+  - telefono
+  - CI/NIT
+  - PIN de desbloqueo
+- Se realizaron compilaciones `assembleDebug` exitosas e instalaciones por ADB en dispositivo conectado.

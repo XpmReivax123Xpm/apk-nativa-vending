@@ -132,3 +132,9 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - validacion remota en `POST /api/maquinas/acceso`
 - Entrada de datos en checkout/desbloqueo:
   - teclado propio modal para no depender del IME del sistema
+
+## UX de checkout QR (actualizado 2026-03-26)
+- Al confirmar `Generar QR`, la app entra en estado bloqueado de generacion:
+  - modal de progreso no cancelable
+  - sin interaccion con fondo
+  - salida del modal solo al completar respuesta de backend

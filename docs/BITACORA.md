@@ -360,3 +360,13 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - CI/NIT
   - PIN de desbloqueo
 - Se realizaron compilaciones `assembleDebug` exitosas e instalaciones por ADB en dispositivo conectado.
+
+## 2026-03-26 - Checkout QR: modal bloqueante durante generacion
+- Se detecto riesgo UX/operativo: al tocar fuera del modal de checkout durante carga, se podia cerrar y permitir interacciones de fondo.
+- Se ajusto flujo de `Generar QR` para mostrar un modal dedicado de progreso:
+  - texto `Generando QR...`
+  - indicador circular de carga
+  - fondo no cancelable por toque externo
+  - sin boton de cierre manual
+- El modal de progreso se mantiene visible hasta recibir respuesta de backend (exito/error), evitando que el operador interactue con la pantalla de catalogo en ese tramo.
+- Se valido compilacion `assembleDebug` y despliegue por ADB en dispositivo conectado.

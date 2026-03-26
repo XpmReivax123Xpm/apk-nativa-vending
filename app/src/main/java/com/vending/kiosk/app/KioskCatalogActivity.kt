@@ -757,6 +757,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this)
             .setView(view)
             .create()
+        dialog.setCanceledOnTouchOutside(false)
 
         btnAddCart.setOnClickListener {
             addToCart(item, qty)
@@ -960,6 +961,14 @@ class KioskCatalogActivity : AppCompatActivity() {
                 etCi = etCi
             )
             tvError.visibility = View.GONE
+            val generatingDialog = AlertDialog.Builder(this@KioskCatalogActivity)
+                .setView(LayoutInflater.from(this@KioskCatalogActivity).inflate(R.layout.dialog_generating_qr, null))
+                .setCancelable(false)
+                .create().apply {
+                    setCanceledOnTouchOutside(false)
+                    window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                    show()
+                }
 
             lifecycleScope.launch {
                 val result = withContext(Dispatchers.IO) {
@@ -973,6 +982,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         items = selections
                     )
                 }
+                generatingDialog.dismiss()
 
                 setCheckoutLoading(
                     loading = false,

@@ -11,6 +11,7 @@
         android:usesCleartextTraffic="true">
         <activity
             android:name=".app.KioskCatalogActivity"
+            android:lockTaskMode="if_whitelisted"
             android:exported="false" />
         <activity
             android:name=".app.KioskMachinesActivity"
@@ -26,12 +27,27 @@
             android:exported="false" />
         <activity
             android:name=".app.MainActivity"
+            android:lockTaskMode="if_whitelisted"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".app.kiosk.KioskDeviceAdminReceiver"
+            android:description="@string/app_name"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

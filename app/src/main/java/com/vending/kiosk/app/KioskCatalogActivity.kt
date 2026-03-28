@@ -5,9 +5,11 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.util.Log
 import android.util.LruCache
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -28,6 +30,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
+import com.vending.kiosk.app.kiosk.KioskPolicyManager
 import com.vending.kiosk.integration.serial.runtime.SerialManager
 import com.vending.kiosk.integration.serial.runtime.VendingFlowController
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +58,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var contentContainer: LinearLayout
 
     private val authSessionManager by lazy { AuthSessionManager(this) }
+    private val kioskPolicyManager by lazy { KioskPolicyManager(this) }
 
     private var useLegacyCarousel = false
     private val carouselHandler = Handler(Looper.getMainLooper())
@@ -225,6 +229,10 @@ class KioskCatalogActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         applyImmersiveKioskUi()
+        if (kioskLocked && !lockTaskStarted) {
+            Log.d(TAG, "onResume: kiosk locked but lock task not started. Retrying managed lock task.")
+            attemptManagedLockTaskStart()
+        }
         if (useLegacyCarousel && tvPromoTitle != null && tvPromoSubtitle != null) {
             carouselHandler.removeCallbacks(carouselTicker)
             carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
@@ -319,23 +327,57 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun enterKioskMode() {
+        Log.d(TAG, "entering kiosk mode")
         kioskLocked = true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applyImmersiveKioskUi()
-        runCatching {
-            startLockTask()
-            lockTaskStarted = true
+        attemptManagedLockTaskStart()
+        if (!lockTaskStarted) {
+            Log.w(TAG, "fallback visual mode only: managed lock task not active")
         }
     }
 
     private fun exitKioskMode() {
+        Log.d(TAG, "exiting kiosk mode")
         kioskLocked = false
         if (lockTaskStarted) {
             runCatching { stopLockTask() }
+                .onSuccess { Log.d(TAG, "stopLockTask success") }
+                .onFailure { Log.w(TAG, "stopLockTask failed: ${it.message}") }
             lockTaskStarted = false
         }
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         Toast.makeText(this, "Modo kiosk desbloqueado", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun attemptManagedLockTaskStart() {
+        if (lockTaskStarted) return
+
+        val isDeviceOwner = kioskPolicyManager.isDeviceOwner()
+        Log.d(TAG, "device owner status: $isDeviceOwner")
+        if (!isDeviceOwner) {
+            Log.w(TAG, "app is not Device Owner")
+        } else {
+            val allowlisted = kioskPolicyManager.allowCurrentPackageForLockTask()
+            Log.d(TAG, "allowlisting result: $allowlisted")
+        }
+
+        val permitted = kioskPolicyManager.isCurrentPackageLockTaskPermitted()
+        Log.d(TAG, "lock task permitted: $permitted")
+        if (!permitted) {
+            Log.w(TAG, "package is not permitted for lock task")
+            return
+        }
+
+        runCatching { startLockTask() }
+            .onSuccess {
+                lockTaskStarted = true
+                Log.d(TAG, "startLockTask success")
+            }
+            .onFailure {
+                lockTaskStarted = false
+                Log.w(TAG, "startLockTask failed: ${it.message}")
+            }
     }
 
     private fun applyImmersiveKioskUi() {
@@ -728,7 +770,15 @@ class KioskCatalogActivity : AppCompatActivity() {
         val btnPlus = view.findViewById<Button>(R.id.btnQtyPlus)
         val btnAddCart = view.findViewById<Button>(R.id.btnAddCart)
         val btnBuyNow = view.findViewById<Button>(R.id.btnBuyNow)
+        val btnClose = view.findViewById<TextView>(R.id.btnProductDialogClose)
+        val tvTimer = view.findViewById<TextView>(R.id.tvProductDialogTimer)
         val ivPreview = view.findViewById<ImageView>(R.id.ivProductPreview)
+
+        // Fuerza visual en OEMs que pisan estilos de layout.
+        tvTimer.setBackgroundColor(Color.TRANSPARENT)
+        tvTimer.setTextColor(Color.WHITE)
+        btnClose.text = "X"
+        btnClose.setTextColor(Color.WHITE)
 
         tvCode.text = "${item.codigoCelda} - ${item.producto}"
         tvName.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
@@ -738,7 +788,36 @@ class KioskCatalogActivity : AppCompatActivity() {
         var qty = 1
         tvQty.text = qty.toString()
 
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .create()
+        dialog.setCanceledOnTouchOutside(false)
+
+        var autoCloseTimer: CountDownTimer? = null
+        fun resetAutoCloseTimer() {
+            autoCloseTimer?.cancel()
+            autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
+                override fun onTick(millisUntilFinished: Long) {
+                    val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
+                    tvTimer.text = "${seconds}s"
+                }
+
+                override fun onFinish() {
+                    tvTimer.text = "0s"
+                    if (dialog.isShowing) {
+                        dialog.dismiss()
+                    }
+                }
+            }.start()
+        }
+
+        view.setOnTouchListener { _, _ ->
+            resetAutoCloseTimer()
+            false
+        }
+
         btnMinus.setOnClickListener {
+            resetAutoCloseTimer()
             if (qty > 1) {
                 qty--
                 tvQty.text = qty.toString()
@@ -746,6 +825,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         btnPlus.setOnClickListener {
+            resetAutoCloseTimer()
             if (qty < item.stockDisponible) {
                 qty++
                 tvQty.text = qty.toString()
@@ -754,23 +834,26 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
         }
 
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
-            .create()
-        dialog.setCanceledOnTouchOutside(false)
+        btnClose.setOnClickListener { dialog.dismiss() }
 
         btnAddCart.setOnClickListener {
+            resetAutoCloseTimer()
             addToCart(item, qty)
             dialog.dismiss()
         }
 
         btnBuyNow.setOnClickListener {
+            resetAutoCloseTimer()
             dialog.dismiss()
             openPaymentMethodDialog(listOf(PurchaseSelection(item, qty)), fromCart = false)
         }
 
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        resetAutoCloseTimer()
+        dialog.setOnDismissListener {
+            autoCloseTimer?.cancel()
+        }
     }
 
     private fun addToCart(item: CeldaUi, qtyToAdd: Int) {
@@ -938,19 +1021,13 @@ class KioskCatalogActivity : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this)
             .setView(view)
             .create()
+        dialog.setCanceledOnTouchOutside(false)
+        etName.visibility = View.GONE
+        etPhone.visibility = View.GONE
+        etCi.visibility = View.GONE
 
         btnCancel.setOnClickListener { dialog.dismiss() }
         btnGenerate.setOnClickListener {
-            val name = etName.text?.toString()?.trim().orEmpty()
-            val phone = etPhone.text?.toString()?.trim().orEmpty()
-            val ci = etCi.text?.toString()?.trim().orEmpty()
-
-            if (name.isBlank() || phone.isBlank() || ci.isBlank()) {
-                tvError.visibility = View.VISIBLE
-                tvError.text = "Completa nombre, telefono y CI"
-                return@setOnClickListener
-            }
-
             setCheckoutLoading(
                 loading = true,
                 progress = progress,
@@ -976,9 +1053,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                         machineId = machineId,
                         authHeader = authHeader,
                         paymentMethodId = paymentMethod.id,
-                        customerName = name,
-                        customerPhone = phone,
-                        customerCi = ci,
+                        customerName = DEFAULT_CUSTOMER_NAME,
+                        customerPhone = DEFAULT_CUSTOMER_PHONE,
+                        customerCi = DEFAULT_CUSTOMER_CI_NIT,
                         items = selections
                     )
                 }
@@ -1787,6 +1864,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "KioskCatalogActivity"
         const val EXTRA_MACHINE_ID = "extra_machine_id"
         const val EXTRA_MACHINE_CODE = "extra_machine_code"
         const val EXTRA_MACHINE_LOCATION = "extra_machine_location"
@@ -1796,6 +1874,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         private const val DEFAULT_PORT = "/dev/ttyS1"
         private const val DEFAULT_BAUD = 9600
+        private const val DEFAULT_CUSTOMER_NAME = "Sin nombre"
+        private const val DEFAULT_CUSTOMER_PHONE = "9999999"
+        private const val DEFAULT_CUSTOMER_CI_NIT = "9999999"
+        private const val PRODUCT_DIALOG_TIMEOUT_MS = 60_000L
     }
 }
 

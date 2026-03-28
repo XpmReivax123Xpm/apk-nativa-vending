@@ -370,3 +370,24 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - sin boton de cierre manual
 - El modal de progreso se mantiene visible hasta recibir respuesta de backend (exito/error), evitando que el operador interactue con la pantalla de catalogo en ese tramo.
 - Se valido compilacion `assembleDebug` y despliegue por ADB en dispositivo conectado.
+
+## 2026-03-28 - Infraestructura kiosk administrado + integracion en planograma
+- Se agrego infraestructura base para kiosk administrado:
+  - `KioskDeviceAdminReceiver`
+  - `KioskPolicyManager`
+  - `res/xml/device_admin_receiver.xml`
+  - `AndroidManifest` con receiver de admin + `lockTaskMode="if_whitelisted"` en `MainActivity` y `KioskCatalogActivity`.
+- Se conecto `KioskPolicyManager` al flujo real de `KioskCatalogActivity` sin romper PIN/long-press:
+  - validacion de `Device Owner`
+  - intento de allowlist (`setLockTaskPackages`) cuando corresponde
+  - `startLockTask` solo si el paquete esta permitido
+  - fallback visual cuando no existe provisioning de kiosk administrado.
+- Se agregaron logs de diagnostico para lock task (estado device owner, allowlist, permiso lock task, exito/fallo de entrada).
+- Se mantuvo salida actual por PIN y se preservo `stopLockTask` solo cuando hubo lock task real.
+
+## 2026-03-28 - Ajustes UX modal de producto (planograma)
+- Se agrego cierre manual visible en la parte superior (boton de cerrar fuera del cuerpo del modal).
+- Se agrego temporizador de autocierre de 60s visible en cabecera del modal.
+- El temporizador se reinicia con interacciones del usuario dentro del modal.
+- Se reforzo compatibilidad visual para Android 7.1.2 (OEMs que pisan estilos) forzando estilos en runtime para timer y boton de cierre.
+- Se realizaron compilaciones `assembleDebug` e instalaciones ADB de validacion en dispositivo conectado.

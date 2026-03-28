@@ -34,6 +34,9 @@
 - [ ] Integrar imagenes reales de carrusel/catalogo.
 - [x] Definir salida protegida de modo kiosk (PIN) con validacion backend.
 - [~] Endurecer bloqueo total de navegacion del sistema segun politica del dispositivo (Device Owner / launcher kiosk).
+  - [x] Infraestructura base de kiosk administrado (DeviceAdminReceiver + policy XML + `KioskPolicyManager` + `lockTaskMode` en manifest).
+  - [x] Integracion de intento de lock task administrado en `KioskCatalogActivity` con fallback visual.
+  - [ ] Provisioning real de Device Owner en tablet vending y validacion final contra barra OEM.
 
 ### Fase 2 - Integracion backend
 - [ ] Definir contratos JSON definitivos con equipo backend.
@@ -102,4 +105,6 @@
 - [x] Activar bloqueo kiosk al entrar a planograma.
 - [x] Implementar gesto de salida segura (hold 2s en titulo de maquina + PIN).
 - [x] Implementar teclado propio para `Nombre`, `Telefono`, `CI/NIT` y `PIN`.
+- [x] Agregar temporizador de autocierre (60s) en modal de producto con reinicio por interaccion.
+- [x] Agregar cierre manual visible en cabecera del modal de producto.
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

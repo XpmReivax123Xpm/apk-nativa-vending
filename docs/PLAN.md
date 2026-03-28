@@ -138,3 +138,26 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - modal de progreso no cancelable
   - sin interaccion con fondo
   - salida del modal solo al completar respuesta de backend
+
+## Modo kiosk administrado (actualizado 2026-03-28)
+- Infraestructura base incorporada para escenario Device Owner:
+  - `DeviceAdminReceiver` declarado
+  - XML de politicas admin
+  - helper `KioskPolicyManager`
+  - `lockTaskMode="if_whitelisted"` en activities clave
+- Integracion en `KioskCatalogActivity`:
+  - intenta lock task administrado cuando el dispositivo lo permite
+  - conserva fallback visual (immersive + bloqueos actuales) cuando no hay provisioning DO
+  - mantiene salida por PIN sin cambios funcionales.
+- Estado actual:
+  - app lista para operar en modo mixto (administrado si existe DO, fallback si no).
+  - pendiente cierre operativo con provisioning real de dispositivo vending.
+
+## UX modal de producto (actualizado 2026-03-28)
+- Cabecera externa del modal con:
+  - boton de cerrar
+  - temporizador visible de autocierre
+- Temporizador:
+  - ventana de 60s
+  - reinicio por interaccion del usuario en el modal
+  - cierre automatico al llegar a 0.

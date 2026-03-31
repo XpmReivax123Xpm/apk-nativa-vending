@@ -107,4 +107,5 @@
 - [x] Implementar teclado propio para `Nombre`, `Telefono`, `CI/NIT` y `PIN`.
 - [x] Agregar temporizador de autocierre (60s) en modal de producto con reinicio por interaccion.
 - [x] Agregar cierre manual visible en cabecera del modal de producto.
+- [x] Aislar visualmente la cabecera superior del `KioskCatalog` con franja blanca full-width independiente del fondo.
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

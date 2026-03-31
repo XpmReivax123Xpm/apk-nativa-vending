@@ -391,3 +391,14 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - El temporizador se reinicia con interacciones del usuario dentro del modal.
 - Se reforzo compatibilidad visual para Android 7.1.2 (OEMs que pisan estilos) forzando estilos en runtime para timer y boton de cierre.
 - Se realizaron compilaciones `assembleDebug` e instalaciones ADB de validacion en dispositivo conectado.
+
+## 2026-03-31 - Kiosk Catalog: ajuste visual de cabecera superior
+- Se continuo el ajuste estetico del `KioskCatalog` para aislar la cabecera (maquina + ubicacion) del fondo de pantalla.
+- Se corrigio la franja superior para que sea realmente independiente del fondo degradado y ocupe todo el ancho de la pantalla.
+- Se aplico el ajuste en ambos layouts activos:
+  - `app/src/main/res/layout/activity_kiosk_catalog.xml`
+  - `app/src/main/res/layout/activity_kiosk_catalog_legacy.xml`
+- Se mantuvo compatibilidad Android `7.1.2` (sin introducir Compose ni cambios de logica funcional).
+- Se ejecutaron compilaciones `assembleDebug` exitosas y despliegues ADB en dispositivo conectado para validacion visual.
+- APK debug generado para vending:
+  - `app/build/outputs/apk/debug/app-debug.apk`

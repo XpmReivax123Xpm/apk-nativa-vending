@@ -161,3 +161,9 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - ventana de 60s
   - reinicio por interaccion del usuario en el modal
   - cierre automatico al llegar a 0.
+
+## Estado visual Kiosk Catalog (actualizado 2026-03-31)
+- Cabecera superior (nombre de maquina + ubicacion) definida como franja blanca independiente del fondo general.
+- Ajuste aplicado en layout normal y layout legacy para mantener consistencia en Android `7.1.2`.
+- Fondo general del catalogo mantiene tratamiento visual separado (degradado), sin invadir la franja superior blanca.
+- Estado: ajuste visual de cabecera listo para validacion final en tablet vending real.

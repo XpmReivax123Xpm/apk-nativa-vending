@@ -68,6 +68,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private val carouselHandler = Handler(Looper.getMainLooper())
     private val carouselIntervalMs = 5_000L
     private var carouselIndex = 0
+    private var promoAdaptiveHeightApplied = false
     private val legacySlides = listOf(
         LegacySlide(R.drawable.bg_catalog_promo_1, "Promociones", "Espacio para ofertas y anuncios"),
         LegacySlide(R.drawable.bg_catalog_promo_2, "Nuevos productos", "Carrusel preparado para imagenes"),
@@ -186,7 +187,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             R.layout.activity_kiosk_catalog
         }
         setContentView(layoutRes)
-        useLegacyCarousel = layoutRes == R.layout.activity_kiosk_catalog_legacy
+        useLegacyCarousel = false
 
         tvTitle = findViewById(R.id.tvCatalogTitle)
         tvSubtitle = findViewById(R.id.tvCatalogSubtitle)
@@ -196,11 +197,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         contentContainer = findViewById(R.id.llCatalogContainer)
         screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
+        useLegacyCarousel = promoCarousel !is ViewFlipper
 
-        if (useLegacyCarousel) {
-            tvPromoTitle = findViewById(R.id.tvPromoTitle)
-            tvPromoSubtitle = findViewById(R.id.tvPromoSubtitle)
-        } else {
+        if (!useLegacyCarousel) {
             (promoCarousel as? ViewFlipper)?.apply {
                 isAutoStart = false
                 stopFlipping()
@@ -700,6 +699,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun renderPromotionalCarousel(promotions: List<PromoSlideUi>) {
+        promoAdaptiveHeightApplied = false
         if (useLegacyCarousel) {
             if (promotions.isNotEmpty()) {
                 carouselIndex = 0
@@ -730,7 +730,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT
                     )
-                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    scaleType = ImageView.ScaleType.FIT_CENTER
                 }
                 slide.addView(image)
                 flipper.addView(slide)
@@ -1869,14 +1869,15 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun loadPromoImage(imageUrl: String, imageView: ImageView) {
         imageView.setImageDrawable(null)
-        imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+        imageView.scaleType = ImageView.ScaleType.FIT_CENTER
         if (imageUrl.isBlank()) return
 
         val tagValue = "promo:$imageUrl"
         imageView.tag = tagValue
         imageCache.get(imageUrl)?.let { bitmap ->
             imageView.setImageBitmap(bitmap)
-            imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+            imageView.scaleType = ImageView.ScaleType.FIT_CENTER
+            applyAdaptiveCarouselHeight(bitmap)
             return
         }
 
@@ -1887,9 +1888,32 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
             if (imageView.tag == tagValue && bitmap != null) {
                 imageView.setImageBitmap(bitmap)
-                imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+                imageView.scaleType = ImageView.ScaleType.FIT_CENTER
+                applyAdaptiveCarouselHeight(bitmap)
             }
         }
+    }
+
+    private fun applyAdaptiveCarouselHeight(bitmap: android.graphics.Bitmap) {
+        if (promoAdaptiveHeightApplied) return
+        if (bitmap.width <= 0 || bitmap.height <= 0) return
+
+        val containerWidth = promoCarousel.width.takeIf { it > 0 }
+            ?: (resources.displayMetrics.widthPixels - dp(24))
+        if (containerWidth <= 0) return
+
+        val desiredHeight = (containerWidth * (bitmap.height.toFloat() / bitmap.width.toFloat())).toInt()
+        val screenHeight = resources.displayMetrics.heightPixels
+        val minHeight = dp(220)
+        val maxHeight = (screenHeight * 0.52f).toInt().coerceAtLeast(dp(320))
+        val targetHeight = desiredHeight.coerceIn(minHeight, maxHeight)
+
+        val params = promoCarousel.layoutParams ?: return
+        if (params.height != targetHeight) {
+            params.height = targetHeight
+            promoCarousel.layoutParams = params
+        }
+        promoAdaptiveHeightApplied = true
     }
 
     private fun downloadBitmap(rawUrl: String, targetSizePx: Int): android.graphics.Bitmap? {

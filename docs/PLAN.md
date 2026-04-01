@@ -182,3 +182,11 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - reinicio por interaccion del usuario
   - autocierre + refresh de catalogo al expirar
 - Estado: implementado y desplegado; pendiente solo ajuste fino visual final segun validacion en dispositivo real.
+
+## Carrusel promocional (actualizado 2026-04-01)
+- Decisión tomada: usar definitivamente carrusel tipo 3 (`ViewFlipper` + fade) en `KioskCatalog`.
+- Se retiro el laboratorio temporal de comparacion de carruseles y su boton de acceso.
+- Se mejoro visualizacion de promos:
+  - render en `FIT_CENTER`
+  - altura adaptativa del carrusel segun proporcion de imagen (con limites para no romper layout).
+- Estado: implementado; pendiente validacion final en tablet vending sobre fluidez real con Android `7.1.2`.

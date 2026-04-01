@@ -441,3 +441,21 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
   - `app/src/main/res/layout/dialog_payment_method.xml`
   - `app/src/main/res/layout/dialog_checkout_qr.xml`
+
+## 2026-04-01 - Carrusel definitivo (tipo 3) y retiro de laboratorio temporal
+- Se retiro el flujo temporal de laboratorio de carruseles:
+  - eliminada la pantalla de pruebas de carruseles
+  - eliminado el boton temporal de acceso desde `KioskCatalog`
+  - removido el registro de la activity temporal del `AndroidManifest`
+- Se dejo como estrategia definitiva el carrusel tipo 3:
+  - `ViewFlipper` con transiciones `fade in/out`
+  - aplicado tambien en layout legacy para Android `7.1.2`
+- Se ajusto render de imagen promocional para mejorar visualizacion completa:
+  - `CENTER_CROP` -> `FIT_CENTER`
+  - ajuste adaptativo de altura del carrusel segun proporcion real de la imagen promocional (primer frame valido) con limites por pantalla.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/activity_kiosk_catalog_legacy.xml`
+  - `app/src/main/res/layout/activity_kiosk_catalog.xml`
+  - `app/src/main/AndroidManifest.xml`
+- Se generaron APKs `assembleDebug` exitosas tras los ajustes.

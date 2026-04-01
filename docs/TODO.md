@@ -34,7 +34,9 @@
 - [~] Integrar imagenes reales de carrusel/catalogo.
   - [x] Carrusel promocional desde `taPresentacionArchivos`.
   - [x] Fondo de planograma desde `taFondoUiPrincipal`.
-  - [ ] Validacion final de calidad visual (encuadre/recorte) en tablet vending real.
+  - [x] Definir carrusel definitivo tipo 3 (`ViewFlipper + fade`) y retirar laboratorio temporal.
+  - [x] Ajustar visualizacion de promos a `FIT_CENTER` + altura adaptativa por proporcion.
+  - [ ] Validacion final de calidad visual y fluidez en tablet vending real (Android `7.1.2`).
 - [x] Definir salida protegida de modo kiosk (PIN) con validacion backend.
 - [~] Endurecer bloqueo total de navegacion del sistema segun politica del dispositivo (Device Owner / launcher kiosk).
   - [x] Infraestructura base de kiosk administrado (DeviceAdminReceiver + policy XML + `KioskPolicyManager` + `lockTaskMode` en manifest).

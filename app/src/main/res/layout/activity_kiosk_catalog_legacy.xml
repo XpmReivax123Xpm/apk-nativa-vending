@@ -46,34 +46,91 @@
             android:orientation="vertical"
             android:padding="12dp">
 
-            <LinearLayout
+            <ViewFlipper
                 android:id="@+id/vfPromoCarousel"
                 android:layout_width="match_parent"
                 android:layout_height="220dp"
                 android:layout_marginTop="10dp"
-                android:background="@drawable/bg_catalog_promo_1"
-                android:gravity="bottom|start"
-                android:orientation="vertical"
-                android:padding="18dp">
+                android:autoStart="true"
+                android:flipInterval="3200"
+                android:inAnimation="@android:anim/fade_in"
+                android:outAnimation="@android:anim/fade_out">
 
-                <TextView
-                    android:id="@+id/tvPromoTitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Promociones"
-                    android:textColor="#0965AF"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_catalog_promo_1"
+                    android:gravity="bottom|start"
+                    android:orientation="vertical"
+                    android:padding="18dp">
 
-                <TextView
-                    android:id="@+id/tvPromoSubtitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Espacio para ofertas y anuncios"
-                    android:textColor="#0965AF"
-                    android:textSize="18sp" />
-            </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Promo del dia"
+                        android:textColor="#0965AF"
+                        android:textSize="28sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Espacio para ofertas y anuncios"
+                        android:textColor="#0965AF"
+                        android:textSize="18sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_catalog_promo_2"
+                    android:gravity="bottom|start"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Nuevos productos"
+                        android:textColor="#0965AF"
+                        android:textSize="28sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Carrusel preparado para imagenes"
+                        android:textColor="#0965AF"
+                        android:textSize="18sp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_catalog_promo_3"
+                    android:gravity="bottom|start"
+                    android:orientation="vertical"
+                    android:padding="18dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Avisos"
+                        android:textColor="#F28E1B"
+                        android:textSize="28sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="Descuentos, mantenimiento y novedades"
+                        android:textColor="#F28E1B"
+                        android:textSize="18sp" />
+                </LinearLayout>
+            </ViewFlipper>
 
             <TextView
                 android:id="@+id/tvCatalogStatus"

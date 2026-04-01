@@ -173,3 +173,12 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Fondo principal del planograma conectado al backend (`taFondoUiPrincipal`) con fallback local cuando no hay asset valido.
 - Implementacion realizada sin romper compatibilidad Android `7.1.2` y sin cambiar flujo funcional de compra.
 - Estado: listo para validacion final de calidad visual en vending real (resolucion/recorte de imagenes y curaduria de assets).
+
+## Timers en flujo de pago (actualizado 2026-04-01)
+- Modal `Selecciona metodo de pago` con temporizador de autocierre.
+- Modal de checkout (`Generar QR`) con temporizador de autocierre.
+- Regla operativa en ambos:
+  - 60s de ventana
+  - reinicio por interaccion del usuario
+  - autocierre + refresh de catalogo al expirar
+- Estado: implementado y desplegado; pendiente solo ajuste fino visual final segun validacion en dispositivo real.

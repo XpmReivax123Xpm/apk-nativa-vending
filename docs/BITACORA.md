@@ -425,3 +425,19 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - compilaciones `assembleDebug` exitosas
   - instalacion por ADB exitosa en dispositivo conectado.
+
+## 2026-04-01 - Timers de seguridad en modales de pago
+- Se agrego temporizador de 60s en el modal `Selecciona metodo de pago`.
+- Se agrego temporizador de 60s en el modal de checkout previo a `Generar QR`.
+- Comportamiento implementado en ambos:
+  - contador visible
+  - reinicio del contador por interaccion del usuario
+  - autocierre al llegar a `0s`
+  - refresh de catalogo al autocierre (`loadCatalog(machineId, authHeader)`)
+- Ajuste visual aplicado para Android `7.1.2`/OEM:
+  - temporizador fuera del cuerpo del modal
+  - color blanco y sin caja de fondo.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_payment_method.xml`
+  - `app/src/main/res/layout/dialog_checkout_qr.xml`

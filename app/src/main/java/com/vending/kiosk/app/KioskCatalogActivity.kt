@@ -974,6 +974,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
+                    if (machineId > 0 && authHeader.isNotBlank()) {
+                        loadCatalog(machineId, authHeader)
+                    }
                 }
             }.start()
         }
@@ -1133,16 +1136,58 @@ class KioskCatalogActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_payment_method, null)
         val rgMethods = view.findViewById<RadioGroup>(R.id.rgPaymentMethods)
         val tvError = view.findViewById<TextView>(R.id.tvPaymentMethodError)
+        val tvTimer = view.findViewById<TextView>(R.id.tvPaymentMethodTimer)
         val btnCancel = view.findViewById<Button>(R.id.btnPaymentMethodCancel)
         val btnContinue = view.findViewById<Button>(R.id.btnPaymentMethodContinue)
+
+        // Fuerza visual para OEMs que pisan estilos en dialogos.
+        tvTimer.setBackgroundColor(Color.TRANSPARENT)
+        tvTimer.setTextColor(Color.WHITE)
+        tvTimer.textSize = 20f
+        tvTimer.setShadowLayer(2f, 0f, 1f, Color.parseColor("#80000000"))
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
             .setCancelable(true)
             .create()
 
-        btnCancel.setOnClickListener { dialog.dismiss() }
+        var autoCloseTimer: CountDownTimer? = null
+        fun resetAutoCloseTimer() {
+            autoCloseTimer?.cancel()
+            autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
+                override fun onTick(millisUntilFinished: Long) {
+                    val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
+                    tvTimer.text = "${seconds}s"
+                }
+
+                override fun onFinish() {
+                    tvTimer.text = "0s"
+                    if (dialog.isShowing) {
+                        dialog.dismiss()
+                    }
+                    if (machineId > 0 && authHeader.isNotBlank()) {
+                        loadCatalog(machineId, authHeader)
+                    }
+                }
+            }.start()
+        }
+
+        view.setOnTouchListener { _, _ ->
+            resetAutoCloseTimer()
+            false
+        }
+
+        rgMethods.setOnCheckedChangeListener { _, _ ->
+            tvError.visibility = View.GONE
+            resetAutoCloseTimer()
+        }
+
+        btnCancel.setOnClickListener {
+            resetAutoCloseTimer()
+            dialog.dismiss()
+        }
         btnContinue.setOnClickListener {
+            resetAutoCloseTimer()
             val checked = rgMethods.checkedRadioButtonId
             if (checked == View.NO_ID) {
                 tvError.visibility = View.VISIBLE
@@ -1157,6 +1202,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        resetAutoCloseTimer()
+        dialog.setOnDismissListener {
+            autoCloseTimer?.cancel()
+        }
     }
 
     private fun openCheckoutDialog(
@@ -1173,6 +1222,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         val etPhone = view.findViewById<EditText>(R.id.etCheckoutPhone)
         val etCi = view.findViewById<EditText>(R.id.etCheckoutCi)
         val tvError = view.findViewById<TextView>(R.id.tvCheckoutError)
+        val tvTimer = view.findViewById<TextView>(R.id.tvCheckoutDialogTimer)
         val progress = view.findViewById<ProgressBar>(R.id.progressCheckout)
         val btnCancel = view.findViewById<Button>(R.id.btnCheckoutCancel)
         val btnGenerate = view.findViewById<Button>(R.id.btnCheckoutGenerate)
@@ -1193,8 +1243,44 @@ class KioskCatalogActivity : AppCompatActivity() {
         etPhone.visibility = View.GONE
         etCi.visibility = View.GONE
 
-        btnCancel.setOnClickListener { dialog.dismiss() }
+        // Fuerza visual para OEMs que sobreescriben estilos en dialogos.
+        tvTimer.setBackgroundColor(Color.TRANSPARENT)
+        tvTimer.setTextColor(Color.WHITE)
+        tvTimer.textSize = 20f
+        tvTimer.setShadowLayer(2f, 0f, 1f, Color.parseColor("#80000000"))
+
+        var autoCloseTimer: CountDownTimer? = null
+        fun resetAutoCloseTimer() {
+            autoCloseTimer?.cancel()
+            autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
+                override fun onTick(millisUntilFinished: Long) {
+                    val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
+                    tvTimer.text = "${seconds}s"
+                }
+
+                override fun onFinish() {
+                    tvTimer.text = "0s"
+                    if (dialog.isShowing) {
+                        dialog.dismiss()
+                    }
+                    if (machineId > 0 && authHeader.isNotBlank()) {
+                        loadCatalog(machineId, authHeader)
+                    }
+                }
+            }.start()
+        }
+
+        view.setOnTouchListener { _, _ ->
+            resetAutoCloseTimer()
+            false
+        }
+
+        btnCancel.setOnClickListener {
+            resetAutoCloseTimer()
+            dialog.dismiss()
+        }
         btnGenerate.setOnClickListener {
+            resetAutoCloseTimer()
             setCheckoutLoading(
                 loading = true,
                 progress = progress,
@@ -1254,6 +1340,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        resetAutoCloseTimer()
+        dialog.setOnDismissListener {
+            autoCloseTimer?.cancel()
+        }
     }
 
     private fun setCheckoutLoading(

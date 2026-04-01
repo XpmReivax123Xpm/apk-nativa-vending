@@ -100,6 +100,8 @@
 - [x] Insertar modal intermedio de seleccion de metodo de pago (v1: solo `QR BCP`) para escalar a nuevos metodos.
 - [x] Unificar paleta visual de modales de compra/pago con tema kiosk claro.
 - [x] Bloquear interaccion durante generacion de QR con modal de progreso no cancelable.
+- [x] Agregar temporizador de autocierre en modal `Selecciona metodo de pago` (60s + refresh al expirar).
+- [x] Agregar temporizador de autocierre en modal de checkout previo a `Generar QR` (60s + refresh al expirar).
 
 ### Fase 4 - Flujos completos E2E
 - [~] Compra directa: implementada hasta pago y disparo de dispensado secuencial; falta endurecer manejo de estados excepcionales/reporteria final.

@@ -31,7 +31,10 @@
 - [x] Catalogo base por planograma/celdas implementado (sin carrito aun).
 - [x] Carrito mejorado con modal operativo por item (ajuste cantidad `+/-`, total en vivo y compra directa).
 - [x] Acceso a carrito con icono flotante sin afectar area de carrusel.
-- [ ] Integrar imagenes reales de carrusel/catalogo.
+- [~] Integrar imagenes reales de carrusel/catalogo.
+  - [x] Carrusel promocional desde `taPresentacionArchivos`.
+  - [x] Fondo de planograma desde `taFondoUiPrincipal`.
+  - [ ] Validacion final de calidad visual (encuadre/recorte) en tablet vending real.
 - [x] Definir salida protegida de modo kiosk (PIN) con validacion backend.
 - [~] Endurecer bloqueo total de navegacion del sistema segun politica del dispositivo (Device Owner / launcher kiosk).
   - [x] Infraestructura base de kiosk administrado (DeviceAdminReceiver + policy XML + `KioskPolicyManager` + `lockTaskMode` en manifest).

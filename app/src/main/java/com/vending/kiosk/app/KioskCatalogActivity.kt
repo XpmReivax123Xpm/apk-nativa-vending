@@ -2,6 +2,7 @@
 
 import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
@@ -15,9 +16,11 @@ import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -53,6 +56,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var cartFabContainer: View
     private lateinit var tvCartBadge: TextView
     private lateinit var promoCarousel: View
+    private lateinit var screenRootView: View
     private var tvPromoTitle: TextView? = null
     private var tvPromoSubtitle: TextView? = null
     private lateinit var contentContainer: LinearLayout
@@ -69,6 +73,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         LegacySlide(R.drawable.bg_catalog_promo_2, "Nuevos productos", "Carrusel preparado para imagenes"),
         LegacySlide(R.drawable.bg_catalog_promo_3, "Avisos", "Descuentos, mantenimiento y novedades")
     )
+    private var promotionalSlides: List<PromoSlideUi> = emptyList()
 
     private var machineId: Int = 0
     private var machineCode: String = ""
@@ -105,7 +110,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun run() {
             try {
                 if (!useLegacyCarousel || tvPromoTitle == null || tvPromoSubtitle == null) return
-                showLegacySlide(carouselIndex % legacySlides.size)
+                val slideCount = getLegacySlideCount()
+                if (slideCount <= 1) return
+                showLegacySlide(carouselIndex % slideCount)
                 carouselIndex++
                 carouselHandler.postDelayed(this, carouselIntervalMs)
             } catch (_: Throwable) {
@@ -188,6 +195,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvCartBadge = findViewById(R.id.tvCartBadge)
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         contentContainer = findViewById(R.id.llCatalogContainer)
+        screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
 
         if (useLegacyCarousel) {
             tvPromoTitle = findViewById(R.id.tvPromoTitle)
@@ -534,6 +542,9 @@ class KioskCatalogActivity : AppCompatActivity() {
             when (result) {
                 is CatalogResult.Success -> {
                     catalogItems = result.celdas
+                    promotionalSlides = result.promotions
+                    applyUiBackground(result.backgroundImageUrl)
+                    renderPromotionalCarousel(result.promotions)
                     if (result.celdas.isEmpty()) {
                         tvStatus.visibility = View.VISIBLE
                         tvStatus.text = "Sin productos disponibles (0 celdas recibidas)"
@@ -599,16 +610,172 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             val celdas = parseCeldas(celdasJson)
+            val promotions = parsePromotions(values)
+            val backgroundImageUrl = parseUiBackgroundUrl(values)
             val ordenadas = celdas.sortedWith(
                 compareBy<CeldaUi> { parseCellCode(it.codigoCelda).first }
                     .thenBy { parseCellCode(it.codigoCelda).second }
                     .thenBy { it.codigoCelda }
             )
-            CatalogResult.Success(ordenadas)
+            CatalogResult.Success(ordenadas, promotions, backgroundImageUrl)
         } catch (ex: Exception) {
             CatalogResult.Error("Fallo de conexion: ${ex.message ?: "sin detalle"}")
         } finally {
             connection?.disconnect()
+        }
+    }
+
+    private fun parsePromotions(values: JSONObject): List<PromoSlideUi> {
+        val source =
+            values.optJSONArray("taPresentacionArchivos")
+                ?: values.optJSONObject("presentacion")?.optJSONArray("taPresentacionArchivos")
+                ?: values.optJSONObject("planograma")?.optJSONArray("taPresentacionArchivos")
+                ?: values.optJSONObject("taPresentacion")?.optJSONArray("taPresentacionArchivos")
+                ?: return emptyList()
+
+        val slides = mutableListOf<PromoSlideUi>()
+        for (index in 0 until source.length()) {
+            val item = source.optJSONObject(index) ?: continue
+            val status = item.optInt("tnEstado", 0)
+            if (status != 1) continue
+            val usageType = item.optString("tcUsoTipo", "").trim()
+            if (usageType.isNotBlank() && !usageType.equals("PROMOCIONAL", ignoreCase = true)) continue
+            val mimeType = item.optString("tcMimeType", "").trim()
+            if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) continue
+            val url = item.optString("tcUrl", "").trim()
+            if (url.isBlank()) continue
+
+            slides += PromoSlideUi(
+                url = url,
+                visualOrder = item.optInt("tnOrdenVisual", Int.MAX_VALUE),
+                id = item.optInt("tnPresentacionArchivo", index)
+            )
+        }
+
+        return slides.sortedWith(compareBy<PromoSlideUi> { it.visualOrder }.thenBy { it.id })
+    }
+
+    private fun parseUiBackgroundUrl(values: JSONObject): String {
+        val source =
+            values.optJSONObject("taFondoUiPrincipal")
+                ?: values.optJSONObject("presentacion")?.optJSONObject("taFondoUiPrincipal")
+                ?: values.optJSONObject("planograma")?.optJSONObject("taFondoUiPrincipal")
+                ?: return ""
+
+        val status = source.optInt("tnEstado", 0)
+        if (status != 1) return ""
+        val usageType = source.optString("tcUsoTipo", "").trim()
+        if (usageType.isNotBlank() && !usageType.equals("FONDO_PLANOGRAMA", ignoreCase = true)) return ""
+        val mimeType = source.optString("tcMimeType", "").trim()
+        if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) return ""
+
+        return source.optString("tcUrl", "").trim()
+    }
+
+    private fun applyUiBackground(imageUrl: String) {
+        if (imageUrl.isBlank()) {
+            screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
+            return
+        }
+
+        val tagValue = "ui-bg:$imageUrl"
+        screenRootView.tag = tagValue
+        val cached = imageCache.get(imageUrl)
+        if (cached != null) {
+            screenRootView.background = BitmapDrawable(resources, cached)
+            return
+        }
+
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 1440) }
+            if (bitmap != null) {
+                imageCache.put(imageUrl, bitmap)
+            }
+            if (screenRootView.tag == tagValue && bitmap != null) {
+                screenRootView.background = BitmapDrawable(resources, bitmap)
+            } else if (screenRootView.tag == tagValue) {
+                screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
+            }
+        }
+    }
+
+    private fun renderPromotionalCarousel(promotions: List<PromoSlideUi>) {
+        if (useLegacyCarousel) {
+            if (promotions.isNotEmpty()) {
+                carouselIndex = 0
+                showLegacySlide(0)
+            } else {
+                showLegacySlide(carouselIndex % legacySlides.size)
+            }
+            return
+        }
+
+        val flipper = promoCarousel as? ViewFlipper ?: return
+        flipper.stopFlipping()
+        flipper.removeAllViews()
+
+        if (promotions.isEmpty()) {
+            inflateDefaultViewFlipperSlides(flipper)
+        } else {
+            promotions.forEach { promo ->
+                val slide = FrameLayout(this).apply {
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    background = ColorDrawable(Color.parseColor("#DCE7F3"))
+                }
+                val image = ImageView(this).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                }
+                slide.addView(image)
+                flipper.addView(slide)
+                loadPromoImage(promo.url, image)
+            }
+        }
+
+        flipper.displayedChild = 0
+        if (flipper.childCount > 1) {
+            flipper.startFlipping()
+        }
+    }
+
+    private fun inflateDefaultViewFlipperSlides(flipper: ViewFlipper) {
+        val defaults = listOf(
+            Triple(R.drawable.bg_catalog_promo_1, "Promo del dia", "Espacio para ofertas y anuncios"),
+            Triple(R.drawable.bg_catalog_promo_2, "Nuevos productos", "Carrusel preparado para imagenes"),
+            Triple(R.drawable.bg_catalog_promo_3, "Avisos", "Descuentos, mantenimiento y novedades")
+        )
+        defaults.forEach { (backgroundRes, title, subtitle) ->
+            val slide = LinearLayout(this).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                setBackgroundResource(backgroundRes)
+                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(18), dp(18), dp(18))
+            }
+            val titleView = TextView(this).apply {
+                text = title
+                setTextColor(Color.parseColor("#0965AF"))
+                textSize = 28f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }
+            val subtitleView = TextView(this).apply {
+                text = subtitle
+                setTextColor(Color.parseColor("#0965AF"))
+                textSize = 18f
+                setPadding(0, dp(4), 0, 0)
+            }
+            slide.addView(titleView)
+            slide.addView(subtitleView)
+            flipper.addView(slide)
         }
     }
 
@@ -1610,6 +1777,31 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
+    private fun loadPromoImage(imageUrl: String, imageView: ImageView) {
+        imageView.setImageDrawable(null)
+        imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+        if (imageUrl.isBlank()) return
+
+        val tagValue = "promo:$imageUrl"
+        imageView.tag = tagValue
+        imageCache.get(imageUrl)?.let { bitmap ->
+            imageView.setImageBitmap(bitmap)
+            imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+            return
+        }
+
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 900) }
+            if (bitmap != null) {
+                imageCache.put(imageUrl, bitmap)
+            }
+            if (imageView.tag == tagValue && bitmap != null) {
+                imageView.setImageBitmap(bitmap)
+                imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+            }
+        }
+    }
+
     private fun downloadBitmap(rawUrl: String, targetSizePx: Int): android.graphics.Bitmap? {
         val primary = rawUrl.trim()
         val alternatives = buildList {
@@ -1793,7 +1985,9 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun showNextPromoSlide() {
         if (useLegacyCarousel) {
-            carouselIndex = (carouselIndex + 1) % legacySlides.size
+            val slideCount = getLegacySlideCount()
+            if (slideCount <= 1) return
+            carouselIndex = (carouselIndex + 1) % slideCount
             showLegacySlide(carouselIndex)
             carouselHandler.removeCallbacks(carouselTicker)
             carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
@@ -1809,7 +2003,9 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun showPreviousPromoSlide() {
         if (useLegacyCarousel) {
-            carouselIndex = if (carouselIndex - 1 < 0) legacySlides.lastIndex else carouselIndex - 1
+            val slideCount = getLegacySlideCount()
+            if (slideCount <= 1) return
+            carouselIndex = if (carouselIndex - 1 < 0) slideCount - 1 else carouselIndex - 1
             showLegacySlide(carouselIndex)
             carouselHandler.removeCallbacks(carouselTicker)
             carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
@@ -1830,18 +2026,60 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun resumeAutoCarousel() {
         if (useLegacyCarousel) {
-            carouselHandler.removeCallbacks(carouselTicker)
-            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
+            if (getLegacySlideCount() > 1) {
+                carouselHandler.removeCallbacks(carouselTicker)
+                carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
+            }
         } else {
-            (promoCarousel as? ViewFlipper)?.startFlipping()
+            (promoCarousel as? ViewFlipper)?.let { flipper ->
+                if (flipper.childCount > 1) flipper.startFlipping()
+            }
         }
     }
 
     private fun showLegacySlide(index: Int) {
+        if (promotionalSlides.isNotEmpty()) {
+            val slide = promotionalSlides[index % promotionalSlides.size]
+            tvPromoTitle?.text = ""
+            tvPromoSubtitle?.text = ""
+            tvPromoTitle?.visibility = View.GONE
+            tvPromoSubtitle?.visibility = View.GONE
+            loadLegacyPromoBackground(slide.url)
+            return
+        }
+
         val slide = legacySlides[index % legacySlides.size]
         promoCarousel.setBackgroundResource(slide.backgroundRes)
         tvPromoTitle?.text = slide.title
         tvPromoSubtitle?.text = slide.subtitle
+        tvPromoTitle?.visibility = View.VISIBLE
+        tvPromoSubtitle?.visibility = View.VISIBLE
+    }
+
+    private fun loadLegacyPromoBackground(imageUrl: String) {
+        if (imageUrl.isBlank()) return
+        val tagValue = "legacy-promo:$imageUrl"
+        promoCarousel.tag = tagValue
+
+        val cached = imageCache.get(imageUrl)
+        if (cached != null) {
+            promoCarousel.background = BitmapDrawable(resources, cached)
+            return
+        }
+
+        lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 1200) }
+            if (bitmap != null) {
+                imageCache.put(imageUrl, bitmap)
+            }
+            if (promoCarousel.tag == tagValue && bitmap != null) {
+                promoCarousel.background = BitmapDrawable(resources, bitmap)
+            }
+        }
+    }
+
+    private fun getLegacySlideCount(): Int {
+        return if (promotionalSlides.isNotEmpty()) promotionalSlides.size else legacySlides.size
     }
 
     private fun applyCatalogSystemBars() {
@@ -1887,6 +2125,12 @@ private data class LegacySlide(
     val subtitle: String
 )
 
+private data class PromoSlideUi(
+    val url: String,
+    val visualOrder: Int,
+    val id: Int
+)
+
 private data class CeldaUi(
     val planogramaCeldaId: Int,
     val productoId: Int,
@@ -1914,7 +2158,11 @@ private enum class PaymentMethodOption(val id: Int, val label: String) {
 }
 
 private sealed interface CatalogResult {
-    data class Success(val celdas: List<CeldaUi>) : CatalogResult
+    data class Success(
+        val celdas: List<CeldaUi>,
+        val promotions: List<PromoSlideUi>,
+        val backgroundImageUrl: String
+    ) : CatalogResult
     data class Error(val message: String) : CatalogResult
 }
 

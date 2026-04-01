@@ -402,3 +402,26 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Se ejecutaron compilaciones `assembleDebug` exitosas y despliegues ADB en dispositivo conectado para validacion visual.
 - APK debug generado para vending:
   - `app/build/outputs/apk/debug/app-debug.apk`
+
+## 2026-04-01 - Kiosk Catalog: media dinamica desde planograma (carrusel + fondo)
+- Se integro consumo de `taPresentacionArchivos` desde la API de planograma para poblar el carrusel promocional con imagenes reales del backend.
+- Reglas aplicadas para promociones:
+  - `tnEstado == 1`
+  - `tcUsoTipo == "PROMOCIONAL"` (cuando el campo esta presente)
+  - `tcMimeType` tipo imagen (cuando el campo esta presente)
+  - `tcUrl` no vacio
+  - orden por `tnOrdenVisual` y luego `tnPresentacionArchivo`
+- Se mantuvo fallback a slides locales cuando no hay promociones validas.
+- Se integro consumo de `taFondoUiPrincipal` para pintar el fondo del planograma con imagen remota (`FONDO_PLANOGRAMA`).
+- Reglas aplicadas para fondo UI:
+  - `tnEstado == 1`
+  - `tcUsoTipo == "FONDO_PLANOGRAMA"` (cuando el campo esta presente)
+  - `tcMimeType` tipo imagen (cuando el campo esta presente)
+  - `tcUrl` no vacio
+- Si falla o no llega fondo valido, se mantiene fallback al drawable local `bg_kiosk_catalog_screen_hot`.
+- Se reutilizo cache de bitmaps en runtime para evitar descargas repetidas.
+- Archivo principal ajustado:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+- Validacion tecnica:
+  - compilaciones `assembleDebug` exitosas
+  - instalacion por ADB exitosa en dispositivo conectado.

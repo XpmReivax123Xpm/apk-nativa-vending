@@ -167,3 +167,9 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Ajuste aplicado en layout normal y layout legacy para mantener consistencia en Android `7.1.2`.
 - Fondo general del catalogo mantiene tratamiento visual separado (degradado), sin invadir la franja superior blanca.
 - Estado: ajuste visual de cabecera listo para validacion final en tablet vending real.
+
+## Media dinamica de planograma (actualizado 2026-04-01)
+- Carrusel promocional conectado al backend (`taPresentacionArchivos`) con orden visual y filtros de estado/tipo.
+- Fondo principal del planograma conectado al backend (`taFondoUiPrincipal`) con fallback local cuando no hay asset valido.
+- Implementacion realizada sin romper compatibilidad Android `7.1.2` y sin cambiar flujo funcional de compra.
+- Estado: listo para validacion final de calidad visual en vending real (resolucion/recorte de imagenes y curaduria de assets).

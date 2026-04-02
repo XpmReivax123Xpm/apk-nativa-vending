@@ -106,6 +106,27 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var lockTaskStarted = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
+    private val inactivityHandler = Handler(Looper.getMainLooper())
+    private var activeModalCount = 0
+    private val inactivityRunnable = Runnable {
+        if (activeModalCount > 0) {
+            Log.d(TAG, "Inactivity refresh skipped: modal is open")
+            scheduleInactivityRefresh()
+            return@Runnable
+        }
+        if (machineId <= 0 || authHeader.isBlank()) return@Runnable
+        if (cartItems.isNotEmpty()) {
+            cartItems.clear()
+            updateCartBadge()
+            Toast.makeText(
+                this,
+                "Inactividad detectada. Carrito vaciado y planograma actualizado.",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+        loadCatalog(machineId, authHeader)
+        scheduleInactivityRefresh()
+    }
 
     private val carouselTicker = object : Runnable {
         override fun run() {
@@ -236,6 +257,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         applyImmersiveKioskUi()
+        scheduleInactivityRefresh()
         if (kioskLocked && !lockTaskStarted) {
             Log.d(TAG, "onResume: kiosk locked but lock task not started. Retrying managed lock task.")
             attemptManagedLockTaskStart()
@@ -251,6 +273,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     override fun onPause() {
         unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
+        inactivityHandler.removeCallbacksAndMessages(null)
         (promoCarousel as? ViewFlipper)?.stopFlipping()
         super.onPause()
     }
@@ -264,6 +287,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         qrPollingJob?.cancel()
         unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
+        inactivityHandler.removeCallbacksAndMessages(null)
         if (::vendFlow.isInitialized) {
             runCatching { vendFlow.stop() }
         }
@@ -460,8 +484,12 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
         }
 
+        onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.setOnDismissListener {
+            onModalDismissed()
+        }
     }
 
     private fun validateMachineAccess(machineCode: String, pin: String): MachineAccessResult {
@@ -621,6 +649,32 @@ class KioskCatalogActivity : AppCompatActivity() {
             CatalogResult.Error("Fallo de conexion: ${ex.message ?: "sin detalle"}")
         } finally {
             connection?.disconnect()
+        }
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        scheduleInactivityRefresh()
+    }
+
+    private fun scheduleInactivityRefresh() {
+        inactivityHandler.removeCallbacks(inactivityRunnable)
+        if (activeModalCount > 0) {
+            Log.d(TAG, "Inactivity timer paused while modal is visible")
+            return
+        }
+        inactivityHandler.postDelayed(inactivityRunnable, PLANOGRAM_INACTIVITY_REFRESH_MS)
+    }
+
+    private fun onModalShown() {
+        activeModalCount += 1
+        inactivityHandler.removeCallbacks(inactivityRunnable)
+    }
+
+    private fun onModalDismissed() {
+        activeModalCount = (activeModalCount - 1).coerceAtLeast(0)
+        if (activeModalCount == 0) {
+            scheduleInactivityRefresh()
         }
     }
 
@@ -1018,11 +1072,13 @@ class KioskCatalogActivity : AppCompatActivity() {
             openPaymentMethodDialog(listOf(PurchaseSelection(item, qty)), fromCart = false)
         }
 
+        onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         resetAutoCloseTimer()
         dialog.setOnDismissListener {
             autoCloseTimer?.cancel()
+            onModalDismissed()
         }
     }
 
@@ -1053,14 +1109,47 @@ class KioskCatalogActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_cart, null)
         val itemsContainer = view.findViewById<LinearLayout>(R.id.llCartItemsContainer)
         val tvTotal = view.findViewById<TextView>(R.id.tvCartDialogTotal)
+        val tvTimer = view.findViewById<TextView>(R.id.tvCartDialogTimer)
         val btnClear = view.findViewById<Button>(R.id.btnCartClear)
         val btnClose = view.findViewById<Button>(R.id.btnCartClose)
         val btnBuy = view.findViewById<Button>(R.id.btnCartBuy)
+
+        // Fuerza visual para OEMs que pisan estilos en dialogos.
+        tvTimer.setBackgroundColor(Color.TRANSPARENT)
+        tvTimer.setTextColor(Color.WHITE)
+        tvTimer.textSize = 20f
+        tvTimer.setShadowLayer(2f, 0f, 1f, Color.parseColor("#80000000"))
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
             .setCancelable(true)
             .create()
+
+        var autoCloseTimer: CountDownTimer? = null
+        fun resetAutoCloseTimer() {
+            autoCloseTimer?.cancel()
+            autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
+                override fun onTick(millisUntilFinished: Long) {
+                    val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
+                    tvTimer.text = "${seconds}s"
+                }
+
+                override fun onFinish() {
+                    tvTimer.text = "0s"
+                    if (dialog.isShowing) {
+                        dialog.dismiss()
+                    }
+                    if (machineId > 0 && authHeader.isNotBlank()) {
+                        loadCatalog(machineId, authHeader)
+                    }
+                }
+            }.start()
+        }
+
+        view.setOnTouchListener { _, _ ->
+            resetAutoCloseTimer()
+            false
+        }
 
         fun bindCartUi() {
             if (cartItems.isEmpty()) {
@@ -1085,6 +1174,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 loadProductImage(line.item.imagenUrl, ivPreview)
 
                 btnMinus.setOnClickListener {
+                    resetAutoCloseTimer()
                     if (line.quantity > 1) {
                         line.quantity--
                     } else {
@@ -1095,6 +1185,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 }
 
                 btnPlus.setOnClickListener {
+                    resetAutoCloseTimer()
                     if (line.quantity < line.item.stockDisponible) {
                         line.quantity++
                         updateCartBadge()
@@ -1112,23 +1203,34 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         btnClear.setOnClickListener {
+            resetAutoCloseTimer()
             cartItems.clear()
             updateCartBadge()
             bindCartUi()
         }
-        btnClose.setOnClickListener { dialog.dismiss() }
+        btnClose.setOnClickListener {
+            resetAutoCloseTimer()
+            dialog.dismiss()
+        }
         btnBuy.setOnClickListener {
+            resetAutoCloseTimer()
             val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
             dialog.dismiss()
             openPaymentMethodDialog(selections, fromCart = true)
         }
 
+        onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.94f).toInt(),
             WindowManager.LayoutParams.WRAP_CONTENT
         )
+        resetAutoCloseTimer()
+        dialog.setOnDismissListener {
+            autoCloseTimer?.cancel()
+            onModalDismissed()
+        }
         bindCartUi()
     }
 
@@ -1200,11 +1302,13 @@ class KioskCatalogActivity : AppCompatActivity() {
             openCheckoutDialog(selections, fromCart, method)
         }
 
+        onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         resetAutoCloseTimer()
         dialog.setOnDismissListener {
             autoCloseTimer?.cancel()
+            onModalDismissed()
         }
     }
 
@@ -1297,6 +1401,10 @@ class KioskCatalogActivity : AppCompatActivity() {
                 .create().apply {
                     setCanceledOnTouchOutside(false)
                     window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                    setOnDismissListener {
+                        onModalDismissed()
+                    }
+                    onModalShown()
                     show()
                 }
 
@@ -1338,11 +1446,13 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
         }
 
+        onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         resetAutoCloseTimer()
         dialog.setOnDismissListener {
             autoCloseTimer?.cancel()
+            onModalDismissed()
         }
     }
 
@@ -1605,8 +1715,12 @@ class KioskCatalogActivity : AppCompatActivity() {
             dialog.dismiss()
         }
 
+        onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.setOnDismissListener {
+            onModalDismissed()
+        }
 
         qrPollingJob?.cancel()
         qrPollingJob = lifecycleScope.launch {
@@ -1750,9 +1864,13 @@ class KioskCatalogActivity : AppCompatActivity() {
             dialog.dismiss()
         }
 
+        onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dispenseDialog = dialog
+        dialog.setOnDismissListener {
+            onModalDismissed()
+        }
 
         dispensingQueue = queue
         dispensingCursor = 0
@@ -2230,6 +2348,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DEFAULT_CUSTOMER_PHONE = "9999999"
         private const val DEFAULT_CUSTOMER_CI_NIT = "9999999"
         private const val PRODUCT_DIALOG_TIMEOUT_MS = 60_000L
+        private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
     }
 }
 

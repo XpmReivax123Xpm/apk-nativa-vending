@@ -104,6 +104,7 @@
 - [x] Bloquear interaccion durante generacion de QR con modal de progreso no cancelable.
 - [x] Agregar temporizador de autocierre en modal `Selecciona metodo de pago` (60s + refresh al expirar).
 - [x] Agregar temporizador de autocierre en modal de checkout previo a `Generar QR` (60s + refresh al expirar).
+- [x] Coordinar timers de modales con timer global de inactividad del planograma (pausar refresh global mientras haya modal abierto).
 
 ### Fase 4 - Flujos completos E2E
 - [~] Compra directa: implementada hasta pago y disparo de dispensado secuencial; falta endurecer manejo de estados excepcionales/reporteria final.

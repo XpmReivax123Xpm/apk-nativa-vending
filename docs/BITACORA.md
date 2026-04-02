@@ -459,3 +459,30 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/res/layout/activity_kiosk_catalog.xml`
   - `app/src/main/AndroidManifest.xml`
 - Se generaron APKs `assembleDebug` exitosas tras los ajustes.
+
+## 2026-04-02 - Coordinacion de timers: pausa de inactividad global cuando hay modales
+- Se corrigio colision operativa entre:
+  - timer global de inactividad del planograma (60s, con refresh + vaciado de carrito),
+  - timers locales de modales (producto, carrito, metodo de pago, checkout, etc.).
+- Problema observado:
+  - podia dispararse el refresh global mientras el usuario seguia operando dentro de un modal.
+- Solucion implementada en `KioskCatalogActivity`:
+  - contador de modales activos (`activeModalCount`),
+  - pausa del scheduler global de inactividad mientras `activeModalCount > 0`,
+  - reanudacion automatica del timer global al cerrar el ultimo modal,
+  - guard adicional en `inactivityRunnable` para no ejecutar refresh si hay modal visible.
+- Integracion aplicada a los dialogs del flujo kiosk:
+  - desbloqueo PIN,
+  - detalle de producto,
+  - carrito,
+  - seleccion de metodo de pago,
+  - checkout previo a QR,
+  - modal bloqueante de `Generando QR`,
+  - modal de QR de pago,
+  - modal de progreso de dispensado.
+- Resultado:
+  - no hay refresh global inesperado durante interaccion modal,
+  - se mantiene el refresh de seguridad al volver al planograma sin modales.
+- Validacion tecnica:
+  - `assembleDebug` exitoso.
+  - instalacion ADB exitosa en dispositivo conectado.

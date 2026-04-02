@@ -1,78 +1,105 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:background="@drawable/bg_modal_surface"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:layout_height="wrap_content">
 
     <TextView
-        android:id="@+id/tvCartDialogTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Carrito"
-        android:textColor="#0965AF"
-        android:textSize="22sp"
-        android:textStyle="bold" />
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="260dp"
-        android:layout_marginTop="10dp"
-        android:overScrollMode="ifContentScrolls">
-
-        <LinearLayout
-            android:id="@+id/llCartItemsContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical" />
-    </ScrollView>
-
-    <TextView
-        android:id="@+id/tvCartDialogTotal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:text="Total: Bs 0.00"
-        android:textColor="#F28E1B"
-        android:textSize="20sp"
+        android:id="@+id/tvCartDialogTimer"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="34dp"
+        android:layout_marginEnd="16dp"
+        android:background="@android:color/transparent"
+        android:gravity="center"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:shadowColor="#80000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="2"
+        android:text="60s"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp"
         android:textStyle="bold" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="horizontal">
+        android:layout_marginTop="70dp"
+        android:background="@drawable/bg_modal_surface"
+        android:orientation="vertical"
+        android:padding="16dp">
 
-        <Button
-            android:id="@+id/btnCartClear"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_marginEnd="6dp"
-            android:layout_weight="1"
-            android:backgroundTint="#0965AF"
-            android:text="Vaciar"
-            android:textColor="#FFFFFF" />
+        <TextView
+            android:id="@+id/tvCartDialogTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Carrito"
+            android:textColor="#0965AF"
+            android:textSize="22sp"
+            android:textStyle="bold" />
 
-        <Button
-            android:id="@+id/btnCartClose"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_marginStart="6dp"
-            android:layout_weight="1"
-            android:backgroundTint="#7A8A99"
-            android:text="Cerrar"
-            android:textColor="#FFFFFF" />
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="260dp"
+            android:layout_marginTop="10dp"
+            android:overScrollMode="ifContentScrolls">
 
-        <Button
-            android:id="@+id/btnCartBuy"
-            android:layout_width="0dp"
-            android:layout_height="46dp"
-            android:layout_marginStart="6dp"
-            android:layout_weight="1"
-            android:backgroundTint="#F28E1B"
-            android:text="Comprar"
-            android:textColor="#FFFFFF" />
+            <LinearLayout
+                android:id="@+id/llCartItemsContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </ScrollView>
+
+        <TextView
+            android:id="@+id/tvCartDialogTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Total: Bs 0.00"
+            android:textColor="#F28E1B"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnCartClear"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="#0965AF"
+                android:text="Vaciar"
+                android:textColor="#FFFFFF" />
+
+            <Button
+                android:id="@+id/btnCartClose"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="#7A8A99"
+                android:text="Cerrar"
+                android:textColor="#FFFFFF" />
+
+            <Button
+                android:id="@+id/btnCartBuy"
+                android:layout_width="0dp"
+                android:layout_height="46dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="#F28E1B"
+                android:text="Comprar"
+                android:textColor="#FFFFFF" />
+        </LinearLayout>
+
     </LinearLayout>
 
-</LinearLayout>
+</FrameLayout>

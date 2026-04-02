@@ -183,6 +183,16 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - autocierre + refresh de catalogo al expirar
 - Estado: implementado y desplegado; pendiente solo ajuste fino visual final segun validacion en dispositivo real.
 
+## Coordinacion de timers (actualizado 2026-04-02)
+- Se incorporo regla de convivencia entre timers:
+  - mientras exista cualquier modal abierto, el temporizador global de inactividad del planograma queda pausado.
+  - al cerrar el ultimo modal, el temporizador global se reactiva automaticamente.
+- Objetivo cubierto:
+  - evitar refresh general + vaciado de carrito durante una operacion activa dentro de modales.
+- Estado:
+  - implementado en `KioskCatalogActivity` con contador de modales activos.
+  - pendiente validacion final prolongada en vending real (sesiones largas con interacciones mixtas).
+
 ## Carrusel promocional (actualizado 2026-04-01)
 - Decisión tomada: usar definitivamente carrusel tipo 3 (`ViewFlipper` + fade) en `KioskCatalog`.
 - Se retiro el laboratorio temporal de comparacion de carruseles y su boton de acceso.

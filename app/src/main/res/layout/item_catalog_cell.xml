@@ -47,6 +47,7 @@
             android:textStyle="bold" />
 
         <LinearLayout
+            android:id="@+id/llCellInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="bottom"
@@ -55,7 +56,8 @@
             android:paddingLeft="8dp"
             android:paddingTop="16dp"
             android:paddingRight="8dp"
-            android:paddingBottom="8dp">
+            android:paddingBottom="8dp"
+            android:visibility="gone">
 
             <TextView
                 android:id="@+id/tvCellPrice"

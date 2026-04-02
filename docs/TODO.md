@@ -29,6 +29,7 @@
 - [ ] Definir activacion de contexto local de vending.
 - [~] Diseñar UI funcional de catalogo y carrito.
 - [x] Catalogo base por planograma/celdas implementado (sin carrito aun).
+- [x] Simplificar celda del planograma en grilla (mostrar solo codigo; detalle completo en modal).
 - [x] Carrito mejorado con modal operativo por item (ajuste cantidad `+/-`, total en vivo y compra directa).
 - [x] Acceso a carrito con icono flotante sin afectar area de carrusel.
 - [~] Integrar imagenes reales de carrusel/catalogo.

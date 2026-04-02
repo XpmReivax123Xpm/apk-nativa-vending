@@ -486,3 +486,13 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - `assembleDebug` exitoso.
   - instalacion ADB exitosa en dispositivo conectado.
+
+## 2026-04-02 - Planograma: celdas simplificadas (solo codigo visible)
+- Se ajusto la vista de celdas del planograma para mostrar unicamente el codigo en la grilla.
+- Se oculto la capa de informacion inferior dentro de cada celda (precio, nombre y stock) en la pantalla principal.
+- El detalle completo se conserva en el modal al tocar una celda (sin cambios de logica de compra).
+- Archivos impactados:
+  - `app/src/main/res/layout/item_catalog_cell.xml`
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+- Validacion tecnica:
+  - `assembleDebug` exitoso.

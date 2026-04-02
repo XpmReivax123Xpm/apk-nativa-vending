@@ -168,6 +168,13 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Fondo general del catalogo mantiene tratamiento visual separado (degradado), sin invadir la franja superior blanca.
 - Estado: ajuste visual de cabecera listo para validacion final en tablet vending real.
 
+## Densidad visual de grilla (actualizado 2026-04-02)
+- Se simplifico la informacion visible en cada celda del planograma:
+  - en grilla queda visible solo el codigo de celda.
+  - precio, nombre y stock pasan a consultarse en el modal de detalle al tocar el producto.
+- Objetivo:
+  - reducir ruido visual en pantalla principal y priorizar lectura/seleccion rapida.
+
 ## Media dinamica de planograma (actualizado 2026-04-01)
 - Carrusel promocional conectado al backend (`taPresentacionArchivos`) con orden visual y filtros de estado/tipo.
 - Fondo principal del planograma conectado al backend (`taFondoUiPrincipal`) con fallback local cuando no hay asset valido.

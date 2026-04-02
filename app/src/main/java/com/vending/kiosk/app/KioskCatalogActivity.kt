@@ -929,6 +929,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                             card.findViewById<TextView>(R.id.tvCellPrice).text =
                                 if (item.precio > 0.0) "Bs ${formatPrice(item.precio)}" else "Sin precio"
                             card.findViewById<TextView>(R.id.tvCellStock).text = "Stock: ${item.stockDisponible}"
+                            card.findViewById<LinearLayout>(R.id.llCellInfo).visibility = View.GONE
                             val ivProduct = card.findViewById<ImageView>(R.id.ivCellProductImage)
                             loadProductImage(item.imagenUrl, ivProduct)
 

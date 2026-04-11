@@ -200,6 +200,14 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - implementado en `KioskCatalogActivity` con contador de modales activos.
   - pendiente validacion final prolongada en vending real (sesiones largas con interacciones mixtas).
 
+## Robustez serial en campo (actualizado 2026-04-06)
+- `VendingFlowController` actualizado para operacion real con mayor tolerancia:
+  - timeout de driver extendido a `60s`.
+  - eliminacion de timeout del segundo click en etapa de retiro (espera indefinida hasta evento IO valido).
+- Impacto funcional:
+  - el flujo no corta por timeout a los `180s` en retiro.
+  - disminuye abortos por ciclos lentos observados en uso real.
+
 ## Carrusel promocional (actualizado 2026-04-01)
 - Decisión tomada: usar definitivamente carrusel tipo 3 (`ViewFlipper` + fade) en `KioskCatalog`.
 - Se retiro el laboratorio temporal de comparacion de carruseles y su boton de acceso.

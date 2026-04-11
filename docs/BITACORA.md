@@ -496,3 +496,14 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
 - Validacion tecnica:
   - `assembleDebug` exitoso.
+
+## 2026-04-06 - Runtime serial: ajuste de timeouts en `VendingFlowController`
+- Se ajusto el timeout de driver de `45s` a `60s` para reducir falsos positivos de timeout en ciclos lentos de vending real.
+- Se actualizo mensaje asociado a timeout de driver para reflejar `60s`.
+- Se elimino el timeout de espera del segundo click (`IO_WAIT_TIMEOUT_MS = 180s`), dejando espera indefinida en etapa de retiro hasta recibir la secuencia IO esperada.
+- Alcance:
+  - impacta tanto `VendingTesterActivity` como `KioskCatalogActivity`, ya que ambos reutilizan `VendingFlowController`.
+- Archivo impactado:
+  - `integration-serial/src/main/kotlin/com/vending/kiosk/integration/serial/runtime/VendingFlowController.kt`
+- Validacion tecnica:
+  - `assembleDebug` exitoso.

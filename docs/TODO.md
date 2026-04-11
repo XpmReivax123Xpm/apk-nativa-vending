@@ -61,6 +61,8 @@
 - [ ] Definir politica de reintentos seguros por comando.
 - [ ] Definir estrategia de recuperacion local antes de compensacion backend.
 - [ ] Definir condiciones de estado incierto y corte seguro.
+- [x] Ajustar timeout de driver a 60s en `VendingFlowController`.
+- [x] Eliminar timeout de espera del segundo click (`IO_WAIT_TIMEOUT_MS`) para no cortar flujo de retiro por tiempo fijo.
 
 ### Fase 4 - Flujos completos E2E
 - [ ] Flujo completo de compra directa (login -> pago -> entrega).

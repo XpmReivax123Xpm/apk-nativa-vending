@@ -1721,18 +1721,95 @@ class KioskCatalogActivity : AppCompatActivity() {
             .setCancelable(false)
             .create()
 
+        btnClose.visibility = View.VISIBLE
+        btnClose.isEnabled = true
+        btnClose.text = "Cancelar"
+        var cancelInProgress = false
+
         btnClose.setOnClickListener {
+            if (cancelInProgress) return@setOnClickListener
             qrPollingJob?.cancel()
-            dialog.dismiss()
+            val confirmView = LayoutInflater.from(this).inflate(R.layout.dialog_cancel_order_confirm, null)
+            val btnNo = confirmView.findViewById<Button>(R.id.btnCancelOrderNo)
+            val btnYes = confirmView.findViewById<Button>(R.id.btnCancelOrderYes)
+            val confirmDialog = AlertDialog.Builder(this)
+                .setView(confirmView)
+                .setCancelable(false)
+                .create()
+
+            confirmDialog.setOnDismissListener {
+                onModalDismissed()
+            }
+            btnNo.setOnClickListener {
+                confirmDialog.dismiss()
+                if (!cancelInProgress && dialog.isShowing) {
+                    tvQrStatus.text = "Esperando confirmacion de pago..."
+                    progressQr.visibility = View.VISIBLE
+                    startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart)
+                }
+            }
+            btnYes.setOnClickListener {
+                cancelInProgress = true
+                btnClose.isEnabled = false
+                tvQrStatus.text = "Cancelando pedido..."
+                progressQr.visibility = View.VISIBLE
+                confirmDialog.dismiss()
+
+                lifecycleScope.launch {
+                    val cancelResult = withContext(Dispatchers.IO) {
+                        cancelPendingOrder(
+                            pedidoId = result.pedidoId,
+                            authHeader = authHeader,
+                            reason = "CANCELADO_CLIENTE_APK"
+                        )
+                    }
+
+                    when (cancelResult) {
+                        is OrderCancelResult.Success -> {
+                            dialog.dismiss()
+                            loadCatalog(machineId, authHeader)
+                            Toast.makeText(
+                                this@KioskCatalogActivity,
+                                cancelResult.message.ifBlank { "Pedido cancelado." },
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                        is OrderCancelResult.Error -> {
+                            tvQrStatus.text = cancelResult.message.ifBlank { "No se pudo cancelar el pedido." }
+                            btnClose.isEnabled = true
+                            cancelInProgress = false
+                            startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart)
+                        }
+                    }
+                }
+            }
+
+            onModalShown()
+            confirmDialog.show()
+            confirmDialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         }
 
         onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.setOnDismissListener {
+            qrPollingJob?.cancel()
             onModalDismissed()
         }
 
+        startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart)
+    }
+
+    private fun startQrPaymentPolling(
+        dialog: AlertDialog,
+        tvQrStatus: TextView,
+        progressQr: ProgressBar,
+        btnClose: Button,
+        result: QrGenerationResult.Success,
+        selections: List<PurchaseSelection>,
+        fromCart: Boolean
+    ) {
         qrPollingJob?.cancel()
         qrPollingJob = lifecycleScope.launch {
             val started = System.currentTimeMillis()
@@ -1777,6 +1854,63 @@ class KioskCatalogActivity : AppCompatActivity() {
                 loadCatalog(machineId, authHeader)
                 Toast.makeText(this@KioskCatalogActivity, "QR vencido, vuelve a intentar", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun cancelPendingOrder(
+        pedidoId: Int,
+        authHeader: String,
+        reason: String
+    ): OrderCancelResult {
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/$pedidoId/cancelar"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                doOutput = true
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Content-Type", "application/json")
+            }
+
+            val payload = JSONObject().apply {
+                put("tcMotivo", reason.ifBlank { "CANCELADO_CLIENTE_APK" })
+            }.toString()
+
+            connection.outputStream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                return OrderCancelResult.Error("Sin respuesta al cancelar pedido (HTTP $statusCode)")
+            }
+
+            val json = JSONObject(rawBody)
+            val backendError = json.optInt("error", -1)
+            val backendStatus = json.optInt("status", 0)
+            val backendMessage = json.optString("message", "No se pudo cancelar el pedido.")
+
+            return if (statusCode in 200..299 && backendError == 0 && backendStatus == 1) {
+                OrderCancelResult.Success(backendMessage)
+            } else {
+                OrderCancelResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
+            }
+        } catch (ex: Exception) {
+            OrderCancelResult.Error("Error cancelando pedido: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
         }
     }
 
@@ -2450,6 +2584,11 @@ private sealed interface PaymentPollResult {
     data class Pending(val message: String) : PaymentPollResult
     data class Failed(val message: String) : PaymentPollResult
     data class Error(val message: String) : PaymentPollResult
+}
+
+private sealed interface OrderCancelResult {
+    data class Success(val message: String) : OrderCancelResult
+    data class Error(val message: String) : OrderCancelResult
 }
 
 private sealed interface MachineAccessResult {

@@ -239,3 +239,8 @@ El lock actual está implementado correctamente **a nivel app/activity** en `Kio
   - exito: `Pago confirmado`
 - Modal de exito de dispensado:
   - incorpora autocierre en 5 segundos con contador visible.
+- Cancelacion en modal QR:
+  - se agrego accion `Cancelar` con confirmacion previa (`Si/No`).
+  - `Si`: ejecuta `POST /api/pedido/{tnPedido}/cancelar` con motivo `CANCELADO_CLIENTE_APK`.
+  - `No`: retorna a estado de espera y polling activo.
+  - se implemento dialogo custom para mantener consistencia visual kiosk (sin popup nativo oscuro).

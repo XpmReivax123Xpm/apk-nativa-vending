@@ -197,6 +197,9 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Modal de QR durante polling:
   - estado pendiente unificado a `Esperando confirmacion de pago...` para evitar mensajes tecnicos/confusos.
   - estado de exito se mantiene en `Pago confirmado`.
+  - se incorpora accion `Cancelar` con confirmacion previa (`Si/No`).
+  - al confirmar `Si`, se ejecuta `POST /api/pedido/{tnPedido}/cancelar` con motivo `CANCELADO_CLIENTE_APK`.
+  - si el operador elige `No`, el flujo continua en polling normal.
 - Modal de exito de dispensado:
   - se incorpora autocierre de `5s` con contador visible.
 

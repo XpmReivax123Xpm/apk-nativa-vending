@@ -526,3 +526,24 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - compilaciones `assembleDebug` exitosas.
   - instalaciones ADB exitosas en dispositivo conectado.
+
+## 2026-04-13 - Cancelacion de pedido desde modal QR + confirmacion visual unificada
+- Se habilito opcion de `Cancelar` dentro del modal de QR generado (etapa de pago).
+- Se integro cancelacion contra backend:
+  - `POST /api/pedido/{tnPedido}/cancelar`
+  - `Authorization: Bearer <token>`
+  - `Accept: application/json`
+  - `Content-Type: application/json`
+  - body enviado: `{ "tcMotivo": "CANCELADO_CLIENTE_APK" }`
+- Se agrego confirmacion previa antes de cancelar:
+  - pregunta: `Estas seguro de cancelar el pedido?`
+  - acciones: `Si` / `No`
+  - `Si`: ejecuta API de cancelacion.
+  - `No`: no cancela y se reanuda polling de pago.
+- Se reemplazo el dialogo nativo oscuro por modal custom con estetica kiosk (fondo claro + botones estilo de la app) para mantener consistencia visual.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_cancel_order_confirm.xml`
+- Validacion tecnica:
+  - `assembleDebug` exitoso.
+  - instalacion ADB exitosa en dispositivo conectado.

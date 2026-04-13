@@ -190,6 +190,16 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - autocierre + refresh de catalogo al expirar
 - Estado: implementado y desplegado; pendiente solo ajuste fino visual final segun validacion en dispositivo real.
 
+## Flujo de compra QR (actualizado 2026-04-13)
+- Flujo operativo simplificado para esta etapa:
+  - `Comprar ahora` -> checkout QR directo (sin selector intermedio de metodo).
+  - `Comprar` desde carrito -> checkout QR directo (sin selector intermedio de metodo).
+- Modal de QR durante polling:
+  - estado pendiente unificado a `Esperando confirmacion de pago...` para evitar mensajes tecnicos/confusos.
+  - estado de exito se mantiene en `Pago confirmado`.
+- Modal de exito de dispensado:
+  - se incorpora autocierre de `5s` con contador visible.
+
 ## Coordinacion de timers (actualizado 2026-04-02)
 - Se incorporo regla de convivencia entre timers:
   - mientras exista cualquier modal abierto, el temporizador global de inactividad del planograma queda pausado.

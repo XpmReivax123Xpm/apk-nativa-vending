@@ -507,3 +507,22 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `integration-serial/src/main/kotlin/com/vending/kiosk/integration/serial/runtime/VendingFlowController.kt`
 - Validacion tecnica:
   - `assembleDebug` exitoso.
+
+## 2026-04-13 - Flujo QR directo + mensajes de polling + autocierre de exito
+- Se simplifico el flujo de compra en kiosk para reducir pasos:
+  - `Comprar ahora` ahora abre directo el checkout QR.
+  - `Comprar` desde carrito ahora abre directo el checkout QR.
+  - se omite el modal intermedio `Selecciona metodo de pago` en el flujo principal actual.
+- Se ajusto mensajeria del estado de pago en modal QR:
+  - en estado pendiente ya no muestra texto backend variable,
+  - se muestra siempre `Esperando confirmacion de pago...`.
+  - al confirmar pago se mantiene `Pago confirmado`.
+- Se agrego autocierre al modal de exito de dispensado:
+  - modal `Gracias por su compra` ahora muestra contador y se cierra en `5s`.
+  - en error de dispensado se mantiene cierre manual (sin autocierre).
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_dispense_progress.xml`
+- Validacion tecnica:
+  - compilaciones `assembleDebug` exitosas.
+  - instalaciones ADB exitosas en dispositivo conectado.

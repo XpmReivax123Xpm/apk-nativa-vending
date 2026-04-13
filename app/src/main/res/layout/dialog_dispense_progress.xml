@@ -34,6 +34,16 @@
         android:textColor="#F28E1B"
         android:textSize="14sp" />
 
+    <TextView
+        android:id="@+id/tvDispenseTimer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:textColor="#7B8A9A"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
     <Button
         android:id="@+id/btnDispenseClose"
         android:layout_width="match_parent"

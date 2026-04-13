@@ -226,3 +226,16 @@ Archivo: `app/src/main/AndroidManifest.xml`
 ## Resumen de hallazgo técnico central
 
 El lock actual está implementado correctamente **a nivel app/activity** en `KioskCatalogActivity`, pero no está respaldado por infraestructura de **Device Owner / DevicePolicyManager / lockTaskMode administrado** en manifest/políticas. Por eso el bloqueo es parcial y no puede dominar controles OEM del sistema en Android 7.1.2.
+
+---
+
+## Addendum 2026-04-13 (actualizacion de flujo QR)
+
+- Flujo kiosk de compra simplificado:
+  - `Comprar ahora` y `Comprar` desde carrito pasan directo a checkout QR.
+  - El modal intermedio de seleccion de metodo queda omitido en el flujo principal actual.
+- Mensajeria de estado en polling QR ajustada:
+  - pendiente: `Esperando confirmacion de pago...`
+  - exito: `Pago confirmado`
+- Modal de exito de dispensado:
+  - incorpora autocierre en 5 segundos con contador visible.

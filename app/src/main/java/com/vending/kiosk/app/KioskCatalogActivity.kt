@@ -100,8 +100,10 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispenseDialog: AlertDialog? = null
     private var tvDispenseStatus: TextView? = null
     private var tvDispenseTitle: TextView? = null
+    private var tvDispenseTimer: TextView? = null
     private var progressDispense: ProgressBar? = null
     private var btnDispenseClose: Button? = null
+    private var dispenseSuccessCloseTimer: CountDownTimer? = null
     private var kioskLocked = false
     private var lockTaskStarted = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
@@ -1070,7 +1072,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnBuyNow.setOnClickListener {
             resetAutoCloseTimer()
             dialog.dismiss()
-            openPaymentMethodDialog(listOf(PurchaseSelection(item, qty)), fromCart = false)
+            openCheckoutDialog(
+                selections = listOf(PurchaseSelection(item, qty)),
+                fromCart = false,
+                paymentMethod = PaymentMethodOption.QR_BCP
+            )
         }
 
         onModalShown()
@@ -1217,7 +1223,11 @@ class KioskCatalogActivity : AppCompatActivity() {
             resetAutoCloseTimer()
             val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
             dialog.dismiss()
-            openPaymentMethodDialog(selections, fromCart = true)
+            openCheckoutDialog(
+                selections = selections,
+                fromCart = true,
+                paymentMethod = PaymentMethodOption.QR_BCP
+            )
         }
 
         onModalShown()
@@ -1742,7 +1752,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     }
 
                     is PaymentPollResult.Pending -> {
-                        tvQrStatus.text = pollResult.message.ifBlank { "Esperando confirmacion de pago..." }
+                        tvQrStatus.text = "Esperando confirmacion de pago..."
                     }
 
                     is PaymentPollResult.Failed -> {
@@ -1853,6 +1863,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_progress, null)
         tvDispenseTitle = view.findViewById(R.id.tvDispenseTitle)
         tvDispenseStatus = view.findViewById(R.id.tvDispenseStatus)
+        tvDispenseTimer = view.findViewById(R.id.tvDispenseTimer)
         progressDispense = view.findViewById(R.id.progressDispense)
         btnDispenseClose = view.findViewById(R.id.btnDispenseClose)
 
@@ -1862,6 +1873,8 @@ class KioskCatalogActivity : AppCompatActivity() {
             .create()
 
         btnDispenseClose?.setOnClickListener {
+            dispenseSuccessCloseTimer?.cancel()
+            dispenseSuccessCloseTimer = null
             dialog.dismiss()
         }
 
@@ -1870,6 +1883,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dispenseDialog = dialog
         dialog.setOnDismissListener {
+            dispenseSuccessCloseTimer?.cancel()
+            dispenseSuccessCloseTimer = null
             onModalDismissed()
         }
 
@@ -1880,6 +1895,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         tvDispenseTitle?.text = "Pago realizado"
         tvDispenseStatus?.text = "La maquina esta dispensando tu compra..."
+        tvDispenseTimer?.visibility = View.GONE
         progressDispense?.visibility = View.VISIBLE
         btnDispenseClose?.visibility = View.GONE
 
@@ -1915,9 +1931,12 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun onDispenseError(message: String) {
         dispensingInProgress = false
         runCatching { vendFlow.stop() }
+        dispenseSuccessCloseTimer?.cancel()
+        dispenseSuccessCloseTimer = null
 
         tvDispenseTitle?.text = "Incidencia en dispensado"
         tvDispenseStatus?.text = message
+        tvDispenseTimer?.visibility = View.GONE
         progressDispense?.visibility = View.GONE
         btnDispenseClose?.visibility = View.VISIBLE
     }
@@ -1925,9 +1944,12 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun onDispenseFinished() {
         dispensingInProgress = false
         runCatching { vendFlow.stop() }
+        dispenseSuccessCloseTimer?.cancel()
+        dispenseSuccessCloseTimer = null
 
         tvDispenseTitle?.text = "Gracias por su compra"
         tvDispenseStatus?.text = "Dispensado completado correctamente."
+        tvDispenseTimer?.visibility = View.VISIBLE
         progressDispense?.visibility = View.GONE
         btnDispenseClose?.visibility = View.VISIBLE
 
@@ -1935,6 +1957,18 @@ class KioskCatalogActivity : AppCompatActivity() {
             cartItems.clear()
             updateCartBadge()
         }
+
+        dispenseSuccessCloseTimer = object : CountDownTimer(DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS, 1000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
+                tvDispenseTimer?.text = "Cerrando en ${seconds}s..."
+            }
+
+            override fun onFinish() {
+                tvDispenseTimer?.text = "Cerrando en 0s..."
+                dispenseDialog?.takeIf { it.isShowing }?.dismiss()
+            }
+        }.start()
 
         loadCatalog(machineId, authHeader)
     }
@@ -2349,6 +2383,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DEFAULT_CUSTOMER_PHONE = "9999999"
         private const val DEFAULT_CUSTOMER_CI_NIT = "9999999"
         private const val PRODUCT_DIALOG_TIMEOUT_MS = 60_000L
+        private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
     }
 }

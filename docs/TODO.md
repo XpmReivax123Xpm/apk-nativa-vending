@@ -103,11 +103,13 @@
 - [~] Cerrar criterio final de confirmacion con backend (actualmente compatibilidad temporal: `tnEstadoPago == 2` o `tnEstadoPedido == 2`, con fallback `estado == 2`) y eliminar dependencias de campos legacy.
 - [x] Cierre automatico de modal QR al timeout + refresh de catalogo.
 - [x] Insertar modal intermedio de seleccion de metodo de pago (v1: solo `QR BCP`) para escalar a nuevos metodos.
+  - estado actual (2026-04-13): modal mantenido en codigo, pero omitido en flujo principal; compra va directo a checkout QR.
 - [x] Unificar paleta visual de modales de compra/pago con tema kiosk claro.
 - [x] Bloquear interaccion durante generacion de QR con modal de progreso no cancelable.
 - [x] Agregar temporizador de autocierre en modal `Selecciona metodo de pago` (60s + refresh al expirar).
 - [x] Agregar temporizador de autocierre en modal de checkout previo a `Generar QR` (60s + refresh al expirar).
 - [x] Coordinar timers de modales con timer global de inactividad del planograma (pausar refresh global mientras haya modal abierto).
+- [x] Unificar mensaje de estado pendiente en modal QR a `Esperando confirmacion de pago...`.
 
 ### Fase 4 - Flujos completos E2E
 - [~] Compra directa: implementada hasta pago y disparo de dispensado secuencial; falta endurecer manejo de estados excepcionales/reporteria final.
@@ -119,4 +121,5 @@
 - [x] Agregar temporizador de autocierre (60s) en modal de producto con reinicio por interaccion.
 - [x] Agregar cierre manual visible en cabecera del modal de producto.
 - [x] Aislar visualmente la cabecera superior del `KioskCatalog` con franja blanca full-width independiente del fondo.
+- [x] Agregar autocierre de 5s al modal de exito de dispensado (`Gracias por su compra`).
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

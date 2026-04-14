@@ -566,3 +566,15 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - `assembleDebug` exitoso.
   - instalacion ADB exitosa en dispositivo conectado.
+
+## 2026-04-14 - Reintegracion de seleccion de metodo de pago en flujo principal
+- Se revierte la omision temporal del selector de metodo para volver al flujo con paso intermedio.
+- Flujo actualizado:
+  - `Comprar ahora` -> `Selecciona metodo de pago` -> checkout QR.
+  - `Comprar` desde carrito -> `Selecciona metodo de pago` -> checkout QR.
+- Se conservaron sin cambios:
+  - temporizador de 60s del modal de metodo de pago.
+  - flujo QR con polling, confirmacion y cancelacion de pedido.
+- Validacion tecnica:
+  - `assembleDebug` exitoso.
+  - instalacion ADB exitosa en dispositivo conectado.

@@ -248,3 +248,11 @@ El lock actual está implementado correctamente **a nivel app/activity** en `Kio
   - rediseño visual alineado a referencia operativa (jerarquia mas clara y foco en imagen/producto).
   - total de compra visible y actualizado en tiempo real segun cantidad.
   - correccion de desalineacion en controles de cantidad con iconos vectoriales.
+
+## Addendum 2026-04-14 (ajuste de flujo de metodo de pago)
+
+- Se reintegro el modal `Selecciona metodo de pago` al flujo principal de compra.
+- Flujo vigente:
+  - `Comprar ahora` -> `Selecciona metodo de pago` -> checkout QR -> modal QR.
+  - `Comprar` desde carrito -> `Selecciona metodo de pago` -> checkout QR -> modal QR.
+- El modal de metodo mantiene su temporizador de 60s y comportamiento de autocierre.

@@ -1078,10 +1078,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnBuyNow.setOnClickListener {
             resetAutoCloseTimer()
             dialog.dismiss()
-            openCheckoutDialog(
+            openPaymentMethodDialog(
                 selections = listOf(PurchaseSelection(item, qty)),
-                fromCart = false,
-                paymentMethod = PaymentMethodOption.QR_BCP
+                fromCart = false
             )
         }
 
@@ -1242,10 +1241,9 @@ class KioskCatalogActivity : AppCompatActivity() {
             resetAutoCloseTimer()
             val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
             dialog.dismiss()
-            openCheckoutDialog(
+            openPaymentMethodDialog(
                 selections = selections,
-                fromCart = true,
-                paymentMethod = PaymentMethodOption.QR_BCP
+                fromCart = true
             )
         }
 
@@ -1841,6 +1839,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                     is PaymentPollResult.Paid -> {
                         progressQr.visibility = View.GONE
                         tvQrStatus.text = "Pago confirmado"
+                        btnClose.visibility = View.GONE
+                        btnClose.isEnabled = false
                         delay(500)
                         dialog.dismiss()
                         showDispenseDialogAndStart(selections, fromCart)

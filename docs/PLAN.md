@@ -190,10 +190,10 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - autocierre + refresh de catalogo al expirar
 - Estado: implementado y desplegado; pendiente solo ajuste fino visual final segun validacion en dispositivo real.
 
-## Flujo de compra QR (actualizado 2026-04-13)
-- Flujo operativo simplificado para esta etapa:
-  - `Comprar ahora` -> checkout QR directo (sin selector intermedio de metodo).
-  - `Comprar` desde carrito -> checkout QR directo (sin selector intermedio de metodo).
+## Flujo de compra QR (actualizado 2026-04-14)
+- Flujo operativo vigente:
+  - `Comprar ahora` -> `Selecciona metodo de pago` -> checkout QR.
+  - `Comprar` desde carrito -> `Selecciona metodo de pago` -> checkout QR.
 - Modal de QR durante polling:
   - estado pendiente unificado a `Esperando confirmacion de pago...` para evitar mensajes tecnicos/confusos.
   - estado de exito se mantiene en `Pago confirmado`.

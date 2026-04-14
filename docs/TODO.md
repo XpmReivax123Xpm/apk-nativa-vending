@@ -103,7 +103,7 @@
 - [~] Cerrar criterio final de confirmacion con backend (actualmente compatibilidad temporal: `tnEstadoPago == 2` o `tnEstadoPedido == 2`, con fallback `estado == 2`) y eliminar dependencias de campos legacy.
 - [x] Cierre automatico de modal QR al timeout + refresh de catalogo.
 - [x] Insertar modal intermedio de seleccion de metodo de pago (v1: solo `QR BCP`) para escalar a nuevos metodos.
-  - estado actual (2026-04-13): modal mantenido en codigo, pero omitido en flujo principal; compra va directo a checkout QR.
+  - estado actual (2026-04-14): modal reintegrado en el flujo principal; `Comprar ahora` y `Comprar` desde carrito pasan por `Selecciona metodo de pago` antes del checkout QR.
 - [x] Unificar paleta visual de modales de compra/pago con tema kiosk claro.
 - [x] Bloquear interaccion durante generacion de QR con modal de progreso no cancelable.
 - [x] Agregar temporizador de autocierre en modal `Selecciona metodo de pago` (60s + refresh al expirar).

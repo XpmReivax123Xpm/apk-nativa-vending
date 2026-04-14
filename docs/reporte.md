@@ -256,3 +256,15 @@ El lock actual está implementado correctamente **a nivel app/activity** en `Kio
   - `Comprar ahora` -> `Selecciona metodo de pago` -> checkout QR -> modal QR.
   - `Comprar` desde carrito -> `Selecciona metodo de pago` -> checkout QR -> modal QR.
 - El modal de metodo mantiene su temporizador de 60s y comportamiento de autocierre.
+
+## Addendum 2026-04-14 (modal condicional detalle + carrito)
+
+- Se implemento comportamiento condicional al tocar celdas vendibles:
+  - con carrito vacio: modal clasico de detalle de producto.
+  - con carrito con items: modal fusionado que combina detalle del producto seleccionado y estado completo del carrito.
+- El modal fusionado permite:
+  - agregar el producto actual con cantidad variable,
+  - ajustar cantidades de lineas del carrito,
+  - remover lineas,
+  - vaciar carrito,
+  - iniciar compra (`Comprar ahora`) sin salir del contexto.

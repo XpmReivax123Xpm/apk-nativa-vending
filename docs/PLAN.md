@@ -208,6 +208,9 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - estructura visual por bloques (titulo, media, cantidad, resumen economico, CTAs).
   - total dinamico segun cantidad seleccionada.
   - controles de cantidad con iconografia centrada (`-`/`+`) para evitar desalineaciones por fuente OEM.
+  - regla de apertura condicional:
+    - si el carrito esta vacio, se mantiene modal de detalle clasico.
+    - si el carrito ya tiene items, se abre modal fusionado (detalle + carrito) para continuar compra sin cambiar de contexto.
 
 ## Coordinacion de timers (actualizado 2026-04-02)
 - Se incorporo regla de convivencia entre timers:

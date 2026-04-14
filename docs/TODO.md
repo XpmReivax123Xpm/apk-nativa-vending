@@ -127,4 +127,7 @@
 - [x] Rediseñar modal de detalle de producto con jerarquia visual mejorada para operacion kiosk.
 - [x] Recalcular total en vivo en modal de detalle al cambiar cantidad.
 - [x] Corregir alineacion visual de controles `+/-` usando iconos en `ImageButton`.
+- [x] Aplicar apertura condicional de modal por estado de carrito:
+  - carrito vacio: abrir modal de detalle de producto tradicional.
+  - carrito con items: abrir modal fusionado (detalle + carrito) con edicion de cantidades, vaciado y compra desde el mismo dialogo.
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

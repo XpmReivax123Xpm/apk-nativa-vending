@@ -578,3 +578,19 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - `assembleDebug` exitoso.
   - instalacion ADB exitosa en dispositivo conectado.
+
+## 2026-04-14 - Modal condicional detalle/fusion segun estado de carrito
+- Se ajusto la regla de apertura al tocar una celda vendible del planograma:
+  - si `carrito` esta vacio -> abre modal tradicional `Detalles del Producto`.
+  - si `carrito` tiene items -> abre modal fusionado `Detalle + Carrito`.
+- Modal fusionado incorporado:
+  - panel izquierdo: detalle del producto seleccionado + selector de cantidad + `Agregar carrito`.
+  - panel derecho: carrito editable (sumar/restar/quitar), total unidades, total a pagar, `Comprar ahora` y `Vaciar carrito`.
+- Si se vacia completamente el carrito desde el modal fusionado, el flujo vuelve automaticamente al modal de detalle tradicional.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_product_cart_fusion.xml`
+  - `app/src/main/res/layout/item_cart_line_fusion.xml`
+- Validacion tecnica:
+  - `assembleDebug` exitoso.
+  - instalacion ADB exitosa en dispositivo conectado.

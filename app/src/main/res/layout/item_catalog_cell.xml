@@ -15,9 +15,8 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:adjustViewBounds="false"
-            android:background="@drawable/bg_catalog_image_rect"
             android:contentDescription="producto"
-            android:scaleType="centerCrop"
+            android:scaleType="fitXY"
             android:src="@android:drawable/ic_menu_gallery" />
 
         <TextView

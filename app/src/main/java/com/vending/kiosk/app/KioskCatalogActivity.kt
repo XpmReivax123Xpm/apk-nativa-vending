@@ -1172,19 +1172,25 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             itemsContainer.removeAllViews()
-            cartItems.values.forEach { line ->
+            val lines = cartItems.values.toList()
+            lines.forEachIndexed { index, line ->
                 val itemView = LayoutInflater.from(this).inflate(R.layout.item_cart_line, itemsContainer, false)
                 val tvName = itemView.findViewById<TextView>(R.id.tvCartItemName)
                 val tvPrice = itemView.findViewById<TextView>(R.id.tvCartItemPrice)
+                val tvSubtotal = itemView.findViewById<TextView>(R.id.tvCartItemSubtotal)
                 val tvQty = itemView.findViewById<TextView>(R.id.tvCartQty)
                 val btnMinus = itemView.findViewById<ImageButton>(R.id.btnCartQtyMinus)
                 val btnPlus = itemView.findViewById<ImageButton>(R.id.btnCartQtyPlus)
+                val btnRemove = itemView.findViewById<ImageButton>(R.id.btnCartRemove)
                 val ivPreview = itemView.findViewById<ImageView>(R.id.ivCartItemPreview)
+                val divider = itemView.findViewById<View>(R.id.vCartItemDivider)
 
                 tvName.text = "${line.item.codigoCelda} - ${line.item.producto}"
                 tvPrice.text = "Unitario: ${if (line.item.precio > 0) "Bs ${formatPrice(line.item.precio)}" else "Sin precio"}"
+                tvSubtotal.text = "${formatPrice(line.item.precio * line.quantity)} Bs"
                 tvQty.text = line.quantity.toString()
                 loadProductImage(line.item.imagenUrl, ivPreview)
+                divider.visibility = if (index == lines.lastIndex) View.GONE else View.VISIBLE
 
                 btnMinus.setOnClickListener {
                     resetAutoCloseTimer()
@@ -1206,6 +1212,13 @@ class KioskCatalogActivity : AppCompatActivity() {
                     } else {
                         Toast.makeText(this, "No puedes superar el stock", Toast.LENGTH_SHORT).show()
                     }
+                }
+
+                btnRemove.setOnClickListener {
+                    resetAutoCloseTimer()
+                    cartItems.remove(line.item.planogramaCeldaId)
+                    updateCartBadge()
+                    bindCartUi()
                 }
 
                 itemsContainer.addView(itemView)
@@ -2124,14 +2137,29 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun loadProductImage(imageUrl: String, imageView: ImageView) {
+        val keepCenterCrop = imageView.scaleType == ImageView.ScaleType.CENTER_CROP
+        val keepFitXy = imageView.scaleType == ImageView.ScaleType.FIT_XY
+
+        fun placeholderScaleType(): ImageView.ScaleType = when {
+            keepCenterCrop -> ImageView.ScaleType.CENTER_CROP
+            keepFitXy -> ImageView.ScaleType.FIT_XY
+            else -> ImageView.ScaleType.CENTER_INSIDE
+        }
+
+        fun loadedScaleType(): ImageView.ScaleType = when {
+            keepCenterCrop -> ImageView.ScaleType.CENTER_CROP
+            keepFitXy -> ImageView.ScaleType.FIT_XY
+            else -> ImageView.ScaleType.FIT_CENTER
+        }
+
         imageView.setImageResource(android.R.drawable.ic_menu_gallery)
-        imageView.scaleType = ImageView.ScaleType.CENTER_INSIDE
+        imageView.scaleType = placeholderScaleType()
         if (imageUrl.isBlank()) return
 
         imageView.tag = imageUrl
         imageCache.get(imageUrl)?.let { bitmap ->
             imageView.setImageBitmap(bitmap)
-            imageView.scaleType = ImageView.ScaleType.FIT_CENTER
+            imageView.scaleType = loadedScaleType()
             return
         }
 
@@ -2153,8 +2181,14 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
             targets.forEach { target ->
                 if (target.tag == imageUrl && bitmap != null) {
+                    val shouldKeepCenterCrop = target.scaleType == ImageView.ScaleType.CENTER_CROP
+                    val shouldKeepFitXy = target.scaleType == ImageView.ScaleType.FIT_XY
                     target.setImageBitmap(bitmap)
-                    target.scaleType = ImageView.ScaleType.FIT_CENTER
+                    target.scaleType = when {
+                        shouldKeepCenterCrop -> ImageView.ScaleType.CENTER_CROP
+                        shouldKeepFitXy -> ImageView.ScaleType.FIT_XY
+                        else -> ImageView.ScaleType.FIT_CENTER
+                    }
                 }
             }
         }

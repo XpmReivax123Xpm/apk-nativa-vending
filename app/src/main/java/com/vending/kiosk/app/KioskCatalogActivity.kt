@@ -988,10 +988,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_product_detail, null)
         val tvCode = view.findViewById<TextView>(R.id.tvDialogProductCode)
         val tvName = view.findViewById<TextView>(R.id.tvDialogProductName)
+        val tvPrice = view.findViewById<TextView>(R.id.tvDialogProductPrice)
         val tvStock = view.findViewById<TextView>(R.id.tvDialogProductStock)
+        val tvTotal = view.findViewById<TextView>(R.id.tvDialogProductTotal)
         val tvQty = view.findViewById<TextView>(R.id.tvDialogQty)
-        val btnMinus = view.findViewById<Button>(R.id.btnQtyMinus)
-        val btnPlus = view.findViewById<Button>(R.id.btnQtyPlus)
+        val btnMinus = view.findViewById<ImageButton>(R.id.btnQtyMinus)
+        val btnPlus = view.findViewById<ImageButton>(R.id.btnQtyPlus)
         val btnAddCart = view.findViewById<Button>(R.id.btnAddCart)
         val btnBuyNow = view.findViewById<Button>(R.id.btnBuyNow)
         val btnClose = view.findViewById<TextView>(R.id.btnProductDialogClose)
@@ -1004,13 +1006,15 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnClose.text = "X"
         btnClose.setTextColor(Color.WHITE)
 
-        tvCode.text = "${item.codigoCelda} - ${item.producto}"
-        tvName.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
+        tvCode.text = "Casilla ${item.codigoCelda}"
+        tvName.text = item.producto
+        tvPrice.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
         tvStock.text = "Stock disponible: ${item.stockDisponible}"
         loadProductImage(item.imagenUrl, ivPreview)
 
         var qty = 1
         tvQty.text = qty.toString()
+        tvTotal.text = "Bs ${formatPrice(item.precio * qty)}"
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
@@ -1048,6 +1052,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             if (qty > 1) {
                 qty--
                 tvQty.text = qty.toString()
+                tvTotal.text = "Bs ${formatPrice(item.precio * qty)}"
             }
         }
 
@@ -1056,6 +1061,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             if (qty < item.stockDisponible) {
                 qty++
                 tvQty.text = qty.toString()
+                tvTotal.text = "Bs ${formatPrice(item.precio * qty)}"
             } else {
                 Toast.makeText(this, "No puedes superar el stock", Toast.LENGTH_SHORT).show()
             }

@@ -124,4 +124,7 @@
 - [x] Agregar cierre manual visible en cabecera del modal de producto.
 - [x] Aislar visualmente la cabecera superior del `KioskCatalog` con franja blanca full-width independiente del fondo.
 - [x] Agregar autocierre de 5s al modal de exito de dispensado (`Gracias por su compra`).
+- [x] Rediseñar modal de detalle de producto con jerarquia visual mejorada para operacion kiosk.
+- [x] Recalcular total en vivo en modal de detalle al cambiar cantidad.
+- [x] Corregir alineacion visual de controles `+/-` usando iconos en `ImageButton`.
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

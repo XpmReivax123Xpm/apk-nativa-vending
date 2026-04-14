@@ -20,13 +20,13 @@
             android:gravity="center"
             android:paddingLeft="12dp"
             android:paddingRight="12dp"
-            android:text="60s"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
             android:shadowColor="#80000000"
             android:shadowDx="0"
             android:shadowDy="1"
             android:shadowRadius="2"
+            android:text="60s"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
             android:textStyle="bold" />
 
         <TextView
@@ -51,63 +51,86 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="130dp"
-            android:background="@drawable/bg_catalog_image_placeholder">
-
-            <ImageView
-                android:id="@+id/ivProductPreview"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
-                android:layout_gravity="center"
-                android:contentDescription="preview"
-                android:src="@android:drawable/ic_menu_gallery" />
-        </FrameLayout>
-
         <TextView
-            android:id="@+id/tvDialogProductCode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="A1"
-            android:textColor="#0965AF"
-            android:textSize="18sp"
+            android:text="Detalles del Producto"
+            android:textColor="#0E2A47"
+            android:textSize="17sp"
             android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/tvDialogProductName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Producto"
-            android:textColor="#0965AF"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/tvDialogProductStock"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="Stock disponible: 0"
-            android:textColor="#F28E1B"
-            android:textSize="14sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:gravity="center_vertical"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_catalog_image_placeholder"
+            android:orientation="vertical"
+            android:paddingLeft="10dp"
+            android:paddingTop="12dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="12dp">
+
+            <TextView
+                android:id="@+id/tvDialogProductName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:text="Producto"
+                android:textColor="#0E2A47"
+                android:textSize="28sp"
+                android:textStyle="bold" />
+
+            <ImageView
+                android:id="@+id/ivProductPreview"
+                android:layout_width="match_parent"
+                android:layout_height="190dp"
+                android:layout_marginTop="4dp"
+                android:contentDescription="preview"
+                android:scaleType="fitCenter"
+                android:src="@android:drawable/ic_menu_gallery" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvDialogProductCode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_chip_small_dark"
+            android:paddingLeft="10dp"
+            android:paddingTop="4dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="4dp"
+            android:text="Casilla 00"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:text="Seleccionar cantidad"
+            android:textColor="#365574"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center"
             android:orientation="horizontal">
 
-            <Button
+            <ImageButton
                 android:id="@+id/btnQtyMinus"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
-                android:backgroundTint="#0965AF"
-                android:text="-"
-                android:textColor="#FFFFFF" />
+                android:layout_width="66dp"
+                android:layout_height="40dp"
+                android:backgroundTint="#F28E1B"
+                android:contentDescription="restar cantidad"
+                android:padding="8dp"
+                android:src="@drawable/ic_minus_white" />
 
             <TextView
                 android:id="@+id/tvDialogQty"
@@ -116,23 +139,68 @@
                 android:gravity="center"
                 android:text="1"
                 android:textColor="#0965AF"
-                android:textSize="20sp"
+                android:textSize="34sp"
                 android:textStyle="bold" />
 
-            <Button
+            <ImageButton
                 android:id="@+id/btnQtyPlus"
-                android:layout_width="0dp"
-                android:layout_height="44dp"
-                android:layout_weight="1"
+                android:layout_width="66dp"
+                android:layout_height="40dp"
                 android:backgroundTint="#0965AF"
-                android:text="+"
-                android:textColor="#FFFFFF" />
+                android:contentDescription="sumar cantidad"
+                android:padding="8dp"
+                android:src="@drawable/ic_plus_white" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvDialogProductPrice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Precio unitario: Bs 0.00"
+            android:textColor="#0E2A47"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvDialogProductStock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:text="Stock disponible: 0"
+            android:textColor="#F28E1B"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Total:"
+                android:textColor="#0E2A47"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDialogProductTotal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Bs 0.00"
+                android:textColor="#0E2A47"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
             android:orientation="horizontal">
 
             <Button

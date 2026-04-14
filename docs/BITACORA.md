@@ -547,3 +547,22 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - `assembleDebug` exitoso.
   - instalacion ADB exitosa en dispositivo conectado.
+
+## 2026-04-14 - Mejora estetica del modal de detalle de producto
+- Se rediseño el modal de detalle de producto tomando como referencia visual de operacion:
+  - nueva jerarquia visual con titulo `Detalles del Producto`.
+  - bloque principal de imagen y nombre del producto con mayor protagonismo.
+  - chip de `Casilla XX`.
+  - bloque de precio/stock y total mas legible.
+  - botones de accion inferiores (`Agregar carrito` / `Comprar ahora`) mantenidos en paleta kiosk.
+- Ajuste funcional UX:
+  - total del producto se recalcula en vivo al cambiar cantidad (`+/-`).
+- Correccion visual puntual:
+  - controles de cantidad migrados a `ImageButton` con iconos (`ic_minus_white` / `ic_plus_white`) para centrar correctamente los simbolos y evitar deformacion del `+` por tipografia OEM.
+- Archivos impactados:
+  - `app/src/main/res/layout/dialog_product_detail.xml`
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/drawable/bg_chip_small_dark.xml`
+- Validacion tecnica:
+  - `assembleDebug` exitoso.
+  - instalacion ADB exitosa en dispositivo conectado.

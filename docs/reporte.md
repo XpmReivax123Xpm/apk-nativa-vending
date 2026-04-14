@@ -244,3 +244,7 @@ El lock actual está implementado correctamente **a nivel app/activity** en `Kio
   - `Si`: ejecuta `POST /api/pedido/{tnPedido}/cancelar` con motivo `CANCELADO_CLIENTE_APK`.
   - `No`: retorna a estado de espera y polling activo.
   - se implemento dialogo custom para mantener consistencia visual kiosk (sin popup nativo oscuro).
+- Modal de detalle de producto:
+  - rediseño visual alineado a referencia operativa (jerarquia mas clara y foco en imagen/producto).
+  - total de compra visible y actualizado en tiempo real segun cantidad.
+  - correccion de desalineacion en controles de cantidad con iconos vectoriales.

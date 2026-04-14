@@ -203,6 +203,12 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Modal de exito de dispensado:
   - se incorpora autocierre de `5s` con contador visible.
 
+## UX modal de producto (actualizado 2026-04-14)
+- Modal de detalle de producto actualizado para mejor legibilidad en tablet vending:
+  - estructura visual por bloques (titulo, media, cantidad, resumen economico, CTAs).
+  - total dinamico segun cantidad seleccionada.
+  - controles de cantidad con iconografia centrada (`-`/`+`) para evitar desalineaciones por fuente OEM.
+
 ## Coordinacion de timers (actualizado 2026-04-02)
 - Se incorporo regla de convivencia entre timers:
   - mientras exista cualquier modal abierto, el temporizador global de inactividad del planograma queda pausado.

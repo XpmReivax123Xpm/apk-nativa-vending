@@ -104,7 +104,6 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvDispenseProductName: TextView? = null
     private var ivDispenseProduct: ImageView? = null
     private var tvDispenseTimer: TextView? = null
-    private var progressDispense: ProgressBar? = null
     private var btnDispenseClose: Button? = null
     private var dispenseSuccessCloseTimer: CountDownTimer? = null
     private var kioskLocked = false
@@ -2322,7 +2321,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         ivDispenseProduct = view.findViewById(R.id.ivDispenseProduct)
         tvDispenseStatus = view.findViewById(R.id.tvDispenseStatus)
         tvDispenseTimer = view.findViewById(R.id.tvDispenseTimer)
-        progressDispense = view.findViewById(R.id.progressDispense)
         btnDispenseClose = view.findViewById(R.id.btnDispenseClose)
 
         val dialog = AlertDialog.Builder(this)
@@ -2356,7 +2354,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvDispenseProgress?.text = "1 de ${dispensingQueue.size}"
         tvDispenseProductName?.text = dispensingQueue.firstOrNull()?.item?.producto.orEmpty()
         tvDispenseTimer?.visibility = View.GONE
-        progressDispense?.visibility = View.VISIBLE
         btnDispenseClose?.visibility = View.GONE
 
         startNextDispenseItem()
@@ -2405,7 +2402,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvDispenseStatus?.text = message
         tvDispenseProductName?.text = ""
         tvDispenseTimer?.visibility = View.GONE
-        progressDispense?.visibility = View.GONE
         btnDispenseClose?.visibility = View.VISIBLE
     }
 
@@ -2420,7 +2416,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvDispenseStatus?.text = "Dispensado completado correctamente."
         tvDispenseProductName?.text = ""
         tvDispenseTimer?.visibility = View.VISIBLE
-        progressDispense?.visibility = View.GONE
         btnDispenseClose?.visibility = View.VISIBLE
 
         if (clearCartOnDispenseFinish) {

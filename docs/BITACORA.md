@@ -631,3 +631,14 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/res/layout/dialog_dispense_progress.xml`
 - Validacion tecnica:
   - pendiente de compilacion/validacion en Android Studio por el usuario (sin build en esta iteracion).
+
+## 2026-04-15 - Ajuste visual del reloj de arena en modal de dispensado
+- Se reemplazo el icono previo del modal por recurso de imagen real del proyecto:
+  - `@drawable/reloj_de_arena` (`reloj_de_arena.png`).
+- Ubicacion del reloj:
+  - parte superior del modal, sobre el titulo principal, siguiendo referencia visual de operacion.
+- Se removio el icono inferior de pruebas para evitar duplicidad visual.
+- Archivo impactado:
+  - `app/src/main/res/layout/dialog_dispense_progress.xml`
+- Validacion tecnica:
+  - pendiente de compilacion/validacion en Android Studio por el usuario (sin build en esta iteracion).

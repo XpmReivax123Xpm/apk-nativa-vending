@@ -136,4 +136,7 @@
   - titulo principal fijo `Dispensando productos...`
   - progreso dinamico `X de Y` por unidades a despachar
   - nombre + imagen del producto actual durante la secuencia
+- [x] Ajustar reloj de arena del modal de dispensado:
+  - usar recurso real `@drawable/reloj_de_arena` en cabecera del modal
+  - remover icono inferior de prueba
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

@@ -11,18 +11,18 @@
     android:paddingBottom="18dp">
 
     <ImageView
-        android:id="@+id/ivDispenseIcon"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
+        android:id="@+id/ivDispenseHourglass"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_marginBottom="6dp"
         android:contentDescription="@null"
-        android:src="@android:drawable/ic_popup_sync"
-        android:tint="#F28E1B" />
+        android:scaleType="fitCenter"
+        android:src="@drawable/reloj_de_arena" />
 
     <TextView
         android:id="@+id/tvDispenseTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
         android:gravity="center"
         android:text="Dispensando productos..."
         android:textColor="#0965AF"
@@ -70,13 +70,6 @@
         android:textColor="#F28E1B"
         android:textSize="20sp"
         android:textStyle="bold" />
-
-    <ProgressBar
-        android:id="@+id/progressDispense"
-        android:layout_width="34dp"
-        android:layout_height="34dp"
-        android:layout_marginTop="12dp"
-        android:indeterminateTint="#F28E1B" />
 
     <TextView
         android:id="@+id/tvDispenseTimer"

@@ -268,3 +268,16 @@ El lock actual está implementado correctamente **a nivel app/activity** en `Kio
   - remover lineas,
   - vaciar carrito,
   - iniciar compra (`Comprar ahora`) sin salir del contexto.
+
+## Addendum 2026-04-15 (autenticacion operativa por maquina)
+
+- Nuevo comportamiento en seleccion de maquina:
+  - al elegir maquina activa, se solicita PIN de maquina antes de abrir catalogo.
+  - autenticacion contra `POST /api/maquinas/login`.
+- Sesion:
+  - se guarda token operativo y expiracion como hasta ahora.
+  - adicionalmente se guardan credenciales de maquina para renovar sesion.
+- Refresh automatico:
+  - cuando hay token vencido o respuesta `401`, se intenta re-login automatico con credenciales guardadas.
+  - si refresca, el flujo continua sin intervención.
+  - si falla, se cierra flujo actual y se solicita reingresar por seleccion de maquina + PIN.

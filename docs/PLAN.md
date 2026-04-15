@@ -203,6 +203,16 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Modal de exito de dispensado:
   - se incorpora autocierre de `5s` con contador visible.
 
+## Autenticacion de maquina y refresh de sesion (actualizado 2026-04-15)
+- Seleccion de maquina ahora exige PIN por maquina antes de entrar al catalogo.
+- Autenticacion operativa:
+  - `POST /api/maquinas/login` con `tcCodigoMaquina` + `tcPin`.
+  - la APK guarda token operativo + expiracion + credenciales de maquina.
+- Renovacion automatica:
+  - si el token expira o backend responde `401`, la APK intenta relogin automatico usando credenciales de maquina guardadas.
+  - aplica en carga de planograma y flujo de pagos (crear pedido, polling, cancelacion).
+  - si no se puede renovar, se corta el flujo y se solicita volver a seleccionar maquina e ingresar PIN.
+
 ## UX modal de producto (actualizado 2026-04-14)
 - Modal de detalle de producto actualizado para mejor legibilidad en tablet vending:
   - estructura visual por bloques (titulo, media, cantidad, resumen economico, CTAs).

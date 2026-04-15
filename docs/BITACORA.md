@@ -594,3 +594,23 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - `assembleDebug` exitoso.
   - instalacion ADB exitosa en dispositivo conectado.
+
+## 2026-04-15 - Autenticacion por maquina con PIN + refresh automatico de token
+- Se incorporo login operativo por maquina al seleccionar vending:
+  - modal de PIN en lista de maquinas.
+  - autenticacion via `POST /api/maquinas/login` con `tcCodigoMaquina` + `tcPin`.
+- Se agrego persistencia de credenciales de maquina en sesion local:
+  - `machineId`, `machineCode`, `machinePin`.
+- Se implemento renovacion automatica de sesion cuando token expira/401:
+  - relogin usando credenciales guardadas de maquina.
+  - reaplicado en catalogo (`planograma`) y flujo QR (`crear pedido`, `polling`, `cancelar pedido`).
+  - fallback: si no se puede renovar, se informa sesion expirada y se requiere volver a seleccionar maquina.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/AuthSessionManager.kt`
+  - `app/src/main/java/com/vending/kiosk/app/MachineAuthGateway.kt` (nuevo)
+  - `app/src/main/java/com/vending/kiosk/app/KioskMachinesActivity.kt`
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_machine_login_pin.xml` (nuevo)
+- Validacion tecnica:
+  - `assembleDebug` exitoso.
+  - instalacion ADB exitosa en dispositivo conectado.

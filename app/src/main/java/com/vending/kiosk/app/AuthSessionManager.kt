@@ -15,6 +15,26 @@ class AuthSessionManager(context: Context) {
             .apply()
     }
 
+    fun saveMachineCredentials(machineId: Int, machineCode: String, machinePin: String) {
+        prefs.edit()
+            .putInt(KEY_MACHINE_ID, machineId)
+            .putString(KEY_MACHINE_CODE, machineCode)
+            .putString(KEY_MACHINE_PIN, machinePin)
+            .apply()
+    }
+
+    fun getMachineCredentials(): MachineCredentials? {
+        val machineCode = prefs.getString(KEY_MACHINE_CODE, "").orEmpty().trim()
+        val machinePin = prefs.getString(KEY_MACHINE_PIN, "").orEmpty().trim()
+        val machineId = prefs.getInt(KEY_MACHINE_ID, 0)
+        if (machineCode.isBlank() || machinePin.isBlank()) return null
+        return MachineCredentials(
+            machineId = machineId,
+            machineCode = machineCode,
+            machinePin = machinePin
+        )
+    }
+
     fun getAuthorizationHeader(): String? {
         val token = prefs.getString(KEY_ACCESS_TOKEN, null) ?: return null
         val type = prefs.getString(KEY_TOKEN_TYPE, "bearer").orEmpty()
@@ -39,5 +59,14 @@ class AuthSessionManager(context: Context) {
         private const val KEY_ACCESS_TOKEN = "access_token"
         private const val KEY_TOKEN_TYPE = "token_type"
         private const val KEY_EXPIRES_AT = "expires_at"
+        private const val KEY_MACHINE_ID = "machine_id"
+        private const val KEY_MACHINE_CODE = "machine_code"
+        private const val KEY_MACHINE_PIN = "machine_pin"
     }
 }
+
+data class MachineCredentials(
+    val machineId: Int,
+    val machineCode: String,
+    val machinePin: String
+)

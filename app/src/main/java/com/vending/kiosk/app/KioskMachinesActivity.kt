@@ -3,9 +3,15 @@
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
@@ -147,15 +153,89 @@ class KioskMachinesActivity : AppCompatActivity() {
                     Toast.makeText(this, "Maquina inactiva", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
-                val intent = Intent(this, KioskCatalogActivity::class.java).apply {
-                    putExtra(KioskCatalogActivity.EXTRA_MACHINE_ID, maquina.id)
-                    putExtra(KioskCatalogActivity.EXTRA_MACHINE_CODE, maquina.codigo)
-                    putExtra(KioskCatalogActivity.EXTRA_MACHINE_LOCATION, maquina.locacion)
-                }
-                startActivity(intent)
+                showMachinePinDialog(maquina)
             }
             contentContainer.addView(card)
         }
+    }
+
+    private fun showMachinePinDialog(maquina: MaquinaUi) {
+        val view = layoutInflater.inflate(R.layout.dialog_machine_login_pin, null)
+        val tvTitle = view.findViewById<TextView>(R.id.tvMachinePinDialogTitle)
+        val tvSubtitle = view.findViewById<TextView>(R.id.tvMachinePinDialogSubtitle)
+        val etPin = view.findViewById<EditText>(R.id.etMachinePin)
+        val tvError = view.findViewById<TextView>(R.id.tvMachinePinError)
+        val progress = view.findViewById<ProgressBar>(R.id.progressMachinePin)
+        val btnCancel = view.findViewById<Button>(R.id.btnMachinePinCancel)
+        val btnConfirm = view.findViewById<Button>(R.id.btnMachinePinConfirm)
+
+        tvTitle.text = "Ingresar PIN de maquina"
+        tvSubtitle.text = "Maquina: ${maquina.codigo}"
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        fun setLoading(loading: Boolean) {
+            progress.visibility = if (loading) View.VISIBLE else View.GONE
+            etPin.isEnabled = !loading
+            btnCancel.isEnabled = !loading
+            btnConfirm.isEnabled = !loading
+        }
+
+        btnCancel.setOnClickListener { dialog.dismiss() }
+        btnConfirm.setOnClickListener {
+            val pin = etPin.text?.toString()?.trim().orEmpty()
+            if (pin.isBlank()) {
+                tvError.visibility = View.VISIBLE
+                tvError.text = "Ingresa el PIN de la maquina"
+                return@setOnClickListener
+            }
+
+            setLoading(true)
+            tvError.visibility = View.GONE
+            lifecycleScope.launch {
+                val loginResult = withContext(Dispatchers.IO) {
+                    MachineAuthGateway.loginMachine(
+                        machineCode = maquina.codigo,
+                        pin = pin
+                    )
+                }
+                setLoading(false)
+
+                when (loginResult) {
+                    is MachineLoginResult.Success -> {
+                        authSessionManager.saveSession(
+                            accessToken = loginResult.accessToken,
+                            tokenType = loginResult.tokenType,
+                            expiresInMinutes = loginResult.expiresInMinutes
+                        )
+                        authSessionManager.saveMachineCredentials(
+                            machineId = if (loginResult.machineId > 0) loginResult.machineId else maquina.id,
+                            machineCode = loginResult.machineCode,
+                            machinePin = pin
+                        )
+                        dialog.dismiss()
+
+                        val intent = Intent(this@KioskMachinesActivity, KioskCatalogActivity::class.java).apply {
+                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_ID, maquina.id)
+                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_CODE, maquina.codigo)
+                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_LOCATION, maquina.locacion)
+                        }
+                        startActivity(intent)
+                    }
+
+                    is MachineLoginResult.Error -> {
+                        tvError.visibility = View.VISIBLE
+                        tvError.text = loginResult.message
+                    }
+                }
+            }
+        }
+
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     }
 }
 

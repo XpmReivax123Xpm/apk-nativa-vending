@@ -249,10 +249,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         enterKioskMode()
 
         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
-        if (authHeader.isBlank()) {
-            throw IllegalStateException("Sesion expirada. Inicia sesion nuevamente.")
-        }
-
         loadCatalog(machineId, authHeader)
     }
 
@@ -560,13 +556,59 @@ class KioskCatalogActivity : AppCompatActivity() {
         Toast.makeText(this, "Modo seguro de catalogo activado", Toast.LENGTH_SHORT).show()
     }
 
+    private fun isUnauthorizedMessage(message: String): Boolean {
+        return message.contains("HTTP 401", ignoreCase = true)
+    }
+
+    private fun resolveValidAuthHeader(forceRefresh: Boolean = false): String? {
+        if (!forceRefresh) {
+            authSessionManager.getAuthorizationHeader()?.let { return it }
+        }
+
+        val refresh = MachineAuthGateway.refreshSessionWithStoredMachineCredentials(authSessionManager)
+        return when (refresh) {
+            is MachineLoginResult.Success -> authSessionManager.getAuthorizationHeader()
+            is MachineLoginResult.Error -> null
+        }
+    }
+
+    private fun handleAuthSessionLost() {
+        Toast.makeText(
+            this,
+            "Sesion de maquina expirada. Selecciona la maquina e ingresa PIN nuevamente.",
+            Toast.LENGTH_LONG
+        ).show()
+        finish()
+    }
+
     private fun loadCatalog(machineId: Int, authHeader: String) {
         tvStatus.visibility = View.VISIBLE
         tvStatus.text = "Cargando catalogo..."
         contentContainer.removeAllViews()
 
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) { fetchCatalog(machineId, authHeader) }
+            val initialHeader = withContext(Dispatchers.IO) {
+                resolveValidAuthHeader(forceRefresh = false)
+            }
+
+            if (initialHeader.isNullOrBlank()) {
+                tvStatus.visibility = View.VISIBLE
+                tvStatus.text = "Sesion de maquina expirada"
+                handleAuthSessionLost()
+                return@launch
+            }
+
+            this@KioskCatalogActivity.authHeader = initialHeader
+            var result = withContext(Dispatchers.IO) { fetchCatalog(machineId, initialHeader) }
+            if (result is CatalogResult.Error && result.unauthorized) {
+                val refreshedHeader = withContext(Dispatchers.IO) {
+                    resolveValidAuthHeader(forceRefresh = true)
+                }
+                if (!refreshedHeader.isNullOrBlank()) {
+                    this@KioskCatalogActivity.authHeader = refreshedHeader
+                    result = withContext(Dispatchers.IO) { fetchCatalog(machineId, refreshedHeader) }
+                }
+            }
 
             when (result) {
                 is CatalogResult.Success -> {
@@ -588,6 +630,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                     tvStatus.visibility = View.VISIBLE
                     tvStatus.text = result.message
                     Toast.makeText(this@KioskCatalogActivity, result.message, Toast.LENGTH_LONG).show()
+                    if (result.unauthorized) {
+                        handleAuthSessionLost()
+                    }
                 }
             }
         }
@@ -616,7 +661,10 @@ class KioskCatalogActivity : AppCompatActivity() {
             }.getOrDefault("")
 
             if (rawBody.isBlank()) {
-                return CatalogResult.Error("Respuesta vacia del backend (HTTP $statusCode)")
+                return CatalogResult.Error(
+                    message = "Respuesta vacia del backend (HTTP $statusCode)",
+                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
+                )
             }
 
             val json = JSONObject(rawBody)
@@ -625,7 +673,10 @@ class KioskCatalogActivity : AppCompatActivity() {
             val message = json.optString("message", "Error consultando catalogo")
 
             if (statusCode !in 200..299 || error != 0 || status != 1) {
-                return CatalogResult.Error("$message (HTTP $statusCode)")
+                return CatalogResult.Error(
+                    message = "$message (HTTP $statusCode)",
+                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
+                )
             }
 
             val values = json.optJSONObject("values") ?: JSONObject()
@@ -1634,15 +1685,37 @@ class KioskCatalogActivity : AppCompatActivity() {
 
             lifecycleScope.launch {
                 val result = withContext(Dispatchers.IO) {
-                    createOrderAndGenerateQr(
-                        machineId = machineId,
-                        authHeader = authHeader,
-                        paymentMethodId = paymentMethod.id,
-                        customerName = DEFAULT_CUSTOMER_NAME,
-                        customerPhone = DEFAULT_CUSTOMER_PHONE,
-                        customerCi = DEFAULT_CUSTOMER_CI_NIT,
-                        items = selections
-                    )
+                    val currentHeader = resolveValidAuthHeader(forceRefresh = false)
+                    if (currentHeader.isNullOrBlank()) {
+                        QrGenerationResult.Error("Sesion de maquina expirada")
+                    } else {
+                        this@KioskCatalogActivity.authHeader = currentHeader
+                        var qrResult = createOrderAndGenerateQr(
+                            machineId = machineId,
+                            authHeader = currentHeader,
+                            paymentMethodId = paymentMethod.id,
+                            customerName = DEFAULT_CUSTOMER_NAME,
+                            customerPhone = DEFAULT_CUSTOMER_PHONE,
+                            customerCi = DEFAULT_CUSTOMER_CI_NIT,
+                            items = selections
+                        )
+                        if (qrResult is QrGenerationResult.Error && isUnauthorizedMessage(qrResult.message)) {
+                            val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
+                            if (!refreshedHeader.isNullOrBlank()) {
+                                this@KioskCatalogActivity.authHeader = refreshedHeader
+                                qrResult = createOrderAndGenerateQr(
+                                    machineId = machineId,
+                                    authHeader = refreshedHeader,
+                                    paymentMethodId = paymentMethod.id,
+                                    customerName = DEFAULT_CUSTOMER_NAME,
+                                    customerPhone = DEFAULT_CUSTOMER_PHONE,
+                                    customerCi = DEFAULT_CUSTOMER_CI_NIT,
+                                    items = selections
+                                )
+                            }
+                        }
+                        qrResult
+                    }
                 }
                 generatingDialog.dismiss()
 
@@ -1663,6 +1736,10 @@ class KioskCatalogActivity : AppCompatActivity() {
                     }
 
                     is QrGenerationResult.Error -> {
+                        if (isUnauthorizedMessage(result.message)) {
+                            handleAuthSessionLost()
+                            return@launch
+                        }
                         tvError.visibility = View.VISIBLE
                         tvError.text = result.message
                     }
@@ -1970,9 +2047,12 @@ class KioskCatalogActivity : AppCompatActivity() {
 
                 lifecycleScope.launch {
                     val cancelResult = withContext(Dispatchers.IO) {
+                        val currentHeader = resolveValidAuthHeader(forceRefresh = false)
+                            ?: return@withContext OrderCancelResult.Error("Sesion de maquina expirada")
+                        this@KioskCatalogActivity.authHeader = currentHeader
                         cancelPendingOrder(
                             pedidoId = result.pedidoId,
-                            authHeader = authHeader,
+                            authHeader = currentHeader,
                             reason = "CANCELADO_CLIENTE_APK"
                         )
                     }
@@ -1989,6 +2069,10 @@ class KioskCatalogActivity : AppCompatActivity() {
                         }
 
                         is OrderCancelResult.Error -> {
+                            if (isUnauthorizedMessage(cancelResult.message)) {
+                                handleAuthSessionLost()
+                                return@launch
+                            }
                             tvQrStatus.text = cancelResult.message.ifBlank { "No se pudo cancelar el pedido." }
                             btnClose.isEnabled = true
                             cancelInProgress = false
@@ -2028,7 +2112,21 @@ class KioskCatalogActivity : AppCompatActivity() {
             val started = System.currentTimeMillis()
             while (isActive && System.currentTimeMillis() - started <= PAYMENT_TIMEOUT_MS) {
                 val pollResult = withContext(Dispatchers.IO) {
-                    fetchPaymentStatus(result.pedidoId, authHeader)
+                    val currentHeader = resolveValidAuthHeader(forceRefresh = false)
+                    if (currentHeader.isNullOrBlank()) {
+                        PaymentPollResult.Error("Sesion de maquina expirada")
+                    } else {
+                        this@KioskCatalogActivity.authHeader = currentHeader
+                        var fetched = fetchPaymentStatus(result.pedidoId, currentHeader)
+                        if (fetched is PaymentPollResult.Error && isUnauthorizedMessage(fetched.message)) {
+                            val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
+                            if (!refreshedHeader.isNullOrBlank()) {
+                                this@KioskCatalogActivity.authHeader = refreshedHeader
+                                fetched = fetchPaymentStatus(result.pedidoId, refreshedHeader)
+                            }
+                        }
+                        fetched
+                    }
                 }
 
                 when (pollResult) {
@@ -2055,6 +2153,11 @@ class KioskCatalogActivity : AppCompatActivity() {
                     }
 
                     is PaymentPollResult.Error -> {
+                        if (isUnauthorizedMessage(pollResult.message)) {
+                            dialog.dismiss()
+                            handleAuthSessionLost()
+                            return@launch
+                        }
                         tvQrStatus.text = pollResult.message
                     }
                 }
@@ -2802,7 +2905,7 @@ private sealed interface CatalogResult {
         val promotions: List<PromoSlideUi>,
         val backgroundImageUrl: String
     ) : CatalogResult
-    data class Error(val message: String) : CatalogResult
+    data class Error(val message: String, val unauthorized: Boolean = false) : CatalogResult
 }
 
 private sealed interface QrGenerationResult {

@@ -46,7 +46,9 @@
 
 ### Fase 2 - Integracion backend
 - [ ] Definir contratos JSON definitivos con equipo backend.
-- [ ] Definir autenticacion y refresh de sesion.
+- [x] Definir autenticacion y refresh de sesion.
+  - login operativo por maquina: `POST /api/maquinas/login` con `tcCodigoMaquina + tcPin`.
+  - guardado local de credenciales de maquina para renovacion automatica de token al expirar.
 - [ ] Definir endpoint y semantica para polling de pago.
 - [ ] Definir endpoint de reporte por item y reporte global.
 - [ ] Definir idempotencia de reportes.

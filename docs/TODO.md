@@ -132,4 +132,8 @@
 - [x] Aplicar apertura condicional de modal por estado de carrito:
   - carrito vacio: abrir modal de detalle de producto tradicional.
   - carrito con items: abrir modal fusionado (detalle + carrito) con edicion de cantidades, vaciado y compra desde el mismo dialogo.
+- [x] Actualizar modal de progreso de dispensado con enfoque operativo:
+  - titulo principal fijo `Dispensando productos...`
+  - progreso dinamico `X de Y` por unidades a despachar
+  - nombre + imagen del producto actual durante la secuencia
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

@@ -5,34 +5,78 @@
     android:background="@drawable/bg_modal_surface"
     android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:paddingStart="24dp"
+    android:paddingTop="20dp"
+    android:paddingEnd="24dp"
+    android:paddingBottom="18dp">
+
+    <ImageView
+        android:id="@+id/ivDispenseIcon"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:contentDescription="@null"
+        android:src="@android:drawable/ic_popup_sync"
+        android:tint="#F28E1B" />
 
     <TextView
         android:id="@+id/tvDispenseTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
         android:gravity="center"
-        android:text="Pago realizado"
+        android:text="Dispensando productos..."
         android:textColor="#0965AF"
-        android:textSize="20sp"
+        android:textSize="34sp"
         android:textStyle="bold" />
 
-    <ProgressBar
-        android:id="@+id/progressDispense"
-        android:layout_width="wrap_content"
+    <TextView
+        android:id="@+id/tvDispenseProgress"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
-        android:indeterminateTint="#F28E1B" />
+        android:gravity="center"
+        android:text="1 de 1"
+        android:textColor="#0E2B4A"
+        android:textSize="48sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvDispenseProductName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="Producto"
+        android:textColor="#0E2B4A"
+        android:textSize="26sp"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:id="@+id/ivDispenseProduct"
+        android:layout_width="110dp"
+        android:layout_height="110dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_catalog_image_placeholder"
+        android:padding="8dp"
+        android:scaleType="fitCenter"
+        android:src="@android:drawable/ic_menu_gallery" />
 
     <TextView
         android:id="@+id/tvDispenseStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="14dp"
         android:gravity="center"
-        android:text="La maquina esta dispensando..."
+        android:text="Espera un momento, por favor..."
         android:textColor="#F28E1B"
-        android:textSize="14sp" />
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/progressDispense"
+        android:layout_width="34dp"
+        android:layout_height="34dp"
+        android:layout_marginTop="12dp"
+        android:indeterminateTint="#F28E1B" />
 
     <TextView
         android:id="@+id/tvDispenseTimer"

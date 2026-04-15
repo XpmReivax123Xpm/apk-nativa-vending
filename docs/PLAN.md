@@ -203,6 +203,16 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Modal de exito de dispensado:
   - se incorpora autocierre de `5s` con contador visible.
 
+## UX modal de dispensado (actualizado 2026-04-15)
+- Modal de progreso de dispensado alineado a operacion visual en campo:
+  - titulo principal: `Dispensando productos...`
+  - progreso de fase por unidades reales en formato `X de Y`
+  - nombre del producto actualmente en dispensado
+  - imagen del producto/celda actual durante cada paso
+- Estado:
+  - implementado en APK (layout + logica de cola).
+  - pendiente validacion visual final en dispositivo vending por el usuario.
+
 ## Autenticacion de maquina y refresh de sesion (actualizado 2026-04-15)
 - Seleccion de maquina ahora exige PIN por maquina antes de entrar al catalogo.
 - Autenticacion operativa:

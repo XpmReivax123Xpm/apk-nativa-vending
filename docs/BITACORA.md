@@ -614,3 +614,20 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Validacion tecnica:
   - `assembleDebug` exitoso.
   - instalacion ADB exitosa en dispositivo conectado.
+
+## 2026-04-15 - Modal de dispensado: progreso por item + producto actual
+- Se actualizo el modal de progreso de dispensado para alinear UX operativa en tablet vending:
+  - titulo principal fijo: `Dispensando productos...`.
+  - contador visual de fase de dispensado por item en formato `X de Y`.
+  - nombre del producto actual en curso.
+  - imagen del producto/celda actualmente dispensado.
+- Ajuste de logica de cola de dispensado:
+  - la cola interna ahora conserva `celda fisica + producto` por cada unidad a despachar.
+  - en cada avance (`onDone`) el modal actualiza automaticamente `X de Y`, nombre e imagen del siguiente item.
+- Se elimino redundancia de texto:
+  - el bloque inferior ya no repite el mismo mensaje del titulo.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_dispense_progress.xml`
+- Validacion tecnica:
+  - pendiente de compilacion/validacion en Android Studio por el usuario (sin build en esta iteracion).

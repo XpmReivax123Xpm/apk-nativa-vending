@@ -90,7 +90,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private val serial = SerialManager()
     private lateinit var vendFlow: VendingFlowController
-    private var dispensingQueue: List<Int> = emptyList()
+    private var dispensingQueue: List<DispenseQueueItem> = emptyList()
     private var dispensingCursor = 0
     private var dispensingInProgress = false
     private var clearCartOnDispenseFinish = false
@@ -100,6 +100,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispenseDialog: AlertDialog? = null
     private var tvDispenseStatus: TextView? = null
     private var tvDispenseTitle: TextView? = null
+    private var tvDispenseProgress: TextView? = null
+    private var tvDispenseProductName: TextView? = null
+    private var ivDispenseProduct: ImageView? = null
     private var tvDispenseTimer: TextView? = null
     private var progressDispense: ProgressBar? = null
     private var btnDispenseClose: Button? = null
@@ -163,7 +166,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun onStatus(msg: String) {
             if (dispensingInProgress && msg.startsWith("TX:")) {
                 runOnUiThread {
-                    tvDispenseStatus?.text = "Ejecutando pedido..."
+                    tvDispenseStatus?.text = "Espera un momento, por favor..."
                 }
             }
         }
@@ -178,7 +181,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             runOnUiThread {
                 if (dispensingInProgress) {
                     val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
-                    tvDispenseStatus?.text = " Por favor retira el producto. Preparando siguiente item ($current/${dispensingQueue.size})..."
+                    tvDispenseStatus?.text = "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
                 }
             }
         }
@@ -2291,7 +2294,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showDispenseDialogAndStart(selections: List<PurchaseSelection>, fromCart: Boolean) {
-        val queue = mutableListOf<Int>()
+        val queue = mutableListOf<DispenseQueueItem>()
         selections.forEach { selection ->
             val physical = selection.item.physicalCell.takeIf { it in 10..68 }
                 ?: mapCellCodeToPhysical(selection.item.codigoCelda)
@@ -2299,7 +2302,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 Toast.makeText(this, "No se pudo mapear la celda ${selection.item.codigoCelda}", Toast.LENGTH_LONG).show()
                 return
             }
-            repeat(selection.quantity) { queue += physical }
+            repeat(selection.quantity) { queue += DispenseQueueItem(cell = physical, item = selection.item) }
         }
 
         if (queue.isEmpty()) {
@@ -2314,6 +2317,9 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_progress, null)
         tvDispenseTitle = view.findViewById(R.id.tvDispenseTitle)
+        tvDispenseProgress = view.findViewById(R.id.tvDispenseProgress)
+        tvDispenseProductName = view.findViewById(R.id.tvDispenseProductName)
+        ivDispenseProduct = view.findViewById(R.id.ivDispenseProduct)
         tvDispenseStatus = view.findViewById(R.id.tvDispenseStatus)
         tvDispenseTimer = view.findViewById(R.id.tvDispenseTimer)
         progressDispense = view.findViewById(R.id.progressDispense)
@@ -2345,8 +2351,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispensingInProgress = true
         clearCartOnDispenseFinish = fromCart
 
-        tvDispenseTitle?.text = "Pago realizado"
-        tvDispenseStatus?.text = "La maquina esta dispensando tu compra..."
+        tvDispenseTitle?.text = "Dispensando productos..."
+        tvDispenseStatus?.text = "Espera un momento, por favor..."
+        tvDispenseProgress?.text = "1 de ${dispensingQueue.size}"
+        tvDispenseProductName?.text = dispensingQueue.firstOrNull()?.item?.producto.orEmpty()
         tvDispenseTimer?.visibility = View.GONE
         progressDispense?.visibility = View.VISIBLE
         btnDispenseClose?.visibility = View.GONE
@@ -2367,10 +2375,16 @@ class KioskCatalogActivity : AppCompatActivity() {
             return
         }
 
-        val currentCell = dispensingQueue[dispensingCursor]
+        val currentItem = dispensingQueue[dispensingCursor]
+        val currentCell = currentItem.cell
         val currentNumber = dispensingCursor + 1
         val total = dispensingQueue.size
-        tvDispenseStatus?.text = "Dispensando producto $currentNumber de $total (celda $currentCell)..."
+        tvDispenseProgress?.text = "$currentNumber de $total"
+        tvDispenseProductName?.text = currentItem.item.producto
+        ivDispenseProduct?.let { imageView ->
+            loadProductImage(currentItem.item.imagenUrl, imageView)
+        }
+        tvDispenseStatus?.text = "Espera un momento, por favor..."
         vendFlow.start(currentCell)
     }
 
@@ -2387,7 +2401,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseSuccessCloseTimer = null
 
         tvDispenseTitle?.text = "Incidencia en dispensado"
+        tvDispenseProgress?.text = ""
         tvDispenseStatus?.text = message
+        tvDispenseProductName?.text = ""
         tvDispenseTimer?.visibility = View.GONE
         progressDispense?.visibility = View.GONE
         btnDispenseClose?.visibility = View.VISIBLE
@@ -2400,7 +2416,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseSuccessCloseTimer = null
 
         tvDispenseTitle?.text = "Gracias por su compra"
+        tvDispenseProgress?.text = ""
         tvDispenseStatus?.text = "Dispensado completado correctamente."
+        tvDispenseProductName?.text = ""
         tvDispenseTimer?.visibility = View.VISIBLE
         progressDispense?.visibility = View.GONE
         btnDispenseClose?.visibility = View.VISIBLE
@@ -2893,6 +2911,11 @@ private data class CartLine(
 private data class PurchaseSelection(
     val item: CeldaUi,
     val quantity: Int
+)
+
+private data class DispenseQueueItem(
+    val cell: Int,
+    val item: CeldaUi
 )
 
 private enum class PaymentMethodOption(val id: Int, val label: String) {

@@ -642,3 +642,15 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/res/layout/dialog_dispense_progress.xml`
 - Validacion tecnica:
   - pendiente de compilacion/validacion en Android Studio por el usuario (sin build en esta iteracion).
+
+## 2026-04-16 - Modal de dispensado: ajuste fino de escalas visuales
+- Se realizaron ajustes finos de tamano para mejorar legibilidad en tablet vending:
+  - reloj de arena superior incrementado para mejor presencia visual.
+  - texto de titulo y progreso (`X de Y`) reajustados para lectura a distancia.
+  - texto de estado `Espera un momento, por favor...` incrementado.
+  - nombre de producto y miniatura de producto aumentados para mejorar identificacion.
+- Se mantuvo sin cambios la logica de dispensado y la actualizacion dinamica por item.
+- Archivo impactado:
+  - `app/src/main/res/layout/dialog_dispense_progress.xml`
+- Validacion tecnica:
+  - pendiente de compilacion/validacion en Android Studio por el usuario (sin build en esta iteracion).

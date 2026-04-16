@@ -203,13 +203,14 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Modal de exito de dispensado:
   - se incorpora autocierre de `5s` con contador visible.
 
-## UX modal de dispensado (actualizado 2026-04-15)
+## UX modal de dispensado (actualizado 2026-04-16)
 - Modal de progreso de dispensado alineado a operacion visual en campo:
   - titulo principal: `Dispensando productos...`
   - progreso de fase por unidades reales en formato `X de Y`
   - nombre del producto actualmente en dispensado
   - imagen del producto/celda actual durante cada paso
   - icono de reloj de arena superior desde recurso real `@drawable/reloj_de_arena`
+  - escalas visuales refinadas (tipografias e imagenes) para lectura operativa en tablet
 - Estado:
   - implementado en APK (layout + logica de cola).
   - pendiente validacion visual final en dispositivo vending por el usuario.

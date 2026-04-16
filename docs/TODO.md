@@ -139,4 +139,8 @@
 - [x] Ajustar reloj de arena del modal de dispensado:
   - usar recurso real `@drawable/reloj_de_arena` en cabecera del modal
   - remover icono inferior de prueba
+- [x] Ajustar escala final de elementos del modal de dispensado:
+  - incrementar tamano del reloj de arena superior
+  - aumentar tipografias clave (`Dispensando productos`, `X de Y`, `Espera un momento...`)
+  - aumentar nombre e imagen del producto para mejor lectura
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

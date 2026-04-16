@@ -106,6 +106,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvDispenseTimer: TextView? = null
     private var btnDispenseClose: Button? = null
     private var dispenseSuccessCloseTimer: CountDownTimer? = null
+    private var retrieveDialog: AlertDialog? = null
+    private var tvRetrieveTitle: TextView? = null
+    private var tvRetrieveMessage: TextView? = null
     private var kioskLocked = false
     private var lockTaskStarted = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
@@ -180,7 +183,10 @@ class KioskCatalogActivity : AppCompatActivity() {
             runOnUiThread {
                 if (dispensingInProgress) {
                     val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
-                    tvDispenseStatus?.text = "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
+                    showRetrieveDialogForCurrentItem()
+                    tvDispenseStatus?.post {
+                        tvDispenseStatus?.text = "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
+                    }
                 }
             }
         }
@@ -285,6 +291,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         qrPollingJob?.cancel()
+        dismissRetrieveDialog()
         unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
         inactivityHandler.removeCallbacksAndMessages(null)
@@ -2331,6 +2338,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnDispenseClose?.setOnClickListener {
             dispenseSuccessCloseTimer?.cancel()
             dispenseSuccessCloseTimer = null
+            dismissRetrieveDialog()
             dialog.dismiss()
         }
 
@@ -2387,12 +2395,14 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun onDispenseItemDone() {
         if (!dispensingInProgress) return
+        dismissRetrieveDialog()
         dispensingCursor++
         startNextDispenseItem()
     }
 
     private fun onDispenseError(message: String) {
         dispensingInProgress = false
+        dismissRetrieveDialog()
         runCatching { vendFlow.stop() }
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
@@ -2407,6 +2417,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun onDispenseFinished() {
         dispensingInProgress = false
+        dismissRetrieveDialog()
         runCatching { vendFlow.stop() }
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
@@ -2436,6 +2447,50 @@ class KioskCatalogActivity : AppCompatActivity() {
         }.start()
 
         loadCatalog(machineId, authHeader)
+    }
+
+    private fun showRetrieveDialogForCurrentItem() {
+        val currentNumber = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
+        val total = dispensingQueue.size.coerceAtLeast(1)
+        val currentProduct = dispensingQueue.getOrNull(dispensingCursor)?.item?.producto
+            ?.takeIf { it.isNotBlank() }
+            ?: "producto"
+
+        if (retrieveDialog?.isShowing == true) {
+            tvRetrieveTitle?.text = "Producto listo! $currentNumber de $total"
+            tvRetrieveMessage?.text = "Por favor, retira tu $currentProduct"
+            return
+        }
+
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_retrieve, null)
+        tvRetrieveTitle = view.findViewById(R.id.tvRetrieveTitle)
+        tvRetrieveMessage = view.findViewById(R.id.tvRetrieveMessage)
+
+        tvRetrieveTitle?.text = "Producto listo! $currentNumber de $total"
+        tvRetrieveMessage?.text = "Por favor, retira tu $currentProduct"
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        onModalShown()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        retrieveDialog = dialog
+        dialog.setOnDismissListener {
+            tvRetrieveTitle = null
+            tvRetrieveMessage = null
+            retrieveDialog = null
+            onModalDismissed()
+        }
+    }
+
+    private fun dismissRetrieveDialog() {
+        retrieveDialog?.takeIf { it.isShowing }?.dismiss()
+        retrieveDialog = null
+        tvRetrieveTitle = null
+        tvRetrieveMessage = null
     }
 
     private fun decodeQrBase64(rawBase64: String): android.graphics.Bitmap? {

@@ -215,6 +215,13 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - implementado en APK (layout + logica de cola).
   - pendiente validacion visual final en dispositivo vending por el usuario.
 
+## Fase post-driver done (actualizado 2026-04-16)
+- Se agrego modal dedicado de retiro para la etapa entre `driver done` y `D2`:
+  - aparece al evento `onNeedRetrieve`.
+  - solicita retiro del producto y muestra progreso del item (`X de Y`).
+  - la secuencia continua al detectar `onDone` (`D2`).
+- Se aplico ajuste de transicion para no exponer texto tecnico largo por milisegundos antes del modal de retiro.
+
 ## Autenticacion de maquina y refresh de sesion (actualizado 2026-04-15)
 - Seleccion de maquina ahora exige PIN por maquina antes de entrar al catalogo.
 - Autenticacion operativa:

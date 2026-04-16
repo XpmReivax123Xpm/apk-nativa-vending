@@ -143,4 +143,8 @@
   - incrementar tamano del reloj de arena superior
   - aumentar tipografias clave (`Dispensando productos`, `X de Y`, `Espera un momento...`)
   - aumentar nombre e imagen del producto para mejor lectura
+- [x] Crear modal dedicado para fase de retiro (post `driver done`):
+  - mostrar instruccion de retiro solo en `onNeedRetrieve`
+  - continuar al siguiente item solo al detectar `D2` (`onDone`)
+- [x] Ajustar transicion para ocultar parpadeo de texto largo antes del modal de retiro.
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

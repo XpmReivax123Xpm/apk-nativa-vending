@@ -64,7 +64,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:gravity="center"
-        android:text="Espera un momento, por favor..."
+        android:text="Espere un momento, por favor..."
         android:textColor="#F28E1B"
         android:textSize="18sp" />
 

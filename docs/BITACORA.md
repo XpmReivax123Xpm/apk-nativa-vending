@@ -654,3 +654,23 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/res/layout/dialog_dispense_progress.xml`
 - Validacion tecnica:
   - pendiente de compilacion/validacion en Android Studio por el usuario (sin build en esta iteracion).
+
+## 2026-04-16 - Nuevo modal de retiro post `driver done` (espera de D2)
+- Se incorporo un segundo modal para la fase de retiro del producto:
+  - se muestra solo cuando el flujo serial reporta `onNeedRetrieve` (fin de fase driver).
+  - mensaje orientado a operador/cliente: producto listo + instruccion de retiro.
+  - la continuidad al siguiente item ocurre al evento `onDone` (D2).
+- Se agrego layout dedicado:
+  - `app/src/main/res/layout/dialog_dispense_retrieve.xml` (nuevo).
+- Integracion en flujo:
+  - apertura en `onNeedRetrieve`.
+  - cierre al detectar `onDone`, en error o al finalizar flujo.
+
+## 2026-04-16 - Ajuste anti-parpadeo del texto largo en transicion de modal
+- Se mantuvo el texto tecnico largo de estado (no eliminado), pero se ajusto el orden de ejecucion para que no sea visible durante la transicion:
+  - primero se abre el modal de retiro.
+  - luego se actualiza el texto del modal de progreso via `post { ... }`, quedando detras del nuevo modal.
+- Objetivo cubierto:
+  - evitar que se vea por milisegundos el cambio de texto justo antes del modal de retiro.
+- Archivo impactado:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`

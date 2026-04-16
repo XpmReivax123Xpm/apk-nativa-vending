@@ -106,6 +106,11 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvDispenseTimer: TextView? = null
     private var btnDispenseClose: Button? = null
     private var dispenseSuccessCloseTimer: CountDownTimer? = null
+    private var dispenseSuccessDialog: AlertDialog? = null
+    private var tvDispenseSuccessTimer: TextView? = null
+    private var btnDispenseSuccessClose: Button? = null
+    private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
+    private var dispenseSuccessTimerRunnable: Runnable? = null
     private var retrieveDialog: AlertDialog? = null
     private var tvRetrieveTitle: TextView? = null
     private var tvRetrieveMessage: TextView? = null
@@ -291,6 +296,9 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         qrPollingJob?.cancel()
+        dismissDispenseSuccessDialog()
+        dispenseDialog?.takeIf { it.isShowing }?.dismiss()
+        dispenseDialog = null
         dismissRetrieveDialog()
         unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
@@ -2349,6 +2357,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.setOnDismissListener {
             dispenseSuccessCloseTimer?.cancel()
             dispenseSuccessCloseTimer = null
+            dispenseDialog = null
             onModalDismissed()
         }
 
@@ -2422,31 +2431,81 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
 
-        tvDispenseTitle?.text = "Gracias por su compra"
-        tvDispenseProgress?.text = ""
-        tvDispenseStatus?.text = "Dispensado completado correctamente."
-        tvDispenseProductName?.text = ""
-        tvDispenseTimer?.visibility = View.VISIBLE
-        btnDispenseClose?.visibility = View.VISIBLE
-
         if (clearCartOnDispenseFinish) {
             cartItems.clear()
             updateCartBadge()
         }
 
-        dispenseSuccessCloseTimer = object : CountDownTimer(DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS, 1000L) {
-            override fun onTick(millisUntilFinished: Long) {
-                val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
-                tvDispenseTimer?.text = "Cerrando en ${seconds}s..."
-            }
-
-            override fun onFinish() {
-                tvDispenseTimer?.text = "Cerrando en 0s..."
-                dispenseDialog?.takeIf { it.isShowing }?.dismiss()
-            }
-        }.start()
+        dispenseDialog?.takeIf { it.isShowing }?.dismiss()
+        showDispenseSuccessDialog()
 
         loadCatalog(machineId, authHeader)
+    }
+
+    private fun showDispenseSuccessDialog() {
+        if (dispenseSuccessDialog?.isShowing == true) return
+
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_success, null)
+        tvDispenseSuccessTimer = view.findViewById(R.id.tvDispenseSuccessTimer)
+        btnDispenseSuccessClose = view.findViewById(R.id.btnDispenseSuccessClose)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        btnDispenseSuccessClose?.setOnClickListener {
+            stopDispenseSuccessCountdown()
+            dialog.dismiss()
+        }
+
+        onModalShown()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dispenseSuccessDialog = dialog
+        dialog.setOnDismissListener {
+            stopDispenseSuccessCountdown()
+            tvDispenseSuccessTimer = null
+            btnDispenseSuccessClose = null
+            dispenseSuccessDialog = null
+            onModalDismissed()
+        }
+
+        startDispenseSuccessCountdown(dialog)
+    }
+
+    private fun dismissDispenseSuccessDialog() {
+        stopDispenseSuccessCountdown()
+        dispenseSuccessDialog?.takeIf { it.isShowing }?.dismiss()
+        dispenseSuccessDialog = null
+        tvDispenseSuccessTimer = null
+        btnDispenseSuccessClose = null
+    }
+
+    private fun startDispenseSuccessCountdown(dialog: AlertDialog) {
+        stopDispenseSuccessCountdown()
+        var secondsLeft = (DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS / 1000L).toInt().coerceAtLeast(0)
+
+        fun scheduleNextTick() {
+            tvDispenseSuccessTimer?.text = "${secondsLeft}s"
+            if (secondsLeft <= 0) {
+                dialog.takeIf { it.isShowing }?.dismiss()
+                return
+            }
+            secondsLeft -= 1
+            val runnable = Runnable { scheduleNextTick() }
+            dispenseSuccessTimerRunnable = runnable
+            dispenseSuccessTimerHandler.postDelayed(runnable, 1000L)
+        }
+
+        scheduleNextTick()
+    }
+
+    private fun stopDispenseSuccessCountdown() {
+        dispenseSuccessTimerRunnable?.let { dispenseSuccessTimerHandler.removeCallbacks(it) }
+        dispenseSuccessTimerRunnable = null
+        dispenseSuccessCloseTimer?.cancel()
+        dispenseSuccessCloseTimer = null
     }
 
     private fun showRetrieveDialogForCurrentItem() {

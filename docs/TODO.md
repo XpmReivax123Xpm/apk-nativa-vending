@@ -147,4 +147,7 @@
   - mostrar instruccion de retiro solo en `onNeedRetrieve`
   - continuar al siguiente item solo al detectar `D2` (`onDone`)
 - [x] Ajustar transicion para ocultar parpadeo de texto largo antes del modal de retiro.
+- [x] Separar modal de exito final (`Gracias por su compra`) en layout propio.
+- [x] Agregar icono de confirmacion (`@drawable/check`) en modal de exito.
+- [x] Implementar contador visible de `5s` en cabecera del modal de exito con cierre automatico al `0s`.
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.

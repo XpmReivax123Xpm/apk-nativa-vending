@@ -222,6 +222,16 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - la secuencia continua al detectar `onDone` (`D2`).
 - Se aplico ajuste de transicion para no exponer texto tecnico largo por milisegundos antes del modal de retiro.
 
+## Modal de exito final (actualizado 2026-04-16)
+- Se separo el estado final de entrega en modal propio:
+  - layout dedicado `dialog_dispense_success.xml` (ya no depende visualmente de `dialog_dispense_progress.xml`).
+  - incluye icono de confirmacion (`@drawable/check`) en cabecera.
+- Temporizador:
+  - contador visible de `5s` en zona de cabecera externa.
+  - cierre automatico (`dismiss`) al llegar a `0s`.
+- Flujo:
+  - al finalizar entrega, se abre modal de exito y se mantiene refresh de planograma.
+
 ## Autenticacion de maquina y refresh de sesion (actualizado 2026-04-15)
 - Seleccion de maquina ahora exige PIN por maquina antes de entrar al catalogo.
 - Autenticacion operativa:

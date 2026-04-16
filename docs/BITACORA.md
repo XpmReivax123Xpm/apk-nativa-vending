@@ -674,3 +674,23 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - evitar que se vea por milisegundos el cambio de texto justo antes del modal de retiro.
 - Archivo impactado:
   - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+
+## 2026-04-16 - Modal de exito separado (`Gracias por su compra`)
+- Se separo el estado de exito final en un layout propio para no reutilizar el modal de progreso:
+  - nuevo archivo `app/src/main/res/layout/dialog_dispense_success.xml`.
+- Se actualizo `onDispenseFinished()` para:
+  - cerrar modal de progreso,
+  - abrir modal de exito dedicado,
+  - mantener refresh de catalogo al cierre de flujo (`loadCatalog(machineId, authHeader)`).
+- Se agrego imagen de confirmacion en cabecera del modal de exito:
+  - `@drawable/check` (`check.png`).
+
+## 2026-04-16 - Temporizador 5s en modal de exito (cabecera externa)
+- El modal de exito ahora usa contador visible en cabecera superior (fuera del cuerpo), estilo consistente con otros modales con timer.
+- Regla operativa:
+  - cuenta regresiva `5s -> 0s`,
+  - al llegar a `0s` ejecuta `dismiss()` automatico del modal.
+- Se reforzo implementacion de cuenta regresiva para asegurar decremento visible segundo a segundo.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_dispense_success.xml`

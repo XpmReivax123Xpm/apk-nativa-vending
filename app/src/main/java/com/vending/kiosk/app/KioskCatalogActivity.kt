@@ -854,7 +854,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.MATCH_PARENT
                     )
-                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    // Keep carousel proportions stable: image fills the fixed carousel frame.
+                    scaleType = ImageView.ScaleType.CENTER_CROP
                 }
                 slide.addView(image)
                 flipper.addView(slide)
@@ -2622,15 +2623,14 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun loadPromoImage(imageUrl: String, imageView: ImageView) {
         imageView.setImageDrawable(null)
-        imageView.scaleType = ImageView.ScaleType.FIT_CENTER
+        imageView.scaleType = ImageView.ScaleType.CENTER_CROP
         if (imageUrl.isBlank()) return
 
         val tagValue = "promo:$imageUrl"
         imageView.tag = tagValue
         imageCache.get(imageUrl)?.let { bitmap ->
             imageView.setImageBitmap(bitmap)
-            imageView.scaleType = ImageView.ScaleType.FIT_CENTER
-            applyAdaptiveCarouselHeight(bitmap)
+            imageView.scaleType = ImageView.ScaleType.CENTER_CROP
             return
         }
 
@@ -2641,8 +2641,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
             if (imageView.tag == tagValue && bitmap != null) {
                 imageView.setImageBitmap(bitmap)
-                imageView.scaleType = ImageView.ScaleType.FIT_CENTER
-                applyAdaptiveCarouselHeight(bitmap)
+                imageView.scaleType = ImageView.ScaleType.CENTER_CROP
             }
         }
     }
@@ -2800,10 +2799,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         val screenHeight = resources.displayMetrics.heightPixels
         val screenWidth = resources.displayMetrics.widthPixels
         val isLandscape = screenWidth > screenHeight
-        val factor = if (isLandscape) 0.22f else 0.30f
+        val factor = if (isLandscape) 0.22f else 0.38f
         val desired = (screenHeight * factor).toInt()
         val minHeight = if (isLandscape) dp(150) else dp(180)
-        val maxHeight = if (isLandscape) dp(320) else dp(420)
+        val maxHeight = if (isLandscape) dp(320) else dp(1000)
         val target = desired.coerceIn(minHeight, maxHeight)
         promoCarousel.layoutParams = promoCarousel.layoutParams.apply {
             height = target

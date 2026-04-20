@@ -32,6 +32,9 @@
 - [x] Simplificar celda del planograma en grilla (mostrar solo codigo; detalle completo en modal).
 - [x] Carrito mejorado con modal operativo por item (ajuste cantidad `+/-`, total en vivo y compra directa).
 - [x] Acceso a carrito con icono flotante sin afectar area de carrusel.
+- [x] Barra de categorias estaticas integrada bajo carrusel (normal + legacy).
+- [x] Carrito integrado en fila de categorias con boton `Comprar` + icono + burbuja contador.
+- [ ] Conectar categorias dinamicas desde backend (reemplazar chips estaticos actuales).
 - [~] Integrar imagenes reales de carrusel/catalogo.
   - [x] Carrusel promocional desde `taPresentacionArchivos`.
   - [x] Fondo de planograma desde `taFondoUiPrincipal`.
@@ -67,7 +70,7 @@
 - [x] Eliminar timeout de espera del segundo click (`IO_WAIT_TIMEOUT_MS`) para no cortar flujo de retiro por tiempo fijo.
 
 ### Fase 4 - Flujos completos E2E
-- [ ] Flujo completo de compra directa (login -> pago -> entrega).
+- [x] Flujo completo de compra directa (login -> pago -> entrega).
 - [ ] Flujo de recogida por reserva.
 - [ ] Reporte de entrega parcial y abortos.
 - [ ] Reconciliacion post reinicio.
@@ -151,3 +154,6 @@
 - [x] Agregar icono de confirmacion (`@drawable/check`) en modal de exito.
 - [x] Implementar contador visible de `5s` en cabecera del modal de exito con cierre automatico al `0s`.
 - [ ] Validar y cerrar bloqueo de barra/sistema con configuracion final del dispositivo vending.
+- [x] Ajuste fino visual de burbuja del carrito:
+  - posicion en borde superior derecho del boton azul
+  - sin recorte y sin tapar icono.

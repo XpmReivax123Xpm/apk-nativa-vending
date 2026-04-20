@@ -694,3 +694,24 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Archivos impactados:
   - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
   - `app/src/main/res/layout/dialog_dispense_success.xml`
+
+## 2026-04-20 - Barra de categorias estaticas + carrito integrado en catalogo
+- Se agrego barra de categorias estaticas debajo del carrusel para anticipar integracion futura con backend:
+  - `Todos`, `Sacks`, `Bebidas`, `Energizantes`, `Saludable`.
+- Se movio el acceso al carrito a la misma fila de categorias (lado derecho), manteniendo IDs funcionales existentes:
+  - `cartFabContainer`
+  - `ivCartBadge`
+  - `tvCartBadge`
+- Se ajusto presentacion del carrito a formato boton azul con texto `Comprar` + icono de carrito en una sola pieza visual.
+- Se realizaron ajustes finos de posicion de burbuja de contador para evitar:
+  - recorte visual,
+  - superposicion sobre el icono del carrito.
+- Se habilito `clipChildren=false` y `clipToPadding=false` en contenedores de fila y carrito para permitir calibracion de burbuja sin cortes con offsets negativos.
+- Se agregaron drawables de chips para categorias:
+  - `app/src/main/res/drawable/bg_catalog_category_chip.xml`
+  - `app/src/main/res/drawable/bg_catalog_category_chip_active.xml`
+- Archivos impactados:
+  - `app/src/main/res/layout/activity_kiosk_catalog.xml`
+  - `app/src/main/res/layout/activity_kiosk_catalog_legacy.xml`
+  - `app/src/main/res/drawable/bg_catalog_category_chip.xml`
+  - `app/src/main/res/drawable/bg_catalog_category_chip_active.xml`

@@ -168,6 +168,20 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Fondo general del catalogo mantiene tratamiento visual separado (degradado), sin invadir la franja superior blanca.
 - Estado: ajuste visual de cabecera listo para validacion final en tablet vending real.
 
+## Barra de categorias y carrito (actualizado 2026-04-20)
+- Se implemento barra de categorias estaticas debajo del carrusel para preparar la integracion futura de categorias dinamicas desde backend.
+- El carrito se integro en la misma fila de categorias (lado derecho) con boton azul tipo pill:
+  - texto `Comprar`
+  - icono de carrito
+  - burbuja de contador.
+- Se aplicaron ajustes de posicion para que la burbuja del contador:
+  - quede en borde superior derecho del bloque azul,
+  - no tape el icono,
+  - no se recorte en pantalla.
+- Estado:
+  - implementado en layout normal y legacy.
+  - pendiente solo conexion backend para categorias dinamicas (la UI base ya esta lista).
+
 ## Densidad visual de grilla (actualizado 2026-04-02)
 - Se simplifico la informacion visible en cada celda del planograma:
   - en grilla queda visible solo el codigo de celda.

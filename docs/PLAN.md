@@ -226,6 +226,19 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - implementado en APK.
   - pendiente validacion operativa final en vending real con distintos perfiles de maquina (lista de metodos variable).
 
+## Planograma - estrategia de medios (actualizado 2026-04-20)
+- Se adopto cache local de imagenes del planograma con invalidacion por ID de archivo.
+- Regla operativa:
+  - mantener imagen local cuando el ID de archivo no cambia,
+  - reemplazar imagen local cuando el ID de archivo cambia.
+- Alcance del cache por ID:
+  - productos (`tnProductoArchivo`) en principal/secundaria,
+  - carrusel/fondo (`tnPresentacionArchivo`).
+- Uso visual acordado:
+  - grilla principal usa imagen principal,
+  - modal de producto seleccionado usa imagen secundaria (fallback principal),
+  - lineas del carrito mantienen imagen principal.
+
 ## UX modal de dispensado (actualizado 2026-04-16)
 - Modal de progreso de dispensado alineado a operacion visual en campo:
   - titulo principal: `Dispensando productos...`

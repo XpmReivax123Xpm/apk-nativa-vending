@@ -47,6 +47,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -87,6 +89,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         object : LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
             override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
         }
+    }
+    private val localImageCacheDir by lazy {
+        File(cacheDir, "planograma_images").apply { mkdirs() }
+    }
+    private val localImageCachePrefs by lazy {
+        getSharedPreferences("planograma_image_cache", MODE_PRIVATE)
     }
     private val imageTargetsByUrl = mutableMapOf<String, MutableList<ImageView>>()
 
@@ -767,13 +775,20 @@ class KioskCatalogActivity : AppCompatActivity() {
             if (usageType.isNotBlank() && !usageType.equals("PROMOCIONAL", ignoreCase = true)) continue
             val mimeType = item.optString("tcMimeType", "").trim()
             if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) continue
-            val url = item.optString("tcUrl", "").trim()
-            if (url.isBlank()) continue
+            val remoteUrl = item.optString("tcUrl", "").trim()
+            if (remoteUrl.isBlank()) continue
+            val presentationId = item.optInt("tnPresentacionArchivo", index)
+            val imageSource = resolveImageSourceForCache(
+                slot = "promo_${presentationId}",
+                incomingId = presentationId,
+                remoteUrl = remoteUrl,
+                targetSizePx = 900
+            )
 
             slides += PromoSlideUi(
-                url = url,
+                url = imageSource,
                 visualOrder = item.optInt("tnOrdenVisual", Int.MAX_VALUE),
-                id = item.optInt("tnPresentacionArchivo", index)
+                id = presentationId
             )
         }
 
@@ -793,8 +808,15 @@ class KioskCatalogActivity : AppCompatActivity() {
         if (usageType.isNotBlank() && !usageType.equals("FONDO_PLANOGRAMA", ignoreCase = true)) return ""
         val mimeType = source.optString("tcMimeType", "").trim()
         if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) return ""
-
-        return source.optString("tcUrl", "").trim()
+        val remoteUrl = source.optString("tcUrl", "").trim()
+        if (remoteUrl.isBlank()) return ""
+        val presentationId = source.optInt("tnPresentacionArchivo", 0)
+        return resolveImageSourceForCache(
+            slot = "background_main",
+            incomingId = presentationId,
+            remoteUrl = remoteUrl,
+            targetSizePx = 1440
+        )
     }
 
     private fun applyUiBackground(imageUrl: String) {
@@ -811,6 +833,17 @@ class KioskCatalogActivity : AppCompatActivity() {
             return
         }
 
+        if (isLocalImagePath(imageUrl)) {
+            val bitmap = loadBitmapFromLocalPath(imageUrl, 1440)
+            if (bitmap != null) {
+                imageCache.put(imageUrl, bitmap)
+                screenRootView.background = BitmapDrawable(resources, bitmap)
+                return
+            }
+            screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
+            return
+        }
+
         lifecycleScope.launch {
             val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 1440) }
             if (bitmap != null) {
@@ -822,6 +855,118 @@ class KioskCatalogActivity : AppCompatActivity() {
                 screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
             }
         }
+    }
+
+    private fun extractPrimaryImage(producto: JSONObject?): Pair<Int, String> {
+        if (producto == null) return 0 to ""
+        val principal = producto.optJSONObject("taImagenPrincipal")
+        val principalId = principal?.optInt("tnProductoArchivo", 0) ?: 0
+        val principalUrl = principal?.optString("tcUrl", "")?.trim().orEmpty()
+        if (principalUrl.isNotBlank()) return principalId to principalUrl
+        return 0 to producto.optString("tcImagenUrlPrincipal", "")?.trim().orEmpty()
+    }
+
+    private fun extractSecondaryImage(producto: JSONObject?): Pair<Int, String> {
+        if (producto == null) return 0 to ""
+        val secondaries = producto.optJSONArray("taImagenesSecundarias")
+        if (secondaries != null) {
+            var chosen: JSONObject? = null
+            var chosenOrder = Int.MAX_VALUE
+            for (index in 0 until secondaries.length()) {
+                val candidate = secondaries.optJSONObject(index) ?: continue
+                val candidateUrl = candidate.optString("tcUrl", "").trim()
+                if (candidateUrl.isBlank()) continue
+                val order = candidate.optInt("tnOrdenVisual", Int.MAX_VALUE)
+                if (chosen == null || order < chosenOrder) {
+                    chosen = candidate
+                    chosenOrder = order
+                }
+            }
+            if (chosen != null) {
+                val id = chosen.optInt("tnProductoArchivo", 0)
+                val url = chosen.optString("tcUrl", "").trim()
+                return id to url
+            }
+        }
+
+        val fallback = producto.optString("tcImagenUrlSecundaria", "").trim()
+        return 0 to fallback
+    }
+
+    private fun resolveImageSourceForCache(
+        slot: String,
+        incomingId: Int,
+        remoteUrl: String,
+        targetSizePx: Int
+    ): String {
+        val normalizedUrl = remoteUrl.trim()
+        if (normalizedUrl.isBlank()) return ""
+
+        val slotKey = sanitizeCacheSlot(slot)
+        val token = if (incomingId > 0) "id:$incomingId" else "url:${normalizedUrl.lowercase()}"
+        val tokenPrefKey = "slot_${slotKey}_token"
+        val pathPrefKey = "slot_${slotKey}_path"
+        val storedToken = localImageCachePrefs.getString(tokenPrefKey, null)
+        val storedPath = localImageCachePrefs.getString(pathPrefKey, null)
+        val storedFile = storedPath?.let { File(it) }
+
+        if (storedToken == token && storedFile?.exists() == true) {
+            return storedFile.absolutePath
+        }
+
+        if (storedToken != token) {
+            storedFile?.takeIf { it.exists() }?.delete()
+            localImageCacheDir.listFiles()?.forEach { candidate ->
+                if (candidate.name.startsWith("${slotKey}_")) {
+                    candidate.delete()
+                }
+            }
+            localImageCachePrefs.edit().remove(pathPrefKey).apply()
+        }
+
+        val bitmap = downloadBitmap(normalizedUrl, targetSizePx) ?: return normalizedUrl
+        imageCache.put(normalizedUrl, bitmap)
+
+        val targetFile = File(localImageCacheDir, "${slotKey}_${token.hashCode()}.png")
+        if (!writeBitmapToFile(bitmap, targetFile)) return normalizedUrl
+
+        imageCache.put(targetFile.absolutePath, bitmap)
+        localImageCachePrefs.edit()
+            .putString(tokenPrefKey, token)
+            .putString(pathPrefKey, targetFile.absolutePath)
+            .apply()
+
+        return targetFile.absolutePath
+    }
+
+    private fun sanitizeCacheSlot(raw: String): String {
+        return raw.lowercase().replace(Regex("[^a-z0-9_\\-]"), "_")
+    }
+
+    private fun isRemoteUrl(path: String): Boolean {
+        return path.startsWith("https://", ignoreCase = true) || path.startsWith("http://", ignoreCase = true)
+    }
+
+    private fun isLocalImagePath(path: String): Boolean = path.isNotBlank() && !isRemoteUrl(path)
+
+    private fun loadBitmapFromLocalPath(path: String, targetSizePx: Int): android.graphics.Bitmap? {
+        val file = File(path)
+        if (!file.exists()) return null
+        return runCatching {
+            val bytes = file.readBytes()
+            decodeSampledBitmap(bytes, targetSizePx)
+        }.getOrNull()
+    }
+
+    private fun writeBitmapToFile(bitmap: android.graphics.Bitmap, targetFile: File): Boolean {
+        return runCatching {
+            targetFile.parentFile?.mkdirs()
+            FileOutputStream(targetFile).use { output ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
+                output.flush()
+            }
+            true
+        }.getOrDefault(false)
     }
 
     private fun renderPromotionalCarousel(promotions: List<PromoSlideUi>) {
@@ -923,7 +1068,6 @@ class KioskCatalogActivity : AppCompatActivity() {
 
             val nombreProducto = producto?.optString("tcNombre", "")?.trim().orEmpty()
             val precio = producto?.optDouble("tnPrecio", 0.0) ?: 0.0
-            val imagenUrl = producto?.optString("tcImagenUrlPrincipal", "")?.trim().orEmpty()
 
             val codigo = celda.optString("tcCodigo", "--")
             val planogramaCeldaId = when {
@@ -936,6 +1080,24 @@ class KioskCatalogActivity : AppCompatActivity() {
                 celda.has("tnProducto") -> celda.optInt("tnProducto", 0)
                 else -> 0
             }
+            val (principalId, principalRemoteUrl) = extractPrimaryImage(producto)
+            val (secondaryId, secondaryRemoteUrl) = extractSecondaryImage(producto)
+            val slotBase = when {
+                productoId > 0 -> "product_${productoId}"
+                else -> "cell_${celda.optInt("tnCelda", i)}"
+            }
+            val imagenPrincipalUrl = resolveImageSourceForCache(
+                slot = "${slotBase}_principal",
+                incomingId = principalId,
+                remoteUrl = principalRemoteUrl,
+                targetSizePx = 480
+            )
+            val imagenSecundariaUrl = resolveImageSourceForCache(
+                slot = "${slotBase}_secondary",
+                incomingId = secondaryId,
+                remoteUrl = secondaryRemoteUrl,
+                targetSizePx = 480
+            )
 
             val vendible = esActiva && estadoCeldaActiva && producto != null && productoActivo
             val physicalCell = mapCellCodeToPhysical(codigo) ?: 0
@@ -949,7 +1111,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                 stockDisponible = stockDisponible,
                 vendible = vendible,
                 physicalCell = physicalCell,
-                imagenUrl = imagenUrl
+                imagenUrl = imagenPrincipalUrl,
+                imagenUrlSecundaria = imagenSecundariaUrl
             )
         }
 
@@ -1085,7 +1248,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvName.text = item.producto
         tvPrice.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
         tvStock.text = "Stock disponible: ${item.stockDisponible}"
-        loadProductImage(item.imagenUrl, ivPreview)
+        val detailImage = item.imagenUrlSecundaria.ifBlank { item.imagenUrl }
+        loadProductImage(detailImage, ivPreview)
 
         var qty = 1
         tvQty.text = qty.toString()
@@ -1197,7 +1361,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvName.text = item.producto
         tvPrice.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
         tvStock.text = "Stock disponible: ${item.stockDisponible}"
-        loadProductImage(item.imagenUrl, ivPreview)
+        val detailImage = item.imagenUrlSecundaria.ifBlank { item.imagenUrl }
+        loadProductImage(detailImage, ivPreview)
 
         var qty = 1
         tvQty.text = qty.toString()
@@ -2739,6 +2904,16 @@ class KioskCatalogActivity : AppCompatActivity() {
             return
         }
 
+        if (isLocalImagePath(imageUrl)) {
+            val bitmap = loadBitmapFromLocalPath(imageUrl, 240)
+            if (bitmap != null) {
+                imageCache.put(imageUrl, bitmap)
+                imageView.setImageBitmap(bitmap)
+                imageView.scaleType = loadedScaleType()
+            }
+            return
+        }
+
         var shouldStartDownload = false
         synchronized(imageTargetsByUrl) {
             val targets = imageTargetsByUrl.getOrPut(imageUrl) { mutableListOf() }
@@ -2780,6 +2955,17 @@ class KioskCatalogActivity : AppCompatActivity() {
         imageCache.get(imageUrl)?.let { bitmap ->
             imageView.setImageBitmap(bitmap)
             imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+            return
+        }
+
+        if (isLocalImagePath(imageUrl)) {
+            val bitmap = loadBitmapFromLocalPath(imageUrl, 900)
+            if (bitmap != null) {
+                imageCache.put(imageUrl, bitmap)
+                imageView.setImageBitmap(bitmap)
+                imageView.scaleType = ImageView.ScaleType.CENTER_CROP
+                applyAdaptiveCarouselHeight(bitmap)
+            }
             return
         }
 
@@ -3157,7 +3343,8 @@ private data class CeldaUi(
     val stockDisponible: Int,
     val vendible: Boolean,
     val physicalCell: Int,
-    val imagenUrl: String
+    val imagenUrl: String,
+    val imagenUrlSecundaria: String
 )
 
 private data class CartLine(

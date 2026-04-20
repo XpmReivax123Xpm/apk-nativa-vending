@@ -113,6 +113,11 @@
   - `GET /api/maquina/pago/qr/servicios-habilitados`
   - parseo de `paymentMethodId` + `paymentMethodName`
   - render dinamico de opciones en modal.
+- [x] Actualizar planograma para manejo de imagen principal/secundaria y cache local por ID:
+  - cache local en disco con control por `tnProductoArchivo` (productos) y `tnPresentacionArchivo` (presentacion/fondo),
+  - reemplazo de imagen local solo cuando cambia el ID,
+  - uso de imagen secundaria en modal de producto seleccionado (con fallback a principal),
+  - uso de imagen principal en grilla y lineas de carrito.
 - [x] Unificar paleta visual de modales de compra/pago con tema kiosk claro.
 - [x] Bloquear interaccion durante generacion de QR con modal de progreso no cancelable.
 - [x] Agregar temporizador de autocierre en modal `Selecciona metodo de pago` (60s + refresh al expirar).

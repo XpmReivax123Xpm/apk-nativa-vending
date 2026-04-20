@@ -258,6 +258,32 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 
 ## 2026-03-24 - Incidente de edicion y nuevo protocolo de trabajo
 - Incidente registrado:
+
+## 2026-04-20 - Actualizacion de planograma (cache local por ID + imagen secundaria)
+
+### Hecho en esta iteracion
+- Se actualizo el parseo de planograma para soportar la nueva estructura de imagenes:
+  - `taProducto.taImagenPrincipal`
+  - `taProducto.taImagenesSecundarias`
+  - `taPresentacionArchivos`
+  - `taFondoUiPrincipal`
+- Se implemento cache local en disco para imagenes de planograma en `cacheDir/planograma_images`.
+- Se agrego control condicional por identificador de archivo:
+  - productos por `tnProductoArchivo`
+  - presentacion/fondo por `tnPresentacionArchivo`
+- Regla aplicada:
+  - si el ID recibido no cambia, se reutiliza la imagen local.
+  - si cambia, se elimina la anterior y se descarga la nueva.
+
+### Ajuste funcional de imagenes principal/secundaria
+- Grilla del planograma mantiene imagen principal.
+- Modal de detalle con carrito vacio (`showProductDialog`) ahora muestra imagen secundaria del producto seleccionado (fallback a principal si no existe secundaria).
+- Modal fusionado con carrito (`showProductWithCartDialog`) muestra:
+  - imagen secundaria para el producto actualmente seleccionado,
+  - imagen principal para los items listados dentro del carrito.
+
+### Estado
+- Implementacion aplicada y validada por usuario en ejecucion local.
   - En una iteracion de cambios sobre `KioskCatalogActivity.kt`, se aplico una edicion defectuosa que comprometio el archivo.
   - Impacto: perdida de estabilidad en esa rama de trabajo.
 - Accion de recuperacion ejecutada:

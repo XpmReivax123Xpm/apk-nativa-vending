@@ -1,5 +1,6 @@
 ﻿package com.vending.kiosk.app
 
+import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
@@ -25,6 +26,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
@@ -1534,6 +1536,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         val tvTimer = view.findViewById<TextView>(R.id.tvPaymentMethodTimer)
         val btnCancel = view.findViewById<Button>(R.id.btnPaymentMethodCancel)
         val btnContinue = view.findViewById<Button>(R.id.btnPaymentMethodContinue)
+        val methodsByViewId = mutableMapOf<Int, PaymentMethodOption>()
 
         // Fuerza visual para OEMs que pisan estilos en dialogos.
         tvTimer.setBackgroundColor(Color.TRANSPARENT)
@@ -1590,15 +1593,70 @@ class KioskCatalogActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            val method = PaymentMethodOption.QR_BCP
+            val method = methodsByViewId[checked]
+            if (method == null) {
+                tvError.visibility = View.VISIBLE
+                tvError.text = "Metodo de pago invalido"
+                return@setOnClickListener
+            }
             dialog.dismiss()
             openCheckoutDialog(selections, fromCart, method)
+        }
+
+        fun renderPaymentMethods(methods: List<PaymentMethodOption>) {
+            rgMethods.removeAllViews()
+            methodsByViewId.clear()
+            methods.forEachIndexed { index, method ->
+                val radio = RadioButton(this).apply {
+                    id = View.generateViewId()
+                    layoutParams = RadioGroup.LayoutParams(
+                        RadioGroup.LayoutParams.MATCH_PARENT,
+                        RadioGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    buttonTintList = ColorStateList.valueOf(Color.parseColor("#F28E1B"))
+                    text = method.label
+                    textSize = 16f
+                    setTextColor(Color.parseColor("#20344D"))
+                    setPadding(0, dp(8), 0, dp(8))
+                    setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_qr_method, 0, 0, 0)
+                    compoundDrawablePadding = dp(10)
+                }
+                rgMethods.addView(radio)
+                methodsByViewId[radio.id] = method
+                if (index == 0) {
+                    rgMethods.check(radio.id)
+                }
+            }
         }
 
         onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         resetAutoCloseTimer()
+        btnContinue.isEnabled = false
+        tvError.visibility = View.VISIBLE
+        tvError.setTextColor(Color.parseColor("#0965AF"))
+        tvError.text = "Cargando metodos de pago..."
+        lifecycleScope.launch {
+            when (val result = withContext(Dispatchers.IO) { loadEnabledPaymentMethods() }) {
+                is PaymentMethodsResult.Success -> {
+                    renderPaymentMethods(result.methods)
+                    btnContinue.isEnabled = true
+                    tvError.visibility = View.GONE
+                }
+
+                is PaymentMethodsResult.Error -> {
+                    btnContinue.isEnabled = false
+                    tvError.visibility = View.VISIBLE
+                    tvError.setTextColor(Color.parseColor("#B3261E"))
+                    tvError.text = result.message
+                    if (result.unauthorized) {
+                        dialog.dismiss()
+                        handleAuthSessionLost()
+                    }
+                }
+            }
+        }
         dialog.setOnDismissListener {
             autoCloseTimer?.cancel()
             onModalDismissed()
@@ -1928,6 +1986,97 @@ class KioskCatalogActivity : AppCompatActivity() {
             )
         } catch (ex: Exception) {
             QrGenerationResult.Error("Fallo de conexion al generar QR: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun loadEnabledPaymentMethods(): PaymentMethodsResult {
+        val currentHeader = resolveValidAuthHeader(forceRefresh = false)
+            ?: return PaymentMethodsResult.Error("Sesion de maquina expirada", unauthorized = true)
+        authHeader = currentHeader
+
+        var result = fetchEnabledPaymentMethods(currentHeader)
+        if (result is PaymentMethodsResult.Error && result.unauthorized) {
+            val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
+            if (!refreshedHeader.isNullOrBlank()) {
+                authHeader = refreshedHeader
+                result = fetchEnabledPaymentMethods(refreshedHeader)
+            }
+        }
+        return result
+    }
+
+    private fun fetchEnabledPaymentMethods(authHeader: String): PaymentMethodsResult {
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pago/qr/servicios-habilitados"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                return PaymentMethodsResult.Error(
+                    "Respuesta vacia de servicios de pago (HTTP $statusCode)",
+                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
+                )
+            }
+
+            val json = JSONObject(rawBody)
+            val backendError = json.optInt("error", -1)
+            val backendStatus = json.optInt("status", 0)
+            val backendMessage = json.optString("message", "No se pudo obtener servicios habilitados")
+            if (statusCode !in 200..299 || backendError != 0 || backendStatus != 1) {
+                return PaymentMethodsResult.Error(
+                    buildBackendErrorMessage(statusCode, rawBody, backendMessage),
+                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
+                )
+            }
+
+            val values = json.optJSONObject("values") ?: JSONObject()
+            val providerResponse = values.optJSONObject("taProviderResponse") ?: JSONObject()
+            val providerError = providerResponse.optInt("error", -1)
+            val providerValues = providerResponse.optJSONArray("values") ?: JSONArray()
+            if (providerError != 0 || providerValues.length() <= 0) {
+                return PaymentMethodsResult.Error("No hay servicios de pago habilitados para esta maquina.")
+            }
+
+            val methods = mutableListOf<PaymentMethodOption>()
+            for (i in 0 until providerValues.length()) {
+                val item = providerValues.optJSONObject(i) ?: continue
+                val id = when (val rawId = item.opt("paymentMethodId")) {
+                    is Number -> rawId.toInt()
+                    is String -> rawId.toIntOrNull() ?: 0
+                    else -> item.optInt("paymentMethodId", 0)
+                }
+                val label = item.optString("paymentMethodName", "").trim()
+                if (id > 0 && label.isNotBlank()) {
+                    methods += PaymentMethodOption(id = id, label = label)
+                }
+            }
+
+            val unique = methods.distinctBy { it.id }
+            if (unique.isEmpty()) {
+                PaymentMethodsResult.Error("No hay servicios de pago validos en la respuesta del proveedor.")
+            } else {
+                PaymentMethodsResult.Success(unique)
+            }
+        } catch (ex: Exception) {
+            PaymentMethodsResult.Error("Fallo obteniendo servicios habilitados: ${ex.message ?: "sin detalle"}")
         } finally {
             connection?.disconnect()
         }
@@ -3026,9 +3175,7 @@ private data class DispenseQueueItem(
     val item: CeldaUi
 )
 
-private enum class PaymentMethodOption(val id: Int, val label: String) {
-    QR_BCP(4, "QR")
-}
+private data class PaymentMethodOption(val id: Int, val label: String)
 
 private sealed interface CatalogResult {
     data class Success(
@@ -3047,6 +3194,11 @@ private sealed interface QrGenerationResult {
     ) : QrGenerationResult
 
     data class Error(val message: String) : QrGenerationResult
+}
+
+private sealed interface PaymentMethodsResult {
+    data class Success(val methods: List<PaymentMethodOption>) : PaymentMethodsResult
+    data class Error(val message: String, val unauthorized: Boolean = false) : PaymentMethodsResult
 }
 
 private sealed interface PaymentPollResult {

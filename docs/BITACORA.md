@@ -715,3 +715,25 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/res/layout/activity_kiosk_catalog_legacy.xml`
   - `app/src/main/res/drawable/bg_catalog_category_chip.xml`
   - `app/src/main/res/drawable/bg_catalog_category_chip_active.xml`
+
+## 2026-04-20 - Metodo de pago dinamico por servicios habilitados (token maquina)
+- Se reemplazo la seleccion estatica de metodo de pago por carga dinamica desde backend usando token de maquina.
+- Endpoint integrado:
+  - `GET /api/maquina/pago/qr/servicios-habilitados`
+  - headers: `Authorization: Bearer {token_maquina}`, `Accept: application/json`.
+- Parseo implementado segun estructura de respuesta:
+  - `values.taProviderResponse.values[]`
+  - `paymentMethodId`
+  - `paymentMethodName`
+- El modal de metodo de pago ahora:
+  - muestra estado de carga (`Cargando metodos de pago...`),
+  - construye radio buttons en runtime segun metodos habilitados,
+  - deshabilita `Continuar` hasta tener metodos validos,
+  - envia al checkout el `tnPaymentMethodId` realmente seleccionado.
+- Se mantuvo flujo de resiliencia de sesion:
+  - si hay `401`, intenta refresh de token con credenciales de maquina.
+  - si no se recupera sesion, se corta flujo con manejo de sesion expirada.
+- Se removio del XML la opcion fija `QR` para evitar desalineacion con backend.
+- Archivos impactados:
+  - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+  - `app/src/main/res/layout/dialog_payment_method.xml`

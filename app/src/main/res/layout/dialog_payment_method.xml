@@ -44,24 +44,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/rbPaymentQrBcp"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:buttonTint="#F28E1B"
-                android:checked="true"
-                android:drawableStart="@drawable/ic_qr_method"
-                android:drawableLeft="@drawable/ic_qr_method"
-                android:drawablePadding="10dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:text="QR"
-                android:textColor="#20344D"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-        </RadioGroup>
+            android:orientation="vertical" />
 
         <TextView
             android:id="@+id/tvPaymentMethodError"

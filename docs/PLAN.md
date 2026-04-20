@@ -217,6 +217,15 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Modal de exito de dispensado:
   - se incorpora autocierre de `5s` con contador visible.
 
+## Metodos de pago habilitados (actualizado 2026-04-20)
+- El modal `Selecciona metodo de pago` ya no depende de una opcion fija local.
+- Carga metodos habilitados por maquina desde backend con token de sesion de maquina:
+  - `GET /api/maquina/pago/qr/servicios-habilitados`.
+- El checkout usa el `paymentMethodId` seleccionado en runtime para crear pedido QR.
+- Estado:
+  - implementado en APK.
+  - pendiente validacion operativa final en vending real con distintos perfiles de maquina (lista de metodos variable).
+
 ## UX modal de dispensado (actualizado 2026-04-16)
 - Modal de progreso de dispensado alineado a operacion visual en campo:
   - titulo principal: `Dispensando productos...`

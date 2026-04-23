@@ -20,17 +20,18 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="Generando QR..."
+        android:text="GENERANDO QR..."
         android:textColor="#0E2A47"
-        android:textSize="18sp"
+        android:textSize="22sp"
         android:textStyle="bold" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:text="Por favor espere"
-        android:textColor="#5F7387"
-        android:textSize="13sp" />
+        android:text="Por favor espere..."
+        android:textColor="#0965AF"
+        android:textStyle="bold"
+        android:textSize="18sp" />
 
 </LinearLayout>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
@@ -34,10 +34,18 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Selecciona metodo de pago"
-            android:textColor="#0965AF"
+            android:text="¿CÓMO QUIERES PAGAR?"
+            android:textColor="#000000"
             android:textSize="18sp"
             android:textStyle="bold" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Seleccione una opción para continuar..."
+            android:textColor="#0965AF"
+            android:textStyle="bold"
+            android:textSize="18sp" />
 
         <RadioGroup
             android:id="@+id/rgPaymentMethods"
@@ -64,12 +72,13 @@
             <Button
                 android:id="@+id/btnPaymentMethodCancel"
                 android:layout_width="0dp"
-                android:layout_height="46dp"
+                android:layout_height="match_parent"
                 android:layout_marginRight="6dp"
                 android:layout_weight="1"
                 android:backgroundTint="#0965AF"
-                android:text="Cancelar"
-                android:textColor="#FFFFFF" />
+                android:text="CANCELAR"
+                android:textColor="#FFFFFF"
+                android:textSize="21sp" />
 
             <Button
                 android:id="@+id/btnPaymentMethodContinue"
@@ -78,10 +87,12 @@
                 android:layout_marginLeft="6dp"
                 android:layout_weight="1"
                 android:backgroundTint="#F28E1B"
-                android:text="Continuar"
+                android:text="CONTINUAR"
+                android:textSize="21sp"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
 
     </LinearLayout>
 
 </FrameLayout>
+

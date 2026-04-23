@@ -12,8 +12,8 @@
 
     <ImageView
         android:id="@+id/ivRetrieveIcon"
-        android:layout_width="62dp"
-        android:layout_height="62dp"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
         android:contentDescription="@null"
         android:scaleType="fitCenter"
         android:src="@drawable/recoger_producto" />
@@ -24,9 +24,9 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:gravity="center"
-        android:text="Producto dispensado"
-        android:textColor="#0A4A86"
-        android:textSize="20sp"
+        android:text="PRODUCTO DISPENSADO"
+        android:textColor="#000000"
+        android:textSize="22sp"
         android:textStyle="bold" />
 
     <TextView
@@ -36,7 +36,8 @@
         android:layout_marginTop="10dp"
         android:gravity="center"
         android:text="Por favor, retire su producto"
-        android:textColor="#0E2B4A"
+        android:textColor="#0965AF"
+        android:textStyle="bold"
         android:textSize="18sp" />
 
     <TextView
@@ -45,8 +46,8 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:gravity="center"
-        android:text="La dispensación continuará cuando retire el producto"
-        android:textColor="#0E2B4A"
+        android:text="La dispensación continuará cuando retire el producto..."
+        android:textColor="#000000"
         android:textSize="18sp"
         android:textStyle="bold" />
 

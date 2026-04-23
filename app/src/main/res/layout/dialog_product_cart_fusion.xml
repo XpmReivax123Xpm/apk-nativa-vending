@@ -53,7 +53,7 @@
 
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="606dp"
             android:layout_weight="1"
             android:orientation="vertical"
             android:paddingRight="8dp">
@@ -63,7 +63,7 @@
                 android:layout_height="wrap_content"
                 android:text="Detalles del Producto"
                 android:textColor="#0E2A47"
-                android:textSize="16sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -84,7 +84,7 @@
             <ImageView
                 android:id="@+id/ivFusionProductPreview"
                 android:layout_width="match_parent"
-                android:layout_height="220dp"
+                android:layout_height="273dp"
                 android:layout_marginTop="10dp"
                 android:adjustViewBounds="true"
                 android:contentDescription="preview"
@@ -96,8 +96,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:maxLines="2"
                 android:ellipsize="end"
+                android:maxLines="2"
                 android:text="Producto"
                 android:textColor="#0E2A47"
                 android:textSize="30sp"
@@ -108,9 +108,10 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:gravity="center"
-                android:text="Seleccionar cantidad"
-                android:textColor="#365574"
-                android:textSize="13sp" />
+                android:text="Elige cuántos quieres"
+                android:textColor="#0965AF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -123,7 +124,7 @@
                     android:id="@+id/btnFusionQtyMinus"
                     android:layout_width="52dp"
                     android:layout_height="40dp"
-                    android:backgroundTint="#F28E1B"
+                    android:backgroundTint="#0965AF"
                     android:contentDescription="restar cantidad"
                     android:padding="8dp"
                     android:src="@drawable/ic_minus_white" />
@@ -134,7 +135,7 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:text="1"
-                    android:textColor="#0965AF"
+                    android:textColor="#000000"
                     android:textSize="32sp"
                     android:textStyle="bold" />
 
@@ -149,23 +150,23 @@
             </LinearLayout>
 
             <TextView
+                android:id="@+id/tvFusionProductStock"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Stock: 0"
+                android:textColor="#F28E1B"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
                 android:id="@+id/tvFusionProductPrice"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:text="Precio unitario: Bs 0.00"
+                android:text="Precio unidad: Bs 0.00"
                 android:textColor="#0E2A47"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvFusionProductStock"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="Stock disponible: 0"
-                android:textColor="#F28E1B"
-                android:textSize="15sp"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
             <Button
@@ -174,7 +175,7 @@
                 android:layout_height="46dp"
                 android:layout_marginTop="16dp"
                 android:backgroundTint="#0965AF"
-                android:text="Agregar carrito"
+                android:text="SELECCIONAR PRODUCTO"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
 
@@ -185,7 +186,7 @@
 
         <LinearLayout
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="606dp"
             android:layout_weight="1.35"
             android:orientation="vertical"
             android:paddingLeft="8dp">
@@ -193,9 +194,9 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Carrito - Total Productos"
-                android:textColor="#0E2A47"
-                android:textSize="16sp"
+                android:text="TUS PRODUCTOS SELECCIONADOS"
+                android:textColor="#000000"
+                android:textSize="18sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -225,17 +226,18 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
                 android:text="Total unidades: 0"
-                android:textColor="#0E2A47"
-                android:textSize="14sp" />
+                android:textColor="#0965AF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvFusionCartTotal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
+                android:layout_marginTop="8dp"
                 android:text="Total a pagar: Bs 0.00"
                 android:textColor="#0E2A47"
-                android:textSize="34sp"
+                android:textSize="20sp"
                 android:textStyle="bold" />
 
             <Button
@@ -244,7 +246,7 @@
                 android:layout_height="46dp"
                 android:layout_marginTop="12dp"
                 android:backgroundTint="#F28E1B"
-                android:text="Comprar ahora"
+                android:text="FINALIZAR PEDIDO"
                 android:textColor="#FFFFFF" />
 
             <Button
@@ -252,8 +254,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="46dp"
                 android:layout_marginTop="8dp"
-                android:backgroundTint="#D9463D"
-                android:text="Vaciar carrito"
+                android:backgroundTint="#E00000"
+                android:text="BORRAR PRODUCTOS"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
 

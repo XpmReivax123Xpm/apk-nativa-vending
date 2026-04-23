@@ -35,8 +35,8 @@
             android:id="@+id/tvCartDialogTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Carrito - Total Productos"
-            android:textColor="#0965AF"
+            android:text="TUS PRODUCTOS SELECCIONADOS"
+            android:textColor="#000000"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -66,8 +66,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="Total: Bs 0.00"
-            android:textColor="#F28E1B"
+            android:text="PRECIO TOTAL A PAGAR: Bs 0.00"
+            android:textColor="#000000"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -80,32 +80,35 @@
             <Button
                 android:id="@+id/btnCartClear"
                 android:layout_width="0dp"
-                android:layout_height="46dp"
+                android:layout_height="wrap_content"
                 android:layout_marginEnd="6dp"
                 android:layout_weight="1"
-                android:backgroundTint="#0965AF"
-                android:text="Vaciar"
-                android:textColor="#FFFFFF" />
+                android:backgroundTint="#E00000"
+                android:text="BORRAR PRODUCTOS"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp" />
 
             <Button
                 android:id="@+id/btnCartClose"
                 android:layout_width="0dp"
-                android:layout_height="46dp"
+                android:layout_height="match_parent"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:backgroundTint="#7A8A99"
-                android:text="Cerrar"
-                android:textColor="#FFFFFF" />
+                android:backgroundTint="#6A7987"
+                android:text="VOLVER ATRÁS"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp" />
 
             <Button
                 android:id="@+id/btnCartBuy"
                 android:layout_width="0dp"
-                android:layout_height="46dp"
+                android:layout_height="match_parent"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
                 android:backgroundTint="#F28E1B"
-                android:text="Pagar"
-                android:textColor="#FFFFFF" />
+                android:text="FINALIZAR PEDIDO"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp" />
         </LinearLayout>
 
     </LinearLayout>

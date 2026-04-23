@@ -10,8 +10,8 @@
         android:id="@+id/tvCancelOrderTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Cancelar pedido"
-        android:textColor="#0965AF"
+        android:text="CANCELAR PEDIDO"
+        android:textColor="#000000"
         android:textSize="21sp"
         android:textStyle="bold" />
 
@@ -20,9 +20,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:text="Estas seguro de cancelar el pedido?"
-        android:textColor="#365574"
-        android:textSize="16sp" />
+        android:text="¿Estas seguro de cancelar el pedido?"
+        android:textColor="#0965AF"
+        android:textStyle="bold"
+        android:textSize="18sp" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -37,7 +38,8 @@
             android:layout_marginEnd="6dp"
             android:layout_weight="1"
             android:backgroundTint="#7A8A99"
-            android:text="No"
+            android:text="NO"
+            android:textSize="22sp"
             android:textColor="#FFFFFF" />
 
         <Button
@@ -47,7 +49,8 @@
             android:layout_marginStart="6dp"
             android:layout_weight="1"
             android:backgroundTint="#F28E1B"
-            android:text="Si"
+            android:text="SI"
+            android:textSize="22sp"
             android:textColor="#FFFFFF" />
     </LinearLayout>
 

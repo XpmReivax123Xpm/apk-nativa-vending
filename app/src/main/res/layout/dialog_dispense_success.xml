@@ -17,8 +17,8 @@
 
     <ImageView
         android:id="@+id/ivDispenseSuccessCheck"
-        android:layout_width="72dp"
-        android:layout_height="72dp"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
         android:layout_marginBottom="8dp"
         android:contentDescription="@null"
         android:scaleType="fitCenter"
@@ -29,9 +29,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:text="Gracias por su compra"
-        android:textColor="#0965AF"
-        android:textSize="28sp"
+        android:text="GRACIAS POR SU COMPRA"
+        android:textColor="#000000"
+        android:textSize="22sp"
         android:textStyle="bold" />
 
     <TextView
@@ -41,16 +41,18 @@
         android:layout_marginTop="8dp"
         android:gravity="center"
         android:text="Dispensado completado correctamente."
-        android:textColor="#0E2B4A"
-        android:textSize="16sp" />
+        android:textColor="#0965AF"
+        android:textStyle="bold"
+        android:textSize="18sp" />
 
     <Button
         android:id="@+id/btnDispenseSuccessClose"
-        android:layout_width="match_parent"
+        android:layout_width="350dp"
         android:layout_height="46dp"
         android:layout_marginTop="16dp"
         android:backgroundTint="#0965AF"
-        android:text="Cerrar"
+        android:text="CERRAR"
+        android:textSize="22dp"
         android:textColor="#FFFFFF" />
 
     </LinearLayout>

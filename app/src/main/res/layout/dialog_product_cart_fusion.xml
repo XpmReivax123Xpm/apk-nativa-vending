@@ -61,8 +61,8 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Detalles del Producto"
-                android:textColor="#0E2A47"
+                android:text="DETALLES DEL PRODUCTO"
+                android:textColor="#000000"
                 android:textSize="18sp"
                 android:textStyle="bold" />
 
@@ -83,10 +83,11 @@
 
             <ImageView
                 android:id="@+id/ivFusionProductPreview"
-                android:layout_width="match_parent"
+                android:layout_width="273dp"
                 android:layout_height="273dp"
                 android:layout_marginTop="10dp"
-                android:adjustViewBounds="true"
+                android:layout_gravity="center_horizontal"
+                android:adjustViewBounds="false"
                 android:contentDescription="preview"
                 android:scaleType="fitCenter"
                 android:src="@android:drawable/ic_menu_gallery" />
@@ -99,6 +100,7 @@
                 android:ellipsize="end"
                 android:maxLines="2"
                 android:text="Producto"
+                android:gravity="center"
                 android:textColor="#0E2A47"
                 android:textSize="30sp"
                 android:textStyle="bold" />
@@ -176,6 +178,7 @@
                 android:layout_marginTop="16dp"
                 android:backgroundTint="#0965AF"
                 android:text="SELECCIONAR PRODUCTO"
+                android:textSize="22sp"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
 
@@ -247,6 +250,7 @@
                 android:layout_marginTop="12dp"
                 android:backgroundTint="#F28E1B"
                 android:text="FINALIZAR PEDIDO"
+                android:textSize="22sp"
                 android:textColor="#FFFFFF" />
 
             <Button
@@ -256,6 +260,7 @@
                 android:layout_marginTop="8dp"
                 android:backgroundTint="#E00000"
                 android:text="BORRAR PRODUCTOS"
+                android:textSize="22sp"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
 

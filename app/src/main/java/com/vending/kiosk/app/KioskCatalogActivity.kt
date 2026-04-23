@@ -2681,8 +2681,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispensingInProgress = true
         clearCartOnDispenseFinish = fromCart
 
-        tvDispenseTitle?.text = "Dispensando productos..."
-        tvDispenseStatus?.text = "Espera un momento, por favor..."
+        tvDispenseTitle?.text = "DISPENSANDO..."
+        tvDispenseStatus?.text = "Espere un momento, por favor..."
         tvDispenseProgress?.text = "1 de ${dispensingQueue.size}"
         tvDispenseProductName?.text = dispensingQueue.firstOrNull()?.item?.producto.orEmpty()
         tvDispenseTimer?.visibility = View.GONE

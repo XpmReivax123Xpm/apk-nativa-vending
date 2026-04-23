@@ -54,8 +54,8 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Detalles del Producto"
-            android:textColor="#0E2A47"
+            android:text="DETALLES DEL PRODUCTO"
+            android:textColor="#000000"
             android:textSize="17sp"
             android:textStyle="bold" />
 
@@ -112,9 +112,10 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
             android:gravity="center"
-            android:text="Seleccionar cantidad"
-            android:textColor="#365574"
-            android:textSize="13sp" />
+            android:text="Elige cuántos quieres"
+            android:textColor="#0965AF"
+            android:textStyle="bold"
+            android:textSize="18sp" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -127,7 +128,7 @@
                 android:id="@+id/btnQtyMinus"
                 android:layout_width="66dp"
                 android:layout_height="40dp"
-                android:backgroundTint="#F28E1B"
+                android:backgroundTint="#0965AF"
                 android:contentDescription="restar cantidad"
                 android:padding="8dp"
                 android:src="@drawable/ic_minus_white" />
@@ -138,7 +139,7 @@
                 android:layout_height="wrap_content"
                 android:gravity="center"
                 android:text="1"
-                android:textColor="#0965AF"
+                android:textColor="#000000"
                 android:textSize="34sp"
                 android:textStyle="bold" />
 
@@ -157,7 +158,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="10dp"
-            android:text="Precio unitario: Bs 0.00"
+            android:text="Precio unidad: Bs 0.00"
             android:textColor="#0E2A47"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -167,7 +168,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="3dp"
-            android:text="Stock disponible: 0"
+            android:text="Stock: 0"
             android:textColor="#F28E1B"
             android:textSize="15sp"
             android:textStyle="bold" />
@@ -210,7 +211,8 @@
                 android:layout_marginRight="6dp"
                 android:layout_weight="1"
                 android:backgroundTint="#0965AF"
-                android:text="Agregar carrito"
+                android:text="AGREGAR A TU PEDIDO"
+                android:textSize="18sp"
                 android:textColor="#FFFFFF" />
 
             <Button
@@ -220,7 +222,8 @@
                 android:layout_marginLeft="6dp"
                 android:layout_weight="1"
                 android:backgroundTint="#F28E1B"
-                android:text="Comprar ahora"
+                android:text="COMPRAR AHORA ESTE PRODUCTO"
+                android:textSize="18sp"
                 android:textColor="#FFFFFF" />
         </LinearLayout>
 

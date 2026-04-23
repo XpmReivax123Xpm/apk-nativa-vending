@@ -22,8 +22,8 @@
         android:layout_marginTop="12dp"
         android:gravity="center"
         android:text="Expira: --"
-        android:textColor="#0965AF"
-        android:textSize="13sp" />
+        android:textColor="#000000"
+        android:textSize="18sp" />
 
     <TextView
         android:id="@+id/tvQrStatus"
@@ -32,8 +32,8 @@
         android:layout_marginTop="8dp"
         android:gravity="center"
         android:text="Esperando pago..."
-        android:textColor="#F28E1B"
-        android:textSize="14sp"
+        android:textColor="#0965AF"
+        android:textSize="18sp"
         android:textStyle="bold" />
 
     <ProgressBar
@@ -49,7 +49,7 @@
         android:layout_height="46dp"
         android:layout_marginTop="14dp"
         android:enabled="false"
-        android:text="Cancelar"
+        android:text="CANCELAR PEDIDO"
         android:visibility="gone" />
 
 </LinearLayout>

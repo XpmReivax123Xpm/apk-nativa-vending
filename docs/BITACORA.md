@@ -763,3 +763,17 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Archivos impactados:
   - `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
   - `app/src/main/res/layout/dialog_payment_method.xml`
+
+## 2026-04-23 - Ajustes visuales en modales (iteracion UX)
+- Se realizo revision de prioridad XML vs Kotlin en modales de producto/dispensado.
+- Confirmacion funcional registrada:
+  - el texto inicial definido en XML puede ser sobreescrito por asignaciones runtime en `KioskCatalogActivity`.
+  - los estilos del XML se mantienen mientras no se fuercen desde Kotlin.
+- Ajuste aplicado en UI:
+  - `dialog_product_cart_fusion.xml`: preview de imagen de producto estandarizado con caja fija para mejorar consistencia visual entre productos.
+- Ajuste de codigo solicitado por usuario:
+  - se probo una variante para priorizar estilos XML en `KioskCatalogActivity`.
+  - tras validacion en dispositivo, se revirtio ese bloque y se restauro comportamiento previo.
+- Estado de la iteracion:
+  - cambios visuales en evaluacion por usuario.
+  - documentacion actualizada antes de commit manual.

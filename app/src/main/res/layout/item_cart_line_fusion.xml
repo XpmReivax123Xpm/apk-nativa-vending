@@ -38,8 +38,8 @@
                 android:maxLines="2"
                 android:ellipsize="end"
                 android:text="Producto"
-                android:textColor="#20344D"
-                android:textSize="17sp"
+                android:textColor="#000000"
+                android:textSize="14sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -47,9 +47,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:text="Unitario: Bs 0.00"
-                android:textColor="#5C7997"
-                android:textSize="13sp" />
+                android:text="Unidad: Bs 0.00"
+                android:textColor="#000000"
+                android:textSize="14sp" />
         </LinearLayout>
 
         <TextView
@@ -58,8 +58,8 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:text="0.00 Bs"
-            android:textColor="#20344D"
-            android:textSize="17sp"
+            android:textColor="#000000"
+            android:textSize="14sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -78,7 +78,7 @@
             android:id="@+id/btnFusionCartQtyMinus"
             android:layout_width="34dp"
             android:layout_height="32dp"
-            android:backgroundTint="#F28E1B"
+            android:backgroundTint="#0965AF"
             android:contentDescription="restar"
             android:padding="7dp"
             android:src="@drawable/ic_minus_white" />
@@ -89,8 +89,8 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:text="1"
-            android:textColor="#0965AF"
-            android:textSize="20sp"
+            android:textColor="#000000"
+            android:textSize="18sp"
             android:textStyle="bold" />
 
         <ImageButton
@@ -111,7 +111,7 @@
             android:contentDescription="quitar item"
             android:padding="5dp"
             android:src="@android:drawable/ic_menu_delete"
-            android:tint="#D94A3A" />
+            android:tint="#E00000" />
     </LinearLayout>
 
     <View

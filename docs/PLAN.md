@@ -312,3 +312,14 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - render en `FIT_CENTER`
   - altura adaptativa del carrusel segun proporcion de imagen (con limites para no romper layout).
 - Estado: implementado; pendiente validacion final en tablet vending sobre fluidez real con Android `7.1.2`.
+
+## Ajustes UX modales (actualizado 2026-04-23)
+- Se reviso comportamiento visual de modales de producto y dispensado para reducir saltos de interfaz.
+- Criterio operativo acordado para este bloque:
+  - XML define estructura y estilo base.
+  - Kotlin actualiza solo datos dinamicos del flujo (texto variable, contadores, estados).
+- Se aplico estandar visual en `dialog_product_cart_fusion.xml` para preview de producto con caja fija (consistencia entre imagenes).
+- Se mantuvo la logica existente en `KioskCatalogActivity` segun validacion del usuario (sin cambio funcional en flujo de negocio).
+- Estado:
+  - iteracion visual en curso.
+  - pendiente validacion final del usuario en dispositivo antes de cierre de commit.

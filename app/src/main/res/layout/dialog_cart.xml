@@ -94,7 +94,7 @@
                 android:layout_height="match_parent"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:backgroundTint="#6A7987"
+                android:backgroundTint="#0965AF"
                 android:text="VOLVER ATRÁS"
                 android:textColor="#FFFFFF"
                 android:textSize="22sp" />

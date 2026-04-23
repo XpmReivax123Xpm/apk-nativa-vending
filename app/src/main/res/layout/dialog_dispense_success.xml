@@ -45,15 +45,15 @@
         android:textStyle="bold"
         android:textSize="18sp" />
 
-    <Button
-        android:id="@+id/btnDispenseSuccessClose"
-        android:layout_width="350dp"
-        android:layout_height="46dp"
-        android:layout_marginTop="16dp"
-        android:backgroundTint="#0965AF"
-        android:text="CERRAR"
-        android:textSize="22dp"
-        android:textColor="#FFFFFF" />
+        <Button
+            android:id="@+id/btnDispenseSuccessClose"
+            android:layout_width="350dp"
+            android:layout_height="46dp"
+            android:layout_marginTop="16dp"
+            android:backgroundTint="#0965AF"
+            android:text="CERRAR"
+            android:textColor="#FFFFFF"
+            android:textSize="22dp" />
 
     </LinearLayout>
 

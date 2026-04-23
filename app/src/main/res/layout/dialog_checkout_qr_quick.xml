@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <TextView
+        android:id="@+id/tvCheckoutDialogTimer"
+        android:layout_width="wrap_content"
+        android:layout_height="36dp"
+        android:layout_gravity="top|end"
+        android:layout_marginEnd="16dp"
+        android:background="@android:color/transparent"
+        android:gravity="center"
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:shadowColor="#80000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="2"
+        android:text="60s"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:translationY="22dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="54dp"
+        android:background="@drawable/bg_modal_surface">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="RESUMEN DE TU PEDIDO"
+                android:textColor="#000000"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvCheckoutSummary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Resumen"
+                android:textColor="#0965AF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvCheckoutMethod"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Metodo de pago: QR"
+                android:textColor="#F28E1B"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvCheckoutError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="#B3261E"
+                android:textSize="13sp"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/progressCheckout"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="10dp"
+                android:indeterminateTint="#F28E1B"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnCheckoutCancel"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginRight="6dp"
+                    android:layout_weight="1"
+                    android:backgroundTint="#0965AF"
+                    android:text="CANCELAR"
+                    android:textStyle="bold"
+                    android:textSize="22sp"
+                    android:textColor="#FFFFFF" />
+
+                <Button
+                    android:id="@+id/btnCheckoutGenerate"
+                    android:layout_width="0dp"
+                    android:layout_height="46dp"
+                    android:layout_marginLeft="6dp"
+                    android:layout_weight="1"
+                    android:backgroundTint="#F28E1B"
+                    android:text="GENERAR QR"
+                    android:textStyle="bold"
+                    android:textSize="22sp"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+</FrameLayout>

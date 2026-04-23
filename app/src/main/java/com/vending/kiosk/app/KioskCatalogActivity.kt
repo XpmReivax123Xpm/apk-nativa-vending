@@ -1835,12 +1835,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     ) {
         if (selections.isEmpty()) return
 
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_checkout_qr, null)
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_checkout_qr_quick, null)
         val tvSummary = view.findViewById<TextView>(R.id.tvCheckoutSummary)
         val tvMethod = view.findViewById<TextView>(R.id.tvCheckoutMethod)
-        val etName = view.findViewById<EditText>(R.id.etCheckoutName)
-        val etPhone = view.findViewById<EditText>(R.id.etCheckoutPhone)
-        val etCi = view.findViewById<EditText>(R.id.etCheckoutCi)
         val tvError = view.findViewById<TextView>(R.id.tvCheckoutError)
         val tvTimer = view.findViewById<TextView>(R.id.tvCheckoutDialogTimer)
         val progress = view.findViewById<ProgressBar>(R.id.progressCheckout)
@@ -1859,9 +1856,6 @@ class KioskCatalogActivity : AppCompatActivity() {
             .setView(view)
             .create()
         dialog.setCanceledOnTouchOutside(false)
-        etName.visibility = View.GONE
-        etPhone.visibility = View.GONE
-        etCi.visibility = View.GONE
 
         // Fuerza visual para OEMs que sobreescriben estilos en dialogos.
         tvTimer.setBackgroundColor(Color.TRANSPARENT)
@@ -1905,10 +1899,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 loading = true,
                 progress = progress,
                 btnGenerate = btnGenerate,
-                btnCancel = btnCancel,
-                etName = etName,
-                etPhone = etPhone,
-                etCi = etCi
+                btnCancel = btnCancel
             )
             tvError.visibility = View.GONE
             val generatingDialog = AlertDialog.Builder(this@KioskCatalogActivity)
@@ -1964,10 +1955,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     loading = false,
                     progress = progress,
                     btnGenerate = btnGenerate,
-                    btnCancel = btnCancel,
-                    etName = etName,
-                    etPhone = etPhone,
-                    etCi = etCi
+                    btnCancel = btnCancel
                 )
 
                 when (result) {
@@ -2002,17 +1990,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         loading: Boolean,
         progress: ProgressBar,
         btnGenerate: Button,
-        btnCancel: Button,
-        etName: EditText,
-        etPhone: EditText,
-        etCi: EditText
+        btnCancel: Button
     ) {
         progress.visibility = if (loading) View.VISIBLE else View.GONE
         btnGenerate.isEnabled = !loading
         btnCancel.isEnabled = !loading
-        etName.isEnabled = !loading
-        etPhone.isEnabled = !loading
-        etCi.isEnabled = !loading
     }
 
     private fun createOrderAndGenerateQr(

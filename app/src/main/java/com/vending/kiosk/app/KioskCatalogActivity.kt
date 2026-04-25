@@ -1259,6 +1259,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             .setView(view)
             .create()
         dialog.setCanceledOnTouchOutside(false)
+        var openFusionAfterDismiss = false
 
         var autoCloseTimer: CountDownTimer? = null
         fun resetAutoCloseTimer() {
@@ -1311,6 +1312,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnAddCart.setOnClickListener {
             resetAutoCloseTimer()
             addToCart(item, qty)
+            openFusionAfterDismiss = true
             dialog.dismiss()
         }
 
@@ -1330,6 +1332,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.setOnDismissListener {
             autoCloseTimer?.cancel()
             onModalDismissed()
+            if (openFusionAfterDismiss) {
+                openFusionAfterDismiss = false
+                showProductWithCartDialog(item)
+            }
         }
     }
 

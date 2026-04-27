@@ -52,7 +52,9 @@
 - [x] Definir autenticacion y refresh de sesion.
   - login operativo por maquina: `POST /api/maquinas/login` con `tcCodigoMaquina + tcPin`.
   - guardado local de credenciales de maquina para renovacion automatica de token al expirar.
-- [ ] Definir endpoint y semantica para polling de pago.
+- [~] Definir endpoint y semantica para polling de pago.
+  - estado actual (2026-04-27): QR migro a `POST /api/maquina/pago/qr/consultar-transaccion` con `companyTransactionId` y soporte opcional de `pagofacilTransactionId`.
+  - pendiente: cierre final de contrato de estados con backend para todos los escenarios de proveedor.
 - [ ] Definir endpoint de reporte por item y reporte global.
 - [ ] Definir idempotencia de reportes.
 - [x] Migrar base URL de entorno LAN a dominio backend productivo.
@@ -100,6 +102,18 @@
 - [x] Despues de editar: reportar `git diff --name-only` + resumen corto.
 - [x] Aplicar cambios pequenos/verificables; evitar ediciones masivas riesgosas.
 - [x] Ante falla: rollback del bloque afectado al ultimo estado estable.
+
+### Actualizacion 2026-04-27
+- [x] Migrar metodos de pago de `GET /api/maquina/pago/qr/servicios-habilitados` a `GET /api/maquina/metodos-pago`.
+- [x] Filtrar metodos de pago visibles en APK a `QR BCP` y `QR ATC` (por nombre de metodo).
+- [x] Migrar polling QR principal a `POST /api/maquina/pago/qr/consultar-transaccion`.
+- [x] Guardar datos adicionales del QR al crear pedido para robustecer polling:
+  - `values.taQr.tnTransaccionProveedor`
+  - `values.taQr.tcTransaccionMetodoProveedor`
+- [x] Ajustar UX del modal QR para no exponer mensajes tecnicos del backend en estado transitorio.
+- [x] Flujo de modal simple de producto: al `Agregar a tu pedido`, cerrar modal simple y abrir modal fusionado (`dialog_product_cart_fusion`).
+- [x] Catalogo: mantener franja superior actual y agregar franja blanca inferior (solo color) en layout normal + legacy.
+- [x] Ajustar densidad de grilla de catalogo a `5x3`.
 
 ### Fase 2 - Integracion backend (estado al 2026-03-24)
 - [x] Crear pedido + generar QR desde APK.

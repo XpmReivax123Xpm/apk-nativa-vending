@@ -777,3 +777,34 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Estado de la iteracion:
   - cambios visuales en evaluacion por usuario.
   - documentacion actualizada antes de commit manual.
+
+## 2026-04-27 - Integracion QR backend (metodos + polling) y ajustes de catalogo
+- Se actualizo la fuente de metodos de pago por maquina:
+  - de `GET /api/maquina/pago/qr/servicios-habilitados`
+  - a `GET /api/maquina/metodos-pago`.
+- Se aplico filtro de negocio en APK para mostrar solo metodos permitidos:
+  - `QR BCP`
+  - `QR ATC`.
+- Se migro el polling QR principal a:
+  - `POST /api/maquina/pago/qr/consultar-transaccion`.
+- Payload implementado en polling QR:
+  - minimo: `{ "companyTransactionId": "<tnPedido>" }`
+  - robusto (cuando existe): incluye `pagofacilTransactionId` (`taQr.tnTransaccionProveedor`).
+- Se agrego persistencia en memoria de datos QR al crear pedido:
+  - `values.taQr.tnTransaccionProveedor`
+  - `values.taQr.tcTransaccionMetodoProveedor`.
+- Se mejoro lectura de estados del proveedor en polling:
+  - soporte de variantes de campos de estado/descripcion,
+  - mapeo por codigo y por descripcion (`PAGADO/APROBADO/PENDIENTE/CANCELADO/ANULADO/REVERTIDO/FALLIDO`).
+- Se ajusto UX del modal QR:
+  - en errores transitorios ya no se muestra mensaje tecnico backend,
+  - se mantiene mensaje operativo `Esperando confirmacion de pago...`.
+- Ajuste de flujo de modales de producto:
+  - en modal simple, al `Agregar a tu pedido` ahora:
+    1. agrega al carrito,
+    2. cierra modal simple,
+    3. abre modal fusionado `dialog_product_cart_fusion`.
+- Ajustes de layout de catalogo (normal + legacy):
+  - se mantuvo la franja blanca superior (nombre de maquina/ubicacion),
+  - se agrego una franja blanca inferior adicional (solo color),
+  - grilla de catalogo ajustada de `6x3` a `5x3`.

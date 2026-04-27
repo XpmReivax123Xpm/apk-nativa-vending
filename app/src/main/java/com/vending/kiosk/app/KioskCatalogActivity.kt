@@ -1130,7 +1130,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             val columns = 3
-            val rows = 6
+            val rows = 5
             val itemsPerPage = columns * rows
             val pageWidth = resources.displayMetrics.widthPixels - dp(24)
 

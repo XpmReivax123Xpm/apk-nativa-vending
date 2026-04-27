@@ -217,6 +217,22 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Modal de exito de dispensado:
   - se incorpora autocierre de `5s` con contador visible.
 
+## Flujo QR backend (actualizado 2026-04-27)
+- Fuente principal de metodos de pago por maquina:
+  - `GET /api/maquina/metodos-pago`.
+- Regla de visibilidad en APK (negocio actual):
+  - mostrar solo `QR BCP` y `QR ATC`.
+- Polling QR principal:
+  - `POST /api/maquina/pago/qr/consultar-transaccion`.
+  - payload minimo: `companyTransactionId = tnPedido`.
+  - payload robusto (si existe): incluye `pagofacilTransactionId` (`taQr.tnTransaccionProveedor`).
+- Decision de estado en APK:
+  - pagado: `paymentStatus=2` o descripcion aprobatoria (`PAGADO/APROBADO`),
+  - pendiente: `paymentStatus=1` o descripcion de espera,
+  - fallido/cancelado: `3/4` o descripcion (`CANCELADO/ANULADO/REVERTIDO/FALLIDO`).
+- Nota:
+  - `GET /api/pedido/{tnPedido}/estado-pago` queda como apoyo diagnostico, no como fuente principal para QR.
+
 ## Metodos de pago habilitados (actualizado 2026-04-20)
 - El modal `Selecciona metodo de pago` ya no depende de una opcion fija local.
 - Carga metodos habilitados por maquina desde backend con token de sesion de maquina:

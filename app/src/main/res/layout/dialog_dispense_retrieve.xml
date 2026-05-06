@@ -12,8 +12,8 @@
 
     <ImageView
         android:id="@+id/ivRetrieveIcon"
-        android:layout_width="100dp"
-        android:layout_height="100dp"
+        android:layout_width="150dp"
+        android:layout_height="150dp"
         android:contentDescription="@null"
         android:scaleType="fitCenter"
         android:src="@drawable/recoger_producto" />
@@ -26,7 +26,7 @@
         android:gravity="center"
         android:text="PRODUCTO DISPENSADO"
         android:textColor="#000000"
-        android:textSize="22sp"
+        android:textSize="30sp"
         android:textStyle="bold" />
 
     <TextView
@@ -38,7 +38,7 @@
         android:text="Por favor, retire su producto"
         android:textColor="#0965AF"
         android:textStyle="bold"
-        android:textSize="18sp" />
+        android:textSize="28sp" />
 
     <TextView
         android:id="@+id/tvRetrieveHelp"
@@ -48,7 +48,7 @@
         android:gravity="center"
         android:text="La dispensación continuará cuando retire el producto..."
         android:textColor="#000000"
-        android:textSize="18sp"
+        android:textSize="28sp"
         android:textStyle="bold" />
 
 </LinearLayout>

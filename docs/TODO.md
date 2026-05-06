@@ -34,7 +34,7 @@
 - [x] Acceso a carrito con icono flotante sin afectar area de carrusel.
 - [x] Barra de categorias estaticas integrada bajo carrusel (normal + legacy).
 - [x] Carrito integrado en fila de categorias con boton `Comprar` + icono + burbuja contador.
-- [ ] Conectar categorias dinamicas desde backend (reemplazar chips estaticos actuales).
+- [x] Conectar categorias dinamicas desde backend (reemplazar chips estaticos actuales).
 - [~] Integrar imagenes reales de carrusel/catalogo.
   - [x] Carrusel promocional desde `taPresentacionArchivos`.
   - [x] Fondo de planograma desde `taFondoUiPrincipal`.
@@ -48,7 +48,6 @@
   - [ ] Provisioning real de Device Owner en tablet vending y validacion final contra barra OEM.
 
 ### Fase 2 - Integracion backend
-- [ ] Definir contratos JSON definitivos con equipo backend.
 - [x] Definir autenticacion y refresh de sesion.
   - login operativo por maquina: `POST /api/maquinas/login` con `tcCodigoMaquina + tcPin`.
   - guardado local de credenciales de maquina para renovacion automatica de token al expirar.
@@ -63,9 +62,6 @@
 - [ ] Cerrar traduccion completa de codigos/errores de placa en calibrador (tabla validada en campo).
 
 ### Fase 3 - Robustez serial/hardware
-- [ ] Formalizar contrato del protocolo con placa real (PENDIENTE HW).
-- [ ] Documentar matriz de errores reales observados (driver 0000 y otros).
-- [ ] Definir politica de reintentos seguros por comando.
 - [ ] Definir estrategia de recuperacion local antes de compensacion backend.
 - [ ] Definir condiciones de estado incierto y corte seguro.
 - [x] Ajustar timeout de driver a 60s en `VendingFlowController`.
@@ -114,6 +110,14 @@
 - [x] Flujo de modal simple de producto: al `Agregar a tu pedido`, cerrar modal simple y abrir modal fusionado (`dialog_product_cart_fusion`).
 - [x] Catalogo: mantener franja superior actual y agregar franja blanca inferior (solo color) en layout normal + legacy.
 - [x] Ajustar densidad de grilla de catalogo a `5x3`.
+
+### Actualizacion 2026-05-06
+- [x] Modal de incidencia (`dialog_dispense_error`): agregar iconografia SVG para instrucciones de reporte:
+  - `1.` foto producto trabado
+  - `2.` foto vending machine
+  - `3.` foto de pantalla
+- [x] Reordenar filas de instrucciones para UX:
+  - formato final `numero + icono + texto` (icono entre numero y "Foto").
 
 ### Fase 2 - Integracion backend (estado al 2026-03-24)
 - [x] Crear pedido + generar QR desde APK.

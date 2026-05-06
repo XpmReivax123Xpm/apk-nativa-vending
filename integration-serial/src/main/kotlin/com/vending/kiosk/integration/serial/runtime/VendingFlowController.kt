@@ -96,7 +96,7 @@ class VendingFlowController(
                         running = false
                         waitingPickup = false
                         h.removeCallbacksAndMessages(null)
-                        ui.onError("Driver abortado (status 0000)")
+                        ui.onError("DISPENSACIÓN FALLIDA")
                         return
                     }
                 } else {
@@ -106,7 +106,7 @@ class VendingFlowController(
             if (running && !waitingPickup && isDriverDone(rx)) {
                 h.removeCallbacks(pollDriverRunnable)
                 h.removeCallbacks(pollIoVendRunnable)
-                ui.onLog("Driver DONE (sysctrl_stat=2).")
+                ui.onLog("DISPENSACIÓN COMPLETA")
                 if (vendStage < 4) {
                     vendStage = 4
                     ui.onLog("Puerta blanca: cerrando/cerrada (inferido por DONE)")

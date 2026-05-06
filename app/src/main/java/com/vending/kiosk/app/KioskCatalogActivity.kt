@@ -117,6 +117,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var btnDispenseClose: Button? = null
     private var dispenseSuccessCloseTimer: CountDownTimer? = null
     private var dispenseSuccessDialog: AlertDialog? = null
+    private var dispenseErrorDialog: AlertDialog? = null
     private var tvDispenseSuccessTimer: TextView? = null
     private var btnDispenseSuccessClose: Button? = null
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
@@ -307,6 +308,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     override fun onDestroy() {
         qrPollingJob?.cancel()
         dismissDispenseSuccessDialog()
+        dispenseErrorDialog?.takeIf { it.isShowing }?.dismiss()
+        dispenseErrorDialog = null
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
         dismissRetrieveDialog()
@@ -2718,13 +2721,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         runCatching { vendFlow.stop() }
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
-
-        tvDispenseTitle?.text = "Incidencia en dispensado"
-        tvDispenseProgress?.text = ""
-        tvDispenseStatus?.text = message
-        tvDispenseProductName?.text = ""
-        tvDispenseTimer?.visibility = View.GONE
-        btnDispenseClose?.visibility = View.VISIBLE
+        dispenseDialog?.takeIf { it.isShowing }?.dismiss()
+        dispenseDialog = null
+        showDispenseErrorDialog(message)
     }
 
     private fun onDispenseFinished() {
@@ -2743,6 +2742,82 @@ class KioskCatalogActivity : AppCompatActivity() {
         showDispenseSuccessDialog()
 
         loadCatalog(machineId, authHeader)
+    }
+
+    private fun showDispenseErrorDialog(message: String) {
+        if (dispenseErrorDialog?.isShowing == true) return
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_error, null)
+        val tvMessage = view.findViewById<TextView>(R.id.tvDispenseErrorMessage)
+        val ivHero = view.findViewById<ImageView>(R.id.ivDispenseErrorHero)
+        val llDelivered = view.findViewById<LinearLayout>(R.id.llDispenseDeliveredItems)
+        val llPending = view.findViewById<LinearLayout>(R.id.llDispensePendingItems)
+        tvMessage.text = message.ifBlank { "No se pudo completar la dispensacion." }
+
+        val delivered = if (dispensingCursor <= 0) {
+            emptyList()
+        } else {
+            dispensingQueue.take(dispensingCursor)
+        }
+        val pending = if (dispensingCursor >= dispensingQueue.size) {
+            emptyList()
+        } else {
+            dispensingQueue.drop(dispensingCursor)
+        }
+
+        fun renderItems(container: LinearLayout, items: List<DispenseQueueItem>) {
+            container.removeAllViews()
+            if (items.isEmpty()) {
+                val empty = TextView(this).apply {
+                    text = "- Ninguno"
+                    setTextColor(Color.parseColor("#0B456F"))
+                    textSize = 15f
+                }
+                container.addView(empty)
+                return
+            }
+
+            val grouped = items
+                .groupingBy { it.item.producto.ifBlank { "Producto sin nombre" } to it.item.imagenUrl }
+                .eachCount()
+                .entries
+
+            grouped.forEach { (entry, qty) ->
+                val row = LayoutInflater.from(this)
+                    .inflate(R.layout.item_dispense_error_product, container, false)
+                val iv = row.findViewById<ImageView>(R.id.ivDispenseErrorItemPreview)
+                val tv = row.findViewById<TextView>(R.id.tvDispenseErrorItemText)
+                loadProductImage(entry.second, iv)
+                tv.text = "${entry.first} x$qty"
+                container.addView(row)
+            }
+        }
+
+        renderItems(llDelivered, delivered)
+        renderItems(llPending, pending)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        onModalShown()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.96f).toInt()
+        val dialogHeightPx = (resources.displayMetrics.heightPixels * 0.92f).toInt()
+        dialog.window?.setLayout(
+            dialogWidthPx,
+            dialogHeightPx
+        )
+        ivHero.layoutParams = ivHero.layoutParams.apply {
+            height = (dialogHeightPx * 0.30f).toInt().coerceAtLeast(dp(180))
+            width = ViewGroup.LayoutParams.MATCH_PARENT
+        }
+        dispenseErrorDialog = dialog
+        dialog.setOnDismissListener {
+            dispenseErrorDialog = null
+            onModalDismissed()
+        }
     }
 
     private fun showDispenseSuccessDialog() {

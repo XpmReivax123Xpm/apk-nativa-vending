@@ -339,3 +339,11 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Estado:
   - iteracion visual en curso.
   - pendiente validacion final del usuario en dispositivo antes de cierre de commit.
+
+## Incidencias y reporte visual (actualizado 2026-05-06)
+- En modal de error de dispensacion se adopta guia visual por evidencia:
+  - iconos SVG dedicados para cada instruccion de foto.
+- Orden visual estandar por fila:
+  - `numero + icono + texto`.
+- Objetivo:
+  - hacer mas clara la accion de reporte para operador/cliente en campo.

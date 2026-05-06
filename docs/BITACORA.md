@@ -808,3 +808,19 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - se mantuvo la franja blanca superior (nombre de maquina/ubicacion),
   - se agrego una franja blanca inferior adicional (solo color),
   - grilla de catalogo ajustada de `6x3` a `5x3`.
+
+## 2026-05-06 - Modal de incidencia: iconos de guia para evidencias
+- Se incorporaron iconos vectoriales (SVG Android VectorDrawable) en el bloque:
+  - `PARA REPORTAR ENVIE LAS SIGUIENTES FOTOS:`
+- Recursos agregados:
+  - `app/src/main/res/drawable/ic_phone_bottle_report.xml`
+  - `app/src/main/res/drawable/ic_phone_vending_report.xml`
+  - `app/src/main/res/drawable/ic_phone_screen_report.xml`
+- Layout ajustado:
+  - `app/src/main/res/layout/dialog_dispense_error.xml`
+- Regla visual final por fila:
+  - `1.` + icono + `Foto del producto trabado`
+  - `2.` + icono + `Foto de la vending machine`
+  - `3.` + icono + `Foto de esta pantalla`
+- Nota de UX:
+  - Se reubico iconografia para que el icono quede entre el numero y el texto (no al extremo derecho).

@@ -12,8 +12,8 @@
 
     <ImageView
         android:id="@+id/ivDispenseHourglass"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
+        android:layout_width="120dp"
+        android:layout_height="120dp"
         android:layout_marginBottom="4dp"
         android:contentDescription="@null"
         android:scaleType="fitCenter"
@@ -26,7 +26,7 @@
         android:gravity="center"
         android:text="DISPENSANDO..."
         android:textColor="#0965AF"
-        android:textSize="22sp"
+        android:textSize="30sp"
         android:textStyle="bold" />
 
     <TextView
@@ -37,7 +37,7 @@
         android:gravity="center"
         android:text="1 de 1"
         android:textColor="#0E2B4A"
-        android:textSize="26sp"
+        android:textSize="28sp"
         android:textStyle="bold" />
 
     <TextView
@@ -48,12 +48,12 @@
         android:gravity="center"
         android:text="Producto"
         android:textColor="#0E2B4A"
-        android:textSize="22sp" />
+        android:textSize="28sp" />
 
     <ImageView
         android:id="@+id/ivDispenseProduct"
-        android:layout_width="200dp"
-        android:layout_height="220dp"
+        android:layout_width="240dp"
+        android:layout_height="240dp"
         android:layout_marginTop="6dp"
         android:scaleType="fitCenter"
         android:src="@android:drawable/ic_menu_gallery" />
@@ -67,7 +67,7 @@
         android:text="Espere un momento, por favor..."
         android:textColor="#000000"
         android:textStyle="bold"
-        android:textSize="22sp" />
+        android:textSize="28sp" />
 
     <TextView
         android:id="@+id/tvDispenseTimer"

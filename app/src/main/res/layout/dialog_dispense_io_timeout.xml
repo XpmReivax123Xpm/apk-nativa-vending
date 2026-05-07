@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_modal_surface"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingTop="18dp"
+    android:paddingEnd="20dp"
+    android:paddingBottom="18dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:text="NO SE DETECTO RETIRO"
+        android:textColor="#000000"
+        android:textSize="26sp"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:layout_width="220dp"
+        android:layout_height="180dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="8dp"
+        android:contentDescription="Incidencia de retiro"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ups" />
+
+    <TextView
+        android:id="@+id/tvIoTimeoutMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:text="No se detecto el segundo click de retiro en el tiempo esperado."
+        android:textColor="#0B456F"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Verifique que la puerta chica cierre correctamente y vuelva a intentar."
+        android:textColor="#0B456F"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btnIoTimeoutClose"
+        android:layout_width="match_parent"
+        android:layout_height="46dp"
+        android:layout_marginTop="16dp"
+        android:backgroundTint="#0965AF"
+        android:text="Cerrar"
+        android:textColor="#FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+</LinearLayout>

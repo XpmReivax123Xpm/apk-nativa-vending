@@ -228,6 +228,13 @@ class VendingFlowController(
     private val pollIoPickupRunnable = object : Runnable {
         override fun run() {
             if (!waitingPickup) return
+            val elapsed = System.currentTimeMillis() - ioStartMs
+            if (elapsed > IO_WAIT_TIMEOUT_MS) {
+                waitingPickup = false
+                h.removeCallbacksAndMessages(null)
+                ui.onError("Timeout: no llego el 2do click en 10s")
+                return
+            }
             if (expectDriverRx || expectIoVendRx || expectIoPickupRx) {
                 h.postDelayed(this, 220L)
                 return
@@ -244,6 +251,7 @@ class VendingFlowController(
         private const val POLL_DRIVER_MS = 950L
         private const val POLL_IO_VEND_MS = 1_200L
         private const val POLL_IO_PICKUP_MS = 420L
+        private const val IO_WAIT_TIMEOUT_MS = 10_000L
         private const val IO_STABLE_MS = 600L
         private const val VEND_START_DELAY_MS = 350L
 

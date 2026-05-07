@@ -2723,7 +2723,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseSuccessCloseTimer = null
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
-        showDispenseErrorDialog(message)
+        if (isIoPickupTimeout(message)) {
+            showDispenseIoTimeoutDialog(message)
+        } else {
+            showDispenseErrorDialog(message)
+        }
     }
 
     private fun onDispenseFinished() {
@@ -2813,6 +2817,40 @@ class KioskCatalogActivity : AppCompatActivity() {
             height = (dialogHeightPx * 0.30f).toInt().coerceAtLeast(dp(180))
             width = ViewGroup.LayoutParams.MATCH_PARENT
         }
+        dispenseErrorDialog = dialog
+        dialog.setOnDismissListener {
+            dispenseErrorDialog = null
+            onModalDismissed()
+        }
+    }
+
+    private fun isIoPickupTimeout(message: String): Boolean {
+        val normalized = message.lowercase()
+        return normalized.contains("2do click") || normalized.contains("timeout io")
+    }
+
+    private fun showDispenseIoTimeoutDialog(message: String) {
+        if (dispenseErrorDialog?.isShowing == true) return
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_io_timeout, null)
+        val tvMessage = view.findViewById<TextView>(R.id.tvIoTimeoutMessage)
+        val btnClose = view.findViewById<Button>(R.id.btnIoTimeoutClose)
+        tvMessage.text = message.ifBlank { "No se detecto el segundo click de retiro en el tiempo esperado." }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        btnClose.setOnClickListener {
+            dialog.dismiss()
+            loadCatalog(machineId, authHeader)
+        }
+
+        onModalShown()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.90f).toInt()
+        dialog.window?.setLayout(dialogWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
         dispenseErrorDialog = dialog
         dialog.setOnDismissListener {
             dispenseErrorDialog = null

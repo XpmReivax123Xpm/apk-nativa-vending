@@ -347,3 +347,12 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - `numero + icono + texto`.
 - Objetivo:
   - hacer mas clara la accion de reporte para operador/cliente en campo.
+
+## Timeout de retiro IO (actualizado 2026-05-07)
+- Se reactiva control de timeout en etapa IO de retiro (espera de 2do click / `D2`) para evitar espera indefinida.
+- Politica actual:
+  - timeout a 10s (`IO_WAIT_TIMEOUT_MS`),
+  - al vencer, se marca error de retiro no confirmado.
+- UX en Kiosk:
+  - timeout IO muestra modal dedicado (`dialog_dispense_io_timeout`),
+  - otros errores mantienen modal de incidencia general.

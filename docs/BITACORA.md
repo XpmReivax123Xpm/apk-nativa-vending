@@ -824,3 +824,15 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `3.` + icono + `Foto de esta pantalla`
 - Nota de UX:
   - Se reubico iconografia para que el icono quede entre el numero y el texto (no al extremo derecho).
+
+## 2026-05-07 - Timeout IO de retiro + modal dedicado en Kiosk
+- Se reincorporo timeout en la etapa de retiro (polling IO) dentro de `VendingFlowController`:
+  - constante activa: `IO_WAIT_TIMEOUT_MS = 10_000L`
+  - mensaje de error emitido: `Timeout: no llego el 2do click en 10s`.
+- Integracion de UI en `KioskCatalogActivity`:
+  - se detecta timeout IO y se muestra modal específico de retiro no confirmado.
+  - para otros errores de dispensacion se mantiene el modal general de incidencia.
+- Nuevo layout agregado:
+  - `app/src/main/res/layout/dialog_dispense_io_timeout.xml`
+- Ajuste funcional:
+  - en cierre del modal de timeout IO se refresca catalogo para volver a estado operativo.

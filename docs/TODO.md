@@ -119,6 +119,12 @@
 - [x] Reordenar filas de instrucciones para UX:
   - formato final `numero + icono + texto` (icono entre numero y "Foto").
 
+### Actualizacion 2026-05-07
+- [x] Reincorporar timeout de etapa IO retiro en `VendingFlowController`:
+  - `IO_WAIT_TIMEOUT_MS = 10_000ms`
+  - error emitido: `Timeout: no llego el 2do click en 10s`.
+- [x] Kiosk: implementar modal dedicado para timeout IO (retiro) en lugar de usar solo modal genérico de incidencia.
+
 ### Fase 2 - Integracion backend (estado al 2026-03-24)
 - [x] Crear pedido + generar QR desde APK.
 - [x] Mostrar QR base64 como imagen en modal de pago.

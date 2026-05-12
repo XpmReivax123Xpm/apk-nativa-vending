@@ -364,3 +364,11 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Regla operativa vigente:
   - si despues del primer timeout aparece `82`, se retoma flujo normal de retiro hasta `D2`;
   - si no aparece `82` en la ventana de anulacion, el item actual queda `ANOMALO` y se corta continuidad.
+
+## Actualizacion 2026-05-12 - Estados IO intermedios y recuperacion
+- Se formaliza uso de estados IO intermedios en retiro:
+  - `02` (apertura inicial puerta chica),
+  - `12` (producto retirado con puerta abierta),
+  - junto a estados ya vigentes (`82`, `92`, `D2`).
+- Regla de recuperacion de timeout IO actualizada:
+  - recupera por `82` o `02` (ya no solo `82`).

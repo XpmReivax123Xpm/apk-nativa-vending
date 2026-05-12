@@ -105,6 +105,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispensingInProgress = false
     private var clearCartOnDispenseFinish = false
     private var activeDispensePedidoId = 0
+    private var cachedPaymentMethods: List<PaymentMethodOption> = emptyList()
+    private var cachedPaymentMethodsAtMs: Long = 0L
 
     private var qrPollingJob: Job? = null
 
@@ -293,6 +295,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
         loadCatalog(machineId, authHeader)
+        prefetchPaymentMethodsIfNeeded()
     }
 
     override fun onResume() {
@@ -309,6 +312,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         } else {
             (promoCarousel as? ViewFlipper)?.startFlipping()
         }
+        prefetchPaymentMethodsIfNeeded()
     }
 
     override fun onPause() {
@@ -1269,6 +1273,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         tvCode.text = "Casilla ${item.codigoCelda}"
         tvName.text = item.producto
+        tvName.isSelected = true
         tvPrice.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
         tvStock.text = "Stock disponible: ${item.stockDisponible}"
         val detailImage = item.imagenUrlSecundaria.ifBlank { item.imagenUrl }
@@ -1827,23 +1832,34 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         resetAutoCloseTimer()
-        btnContinue.isEnabled = false
-        tvError.visibility = View.VISIBLE
-        tvError.setTextColor(Color.parseColor("#0965AF"))
-        tvError.text = "Cargando metodos de pago..."
+        val hadCachedMethods = cachedPaymentMethods.isNotEmpty()
+        if (hadCachedMethods) {
+            renderPaymentMethods(cachedPaymentMethods)
+            btnContinue.isEnabled = true
+            tvError.visibility = View.GONE
+        } else {
+            btnContinue.isEnabled = false
+            tvError.visibility = View.VISIBLE
+            tvError.setTextColor(Color.parseColor("#0965AF"))
+            tvError.text = "Cargando metodos de pago..."
+        }
         lifecycleScope.launch {
             when (val result = withContext(Dispatchers.IO) { loadEnabledPaymentMethods() }) {
                 is PaymentMethodsResult.Success -> {
+                    cachedPaymentMethods = result.methods
+                    cachedPaymentMethodsAtMs = System.currentTimeMillis()
                     renderPaymentMethods(result.methods)
                     btnContinue.isEnabled = true
                     tvError.visibility = View.GONE
                 }
 
                 is PaymentMethodsResult.Error -> {
-                    btnContinue.isEnabled = false
-                    tvError.visibility = View.VISIBLE
-                    tvError.setTextColor(Color.parseColor("#B3261E"))
-                    tvError.text = result.message
+                    if (!hadCachedMethods) {
+                        btnContinue.isEnabled = false
+                        tvError.visibility = View.VISIBLE
+                        tvError.setTextColor(Color.parseColor("#B3261E"))
+                        tvError.text = result.message
+                    }
                     if (result.unauthorized) {
                         dialog.dismiss()
                         handleAuthSessionLost()
@@ -2182,6 +2198,20 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
         }
         return result
+    }
+
+    private fun prefetchPaymentMethodsIfNeeded(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && cachedPaymentMethods.isNotEmpty() && (now - cachedPaymentMethodsAtMs) < PAYMENT_METHODS_CACHE_TTL_MS) {
+            return
+        }
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = loadEnabledPaymentMethods()
+            if (result is PaymentMethodsResult.Success) {
+                cachedPaymentMethods = result.methods
+                cachedPaymentMethodsAtMs = System.currentTimeMillis()
+            }
+        }
     }
 
     private fun fetchEnabledPaymentMethods(authHeader: String): PaymentMethodsResult {
@@ -3568,6 +3598,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         private const val PAYMENT_POLL_INTERVAL_MS = 5_000L
         private const val PAYMENT_TIMEOUT_MS = 120_000L
+        private const val PAYMENT_METHODS_CACHE_TTL_MS = 120_000L
 
         private const val DEFAULT_PORT = "/dev/ttyS1"
         private const val DEFAULT_BAUD = 9600

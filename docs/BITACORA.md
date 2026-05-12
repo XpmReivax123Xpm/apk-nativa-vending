@@ -856,3 +856,18 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ### Resultado operativo esperado
 - Caso recuperable: timeout inicial -> aparece `82` -> flujo continua hasta `D2` -> item completado (`tnEstado=4`) y sigue la cola.
 - Caso no recuperable: timeout inicial -> no aparece `82` en ventana de anulacion -> item actual `tnEstado=7`, resto pendiente y corte de dispensacion.
+
+## 2026-05-12 - Ajuste IO intermedios (02/12) + recuperacion timeout por 82 o 02
+
+### Hecho en esta iteracion
+- Se incorporaron estados IO intermedios explicitos en `VendingFlowController`:
+  - `02` (`IO_DOOR_OPEN_FIRST_TIME`): puerta chica se abre por primera vez.
+  - `12` (`IO_PRODUCT_REMOVED_DOOR_OPEN`): producto retirado con puerta abierta.
+- Se agregaron logs operativos para ambos estados en runtime.
+- Se ajusto criterio de recuperacion tras `IO_TIMEOUT`:
+  - antes: recuperaba solo con `82`.
+  - ahora: recupera con `82` **o** `02`.
+- Se actualizo `VendingTesterActivity` para mostrar eventos `onStep` en log (`STEP: ...`) y facilitar validacion de recuperacion en campo.
+
+### Resultado operativo esperado
+- Si durante la ventana de anulacion aparece `82` o `02`, el flujo se considera recuperado y continua retiro normal hasta `D2`.

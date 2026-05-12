@@ -75,7 +75,9 @@ class VendingTesterActivity : AppCompatActivity() {
                 clearQueue()
             }
 
-            override fun onStep(stepMsg: String) = Unit
+            override fun onStep(stepMsg: String) {
+                appendLog("STEP: $stepMsg")
+            }
         }
 
         val serialListener = object : SerialManager.Listener {

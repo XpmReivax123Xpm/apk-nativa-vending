@@ -26,6 +26,8 @@ class VendingFlowController(
     private var ioStableSinceMs = 0L
     private var seenClosedNoProduct = false
     private var seenFirstClick = false
+    private var seenDoorOpenedFirstTime = false
+    private var seenProductRemovedDoorOpen = false
     @Volatile private var expectDriverRx = false
     @Volatile private var expectIoVendRx = false
     @Volatile private var expectIoPickupRx = false
@@ -69,6 +71,8 @@ class VendingFlowController(
             ioStartMs = 0L
             seenClosedNoProduct = false
             seenFirstClick = false
+            seenDoorOpenedFirstTime = false
+            seenProductRemovedDoorOpen = false
             lastVendIoValue = null
             vendStage = 0
             driverZeroCount = 0
@@ -128,6 +132,8 @@ class VendingFlowController(
                 ioStableSinceMs = 0L
                 seenClosedNoProduct = false
                 seenFirstClick = false
+                seenDoorOpenedFirstTime = false
+                seenProductRemovedDoorOpen = false
                 ioTimeoutWarningEmitted = false
                 ioCancelStartMs = 0L
                 ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
@@ -170,14 +176,27 @@ class VendingFlowController(
         }
         if (now - ioStableSinceMs < IO_STABLE_MS) return
 
-        if (value == IO_AFTER_FIRST_CLICK && !seenFirstClick) {
+        if (value == IO_DOOR_OPEN_FIRST_TIME && !seenDoorOpenedFirstTime) {
+            seenDoorOpenedFirstTime = true
+            ui.onLog("Puerta chica: abierta por primera vez (0002)")
+        }
+        if (value == IO_PRODUCT_REMOVED_DOOR_OPEN && !seenProductRemovedDoorOpen) {
+            seenProductRemovedDoorOpen = true
+            ui.onLog("Puerta chica: producto retirado, puerta abierta (0012)")
+        }
+
+        if ((value == IO_AFTER_FIRST_CLICK || value == IO_DOOR_OPEN_FIRST_TIME) && !seenFirstClick) {
             seenFirstClick = true
             if (ioTimeoutWarningEmitted) {
                 ui.onStep("IO_TIMEOUT_RECOVERED|Puerta habilitada nuevamente")
             }
             ioTimeoutWarningEmitted = false
             ioCancelStartMs = 0L
-            ui.onLog("Puerta chica: 1er click confirmado (0082)")
+            if (value == IO_AFTER_FIRST_CLICK) {
+                ui.onLog("Puerta chica: 1er click confirmado (0082)")
+            } else {
+                ui.onLog("Puerta chica: recuperacion por apertura inicial (0002)")
+            }
         }
         if (value == IO_DOOR_CLOSED_NO_PROD && !seenClosedNoProduct) {
             seenClosedNoProduct = true
@@ -283,13 +302,15 @@ class VendingFlowController(
         private const val IO_STABLE_MS = 600L
         private const val VEND_START_DELAY_MS = 350L
 
-        private const val IO_AFTER_FIRST_CLICK = 130
-        private const val IO_DOOR_CLOSED_NO_PROD = 146
+        private const val IO_DOOR_OPEN_FIRST_TIME = 2 // este es el 02
+        private const val IO_PRODUCT_REMOVED_DOOR_OPEN = 18 // este es el 12
+        private const val IO_AFTER_FIRST_CLICK = 130 // este es el 82
+        private const val IO_DOOR_CLOSED_NO_PROD = 146 // este es el 92
         private const val IO_PLATFORM_UP = 216
         private const val IO_PLATFORM_DOWN = 200
         private const val IO_WHITE_DOOR_OPENING = 210
-        private const val IO_WHITE_DOOR_CLOSING = 194 
-        private const val IO_SECOND_CLICK = 210
+        private const val IO_WHITE_DOOR_CLOSING = 194  // este es el C2
+        private const val IO_SECOND_CLICK = 210 // este es el D2
     }
 }
 

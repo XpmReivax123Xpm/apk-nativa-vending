@@ -199,3 +199,10 @@
 - [x] Marcar item actual en `tnEstado=7` cuando vence timeout de anulacion sin `82`.
 - [x] Remover boton de cierre en `dialog_dispense_io_timeout`.
 - [x] Habilitar `Reset Lift` en tester para `IO_TIMEOUT_CANCEL`.
+
+### Actualizacion 2026-05-12 (IO intermedios)
+- [x] Agregar estados IO intermedios explicitos en runtime:
+  - [x] `02` (`IO_DOOR_OPEN_FIRST_TIME`).
+  - [x] `12` (`IO_PRODUCT_REMOVED_DOOR_OPEN`).
+- [x] Ajustar recuperacion post-timeout IO a `82` o `02`.
+- [x] Exponer eventos `onStep` en `VendingTester` para trazabilidad (`STEP: ...`).

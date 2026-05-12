@@ -59,14 +59,6 @@
             android:paddingRight="8dp">
 
             <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="DETALLES DEL PRODUCTO"
-                android:textColor="#000000"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <TextView
                 android:id="@+id/tvFusionProductCode"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -84,9 +76,9 @@
             <ImageView
                 android:id="@+id/ivFusionProductPreview"
                 android:layout_width="273dp"
-                android:layout_height="273dp"
-                android:layout_marginTop="10dp"
+                android:layout_height="298dp"
                 android:layout_gravity="center_horizontal"
+                android:layout_marginTop="10dp"
                 android:adjustViewBounds="false"
                 android:contentDescription="preview"
                 android:scaleType="fitCenter"
@@ -97,8 +89,13 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:ellipsize="end"
-                android:maxLines="2"
+                android:ellipsize="marquee"
+                android:marqueeRepeatLimit="marquee_forever"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:scrollHorizontally="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
                 android:text="Producto"
                 android:gravity="center"
                 android:textColor="#0E2A47"
@@ -190,7 +187,7 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="606dp"
-            android:layout_weight="1.35"
+            android:layout_weight="1"
             android:orientation="vertical"
             android:paddingLeft="8dp">
 
@@ -257,7 +254,7 @@
                 android:id="@+id/btnFusionClearCart"
                 android:layout_width="match_parent"
                 android:layout_height="46dp"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="9dp"
                 android:backgroundTint="#E00000"
                 android:text="BORRAR PRODUCTOS"
                 android:textSize="22sp"

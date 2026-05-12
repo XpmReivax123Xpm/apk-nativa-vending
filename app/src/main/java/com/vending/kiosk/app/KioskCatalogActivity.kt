@@ -104,6 +104,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispensingCursor = 0
     private var dispensingInProgress = false
     private var clearCartOnDispenseFinish = false
+    private var activeDispensePedidoId = 0
 
     private var qrPollingJob: Job? = null
 
@@ -118,6 +119,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispenseSuccessCloseTimer: CountDownTimer? = null
     private var dispenseSuccessDialog: AlertDialog? = null
     private var dispenseErrorDialog: AlertDialog? = null
+    private var ioTimeoutDialog: AlertDialog? = null
     private var tvDispenseSuccessTimer: TextView? = null
     private var btnDispenseSuccessClose: Button? = null
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
@@ -176,7 +178,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun onError(e: Exception) {
             if (dispensingInProgress) {
                 runOnUiThread {
-                    onDispenseError("Error serial: ${e.message ?: "sin detalle"}")
+                    onDispenseError("Error serial: ${e.message ?: "sin detalle"}", "DRIVER_0000")
                 }
             }
         }
@@ -198,6 +200,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun onNeedRetrieve(msg: String) {
             runOnUiThread {
                 if (dispensingInProgress) {
+                    reportDispenseStateByIndex(
+                        index = dispensingCursor,
+                        tnEstado = 3,
+                        tcEstado = "RECOJO_PENDIENTE"
+                    )
                     val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
                     showRetrieveDialogForCurrentItem()
                     tvDispenseStatus?.post {
@@ -212,11 +219,23 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         override fun onError(msg: String) {
-            runOnUiThread { onDispenseError(msg) }
+            runOnUiThread {
+                val parsed = parseRuntimeDispenseError(msg)
+                onDispenseError(parsed.second, parsed.first)
+            }
         }
 
         override fun onStep(stepMsg: String) {
-            // Sin salida visual por ahora.
+            runOnUiThread {
+                val parts = stepMsg.split("|", limit = 2)
+                val code = parts.firstOrNull()?.trim().orEmpty()
+                if (code == "IO_TIMEOUT_RECOVERED") {
+                    dismissIoTimeoutDialog()
+                    if (dispensingInProgress) {
+                        showRetrieveDialogForCurrentItem()
+                    }
+                }
+            }
         }
     }
 
@@ -310,6 +329,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         dismissDispenseSuccessDialog()
         dispenseErrorDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseErrorDialog = null
+        dismissIoTimeoutDialog()
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
         dismissRetrieveDialog()
@@ -2138,7 +2158,8 @@ class KioskCatalogActivity : AppCompatActivity() {
             QrGenerationResult.Success(
                 pedidoId = pedidoId,
                 qrBase64 = qrBase64,
-                expiration = expiration
+                expiration = expiration,
+                detalles = extractPedidoDetalles(values)
             )
         } catch (ex: Exception) {
             QrGenerationResult.Error("Fallo de conexion al generar QR: ${ex.message ?: "sin detalle"}")
@@ -2258,6 +2279,39 @@ class KioskCatalogActivity : AppCompatActivity() {
             if (text.isNotBlank()) return text
         }
         return ""
+    }
+
+    private fun extractPedidoDetalles(values: JSONObject): List<PedidoDetalleRef> {
+        val arrays = listOf(
+            values.optJSONArray("taPedidoDetalle"),
+            values.optJSONArray("taPedidoDetalles"),
+            values.optJSONObject("taPedido")?.optJSONArray("taPedidoDetalle"),
+            values.optJSONObject("pedido")?.optJSONArray("taPedidoDetalle")
+        )
+
+        val detalles = mutableListOf<PedidoDetalleRef>()
+        arrays.forEach { array ->
+            if (array == null) return@forEach
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val tnPedidoDetalle = extractIntFrom(
+                    item,
+                    "tnPedidoDetalle",
+                    "tnPedidoDetalleId"
+                )
+                if (tnPedidoDetalle <= 0) continue
+                val tnPlanogramaCelda = extractIntFrom(
+                    item,
+                    "tnPlanogramaCelda",
+                    "tnPlanogramaCeldaId"
+                )
+                detalles += PedidoDetalleRef(
+                    tnPedidoDetalle = tnPedidoDetalle,
+                    tnPlanogramaCelda = tnPlanogramaCelda
+                )
+            }
+        }
+        return detalles.distinctBy { it.tnPedidoDetalle }
     }
 
     private fun resolvePath(source: JSONObject, path: String): Any? {
@@ -2460,7 +2514,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         btnClose.isEnabled = false
                         delay(500)
                         dialog.dismiss()
-                        showDispenseDialogAndStart(selections, fromCart)
+                        showDispenseDialogAndStart(selections, fromCart, result)
                         return@launch
                     }
 
@@ -2613,8 +2667,13 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun showDispenseDialogAndStart(selections: List<PurchaseSelection>, fromCart: Boolean) {
+    private fun showDispenseDialogAndStart(
+        selections: List<PurchaseSelection>,
+        fromCart: Boolean,
+        qrResult: QrGenerationResult.Success
+    ) {
         val queue = mutableListOf<DispenseQueueItem>()
+        val detallePendiente = qrResult.detalles.toMutableList()
         selections.forEach { selection ->
             val physical = selection.item.physicalCell.takeIf { it in 10..68 }
                 ?: mapCellCodeToPhysical(selection.item.codigoCelda)
@@ -2622,7 +2681,20 @@ class KioskCatalogActivity : AppCompatActivity() {
                 Toast.makeText(this, "No se pudo mapear la celda ${selection.item.codigoCelda}", Toast.LENGTH_LONG).show()
                 return
             }
-            repeat(selection.quantity) { queue += DispenseQueueItem(cell = physical, item = selection.item) }
+            repeat(selection.quantity) {
+                val idx = detallePendiente.indexOfFirst { it.tnPlanogramaCelda == selection.item.planogramaCeldaId }
+                val detalle = if (idx >= 0) {
+                    detallePendiente.removeAt(idx)
+                } else {
+                    if (detallePendiente.isNotEmpty()) detallePendiente.removeAt(0) else null
+                }
+                queue += DispenseQueueItem(
+                    cell = physical,
+                    item = selection.item,
+                    tnPedidoDetalle = detalle?.tnPedidoDetalle ?: 0,
+                    tnEstadoDispensacion = 0
+                )
+            }
         }
 
         if (queue.isEmpty()) {
@@ -2671,6 +2743,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispensingCursor = 0
         dispensingInProgress = true
         clearCartOnDispenseFinish = fromCart
+        activeDispensePedidoId = qrResult.pedidoId
 
         tvDispenseTitle?.text = "DISPENSANDO..."
         tvDispenseStatus?.text = "Espere un momento, por favor..."
@@ -2705,29 +2778,58 @@ class KioskCatalogActivity : AppCompatActivity() {
             loadProductImage(currentItem.item.imagenUrl, imageView)
         }
         tvDispenseStatus?.text = "Espera un momento, por favor..."
+        reportDispenseStateByIndex(
+            index = dispensingCursor,
+            tnEstado = 2,
+            tcEstado = "EN_PROCESO"
+        )
         vendFlow.start(currentCell)
     }
 
     private fun onDispenseItemDone() {
         if (!dispensingInProgress) return
         dismissRetrieveDialog()
+        reportDispenseStateByIndex(
+            index = dispensingCursor,
+            tnEstado = 4,
+            tcEstado = "COMPLETADO"
+        )
         dispensingCursor++
         startNextDispenseItem()
     }
 
-    private fun onDispenseError(message: String) {
+    private fun onDispenseError(message: String, errorCode: String = "") {
+        if (errorCode == "IO_TIMEOUT") {
+            if (dispensingInProgress) {
+                showDispenseIoTimeoutDialog(message)
+            }
+            return
+        }
+
+        if (dispensingInProgress) {
+            if (errorCode == "ANOMALO" || errorCode == "IO_TIMEOUT_CANCEL") {
+                reportDispenseStateByIndex(
+                    index = dispensingCursor,
+                    tnEstado = 7,
+                    tcEstado = "ANOMALO"
+                )
+            } else {
+                reportDispenseStateByIndex(
+                    index = dispensingCursor,
+                    tnEstado = 5,
+                    tcEstado = "FALLIDO"
+                )
+            }
+        }
         dispensingInProgress = false
         dismissRetrieveDialog()
         runCatching { vendFlow.stop() }
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
+        dismissIoTimeoutDialog()
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
-        if (isIoPickupTimeout(message)) {
-            showDispenseIoTimeoutDialog(message)
-        } else {
-            showDispenseErrorDialog(message)
-        }
+        showDispenseErrorDialog(message)
     }
 
     private fun onDispenseFinished() {
@@ -2748,6 +2850,72 @@ class KioskCatalogActivity : AppCompatActivity() {
         loadCatalog(machineId, authHeader)
     }
 
+    private fun parseRuntimeDispenseError(raw: String): Pair<String, String> {
+        val parts = raw.split("|", limit = 2)
+        if (parts.size != 2) return "" to raw
+        val code = parts[0].trim()
+        val message = parts[1].trim()
+        return when (code) {
+            "ANOMALO", "DRIVER_0000", "DRIVER_TIMEOUT", "IO_TIMEOUT", "IO_TIMEOUT_CANCEL" -> code to message
+            else -> "" to raw
+        }
+    }
+
+    private fun reportDispenseStateByIndex(index: Int, tnEstado: Int, tcEstado: String) {
+        val current = dispensingQueue.getOrNull(index) ?: return
+        if (current.tnEstadoDispensacion == tnEstado) return
+        current.tnEstadoDispensacion = tnEstado
+        if (activeDispensePedidoId <= 0 || current.tnPedidoDetalle <= 0) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            sendDispenseStatus(
+                tnPedido = activeDispensePedidoId,
+                tnPedidoDetalle = current.tnPedidoDetalle,
+                tnPlanogramaCelda = current.item.planogramaCeldaId,
+                tnEstadoDispensacion = tnEstado,
+                tcEstadoDispensacion = tcEstado
+            )
+        }
+    }
+
+    private fun sendDispenseStatus(
+        tnPedido: Int,
+        tnPedidoDetalle: Int,
+        tnPlanogramaCelda: Int,
+        tnEstadoDispensacion: Int,
+        tcEstadoDispensacion: String
+    ) {
+        if (authHeader.isBlank()) return
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pedido/dispensacion"
+        var connection: HttpURLConnection? = null
+        try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                doOutput = true
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+            }
+            val payload = JSONObject().apply {
+                put("tnPedido", tnPedido)
+                put("tnPedidoDetalle", tnPedidoDetalle)
+                put("tnPlanogramaCelda", tnPlanogramaCelda)
+                put("tnEstadoDispensacion", tnEstadoDispensacion)
+                put("tcEstadoDispensacion", tcEstadoDispensacion)
+            }.toString()
+            connection.outputStream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+            }
+            connection.responseCode
+        } catch (_: Exception) {
+            // no bloquea UX por falla de reporte
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
     private fun showDispenseErrorDialog(message: String) {
         if (dispenseErrorDialog?.isShowing == true) return
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_error, null)
@@ -2755,18 +2923,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         val ivHero = view.findViewById<ImageView>(R.id.ivDispenseErrorHero)
         val llDelivered = view.findViewById<LinearLayout>(R.id.llDispenseDeliveredItems)
         val llPending = view.findViewById<LinearLayout>(R.id.llDispensePendingItems)
+        val llAnomalous = view.findViewById<LinearLayout>(R.id.llDispenseAnomalousItems)
         tvMessage.text = message.ifBlank { "No se pudo completar la dispensacion." }
 
-        val delivered = if (dispensingCursor <= 0) {
-            emptyList()
-        } else {
-            dispensingQueue.take(dispensingCursor)
-        }
-        val pending = if (dispensingCursor >= dispensingQueue.size) {
-            emptyList()
-        } else {
-            dispensingQueue.drop(dispensingCursor)
-        }
+        val delivered = dispensingQueue.filter { it.tnEstadoDispensacion == 4 }
+        val anomalous = dispensingQueue.filter { it.tnEstadoDispensacion == 7 }
+        val pending = dispensingQueue.filter { it.tnEstadoDispensacion != 4 && it.tnEstadoDispensacion != 7 }
 
         fun renderItems(container: LinearLayout, items: List<DispenseQueueItem>) {
             container.removeAllViews()
@@ -2798,6 +2960,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         renderItems(llDelivered, delivered)
         renderItems(llPending, pending)
+        renderItems(llAnomalous, anomalous)
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
@@ -2824,38 +2987,32 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun isIoPickupTimeout(message: String): Boolean {
-        val normalized = message.lowercase()
-        return normalized.contains("2do click") || normalized.contains("timeout io")
-    }
-
     private fun showDispenseIoTimeoutDialog(message: String) {
-        if (dispenseErrorDialog?.isShowing == true) return
+        if (ioTimeoutDialog?.isShowing == true) return
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_io_timeout, null)
         val tvMessage = view.findViewById<TextView>(R.id.tvIoTimeoutMessage)
-        val btnClose = view.findViewById<Button>(R.id.btnIoTimeoutClose)
-        tvMessage.text = message.ifBlank { "No se detecto el segundo click de retiro en el tiempo esperado." }
+        tvMessage.text = message.ifBlank { "La puerta no responde aun. Seguimos esperando confirmacion de apertura." }
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
             .setCancelable(false)
             .create()
 
-        btnClose.setOnClickListener {
-            dialog.dismiss()
-            loadCatalog(machineId, authHeader)
-        }
-
         onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.90f).toInt()
         dialog.window?.setLayout(dialogWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
-        dispenseErrorDialog = dialog
+        ioTimeoutDialog = dialog
         dialog.setOnDismissListener {
-            dispenseErrorDialog = null
+            ioTimeoutDialog = null
             onModalDismissed()
         }
+    }
+
+    private fun dismissIoTimeoutDialog() {
+        ioTimeoutDialog?.takeIf { it.isShowing }?.dismiss()
+        ioTimeoutDialog = null
     }
 
     private fun showDispenseSuccessDialog() {
@@ -3460,7 +3617,9 @@ private data class PurchaseSelection(
 
 private data class DispenseQueueItem(
     val cell: Int,
-    val item: CeldaUi
+    val item: CeldaUi,
+    val tnPedidoDetalle: Int = 0,
+    var tnEstadoDispensacion: Int = 0
 )
 
 private data class PaymentMethodOption(val id: Int, val label: String)
@@ -3478,7 +3637,8 @@ private sealed interface QrGenerationResult {
     data class Success(
         val pedidoId: Int,
         val qrBase64: String,
-        val expiration: String
+        val expiration: String,
+        val detalles: List<PedidoDetalleRef>
     ) : QrGenerationResult
 
     data class Error(val message: String) : QrGenerationResult
@@ -3506,3 +3666,8 @@ private sealed interface MachineAccessResult {
     data class Denied(val message: String) : MachineAccessResult
     data class Error(val message: String) : MachineAccessResult
 }
+
+private data class PedidoDetalleRef(
+    val tnPedidoDetalle: Int,
+    val tnPlanogramaCelda: Int
+)

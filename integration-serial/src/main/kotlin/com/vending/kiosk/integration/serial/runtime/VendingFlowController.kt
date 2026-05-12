@@ -1,4 +1,4 @@
-package com.vending.kiosk.integration.serial.runtime
+﻿package com.vending.kiosk.integration.serial.runtime
 
 import android.os.Handler
 import android.os.Looper
@@ -32,6 +32,9 @@ class VendingFlowController(
     private var driverZeroCount = 0
     private var lastVendIoValue: Int? = null
     private var vendStage = 0
+    private var seenC2InCurrentVend = false
+    private var ioTimeoutWarningEmitted = false
+    private var ioCancelStartMs = 0L
 
     fun isRunning(): Boolean = running
     fun isWaitingPickup(): Boolean = waitingPickup
@@ -69,6 +72,9 @@ class VendingFlowController(
             lastVendIoValue = null
             vendStage = 0
             driverZeroCount = 0
+            seenC2InCurrentVend = false
+            ioTimeoutWarningEmitted = false
+            ioCancelStartMs = 0L
             ui.onLog("VEND iniciado para celda: $selectedCell")
             serial.sendHex(select, serialListener)
             ui.onLog("TX SELECT celda $selectedCell: $select")
@@ -96,7 +102,11 @@ class VendingFlowController(
                         running = false
                         waitingPickup = false
                         h.removeCallbacksAndMessages(null)
-                        ui.onError("DISPENSACIÓN FALLIDA")
+                        if (seenC2InCurrentVend) {
+                            ui.onError("ANOMALO|DISPENSACION FALLIDA")
+                        } else {
+                            ui.onError("DRIVER_0000|DISPENSACION FALLIDA")
+                        }
                         return
                     }
                 } else {
@@ -106,7 +116,7 @@ class VendingFlowController(
             if (running && !waitingPickup && isDriverDone(rx)) {
                 h.removeCallbacks(pollDriverRunnable)
                 h.removeCallbacks(pollIoVendRunnable)
-                ui.onLog("DISPENSACIÓN COMPLETA")
+                ui.onLog("DISPENSACION COMPLETA")
                 if (vendStage < 4) {
                     vendStage = 4
                     ui.onLog("Puerta blanca: cerrando/cerrada (inferido por DONE)")
@@ -118,6 +128,8 @@ class VendingFlowController(
                 ioStableSinceMs = 0L
                 seenClosedNoProduct = false
                 seenFirstClick = false
+                ioTimeoutWarningEmitted = false
+                ioCancelStartMs = 0L
                 ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
                 schedulePollIoPickup()
                 return
@@ -142,7 +154,10 @@ class VendingFlowController(
             IO_WHITE_DOOR_OPENING -> advanceVendStage(1, "Puerta blanca: ABRIENDO")
             IO_PLATFORM_UP -> advanceVendStage(2, "Plataforma: SUBIENDO")
             IO_PLATFORM_DOWN -> advanceVendStage(3, "Plataforma: BAJANDO")
-            IO_WHITE_DOOR_CLOSING -> advanceVendStage(4, "Puerta blanca: CERRANDO")
+            IO_WHITE_DOOR_CLOSING -> {
+                seenC2InCurrentVend = true
+                advanceVendStage(4, "Puerta blanca: CERRANDO")
+            }
         }
     }
 
@@ -157,6 +172,11 @@ class VendingFlowController(
 
         if (value == IO_AFTER_FIRST_CLICK && !seenFirstClick) {
             seenFirstClick = true
+            if (ioTimeoutWarningEmitted) {
+                ui.onStep("IO_TIMEOUT_RECOVERED|Puerta habilitada nuevamente")
+            }
+            ioTimeoutWarningEmitted = false
+            ioCancelStartMs = 0L
             ui.onLog("Puerta chica: 1er click confirmado (0082)")
         }
         if (value == IO_DOOR_CLOSED_NO_PROD && !seenClosedNoProduct) {
@@ -199,7 +219,7 @@ class VendingFlowController(
             if (elapsed > DRIVER_TIMEOUT_MS) {
                 running = false
                 h.removeCallbacksAndMessages(null)
-                ui.onError("Timeout driver: no termino en 60s")
+                ui.onError("DRIVER_TIMEOUT|Timeout driver: no termino en 60s")
                 return
             }
             if (expectDriverRx || expectIoVendRx || expectIoPickupRx) {
@@ -228,12 +248,19 @@ class VendingFlowController(
     private val pollIoPickupRunnable = object : Runnable {
         override fun run() {
             if (!waitingPickup) return
-            val elapsed = System.currentTimeMillis() - ioStartMs
-            if (elapsed > IO_WAIT_TIMEOUT_MS) {
-                waitingPickup = false
-                h.removeCallbacksAndMessages(null)
-                ui.onError("Timeout: no llego el 2do click en 10s")
-                return
+            val now = System.currentTimeMillis()
+            val elapsed = now - ioStartMs
+            if (!seenFirstClick && elapsed > IO_WAIT_TIMEOUT_MS) {
+                if (!ioTimeoutWarningEmitted) {
+                    ioTimeoutWarningEmitted = true
+                    ioCancelStartMs = now
+                    ui.onError("IO_TIMEOUT|Timeout: puerta atorada")
+                } else if (now - ioCancelStartMs > IO_CANCEL_TIMEOUT_MS) {
+                    waitingPickup = false
+                    h.removeCallbacksAndMessages(null)
+                    ui.onError("IO_TIMEOUT_CANCEL|Timeout anulacion: puerta atorada")
+                    return
+                }
             }
             if (expectDriverRx || expectIoVendRx || expectIoPickupRx) {
                 h.postDelayed(this, 220L)
@@ -252,6 +279,7 @@ class VendingFlowController(
         private const val POLL_IO_VEND_MS = 1_200L
         private const val POLL_IO_PICKUP_MS = 420L
         private const val IO_WAIT_TIMEOUT_MS = 10_000L
+        private const val IO_CANCEL_TIMEOUT_MS = 120_000L
         private const val IO_STABLE_MS = 600L
         private const val VEND_START_DELAY_MS = 350L
 
@@ -260,7 +288,8 @@ class VendingFlowController(
         private const val IO_PLATFORM_UP = 216
         private const val IO_PLATFORM_DOWN = 200
         private const val IO_WHITE_DOOR_OPENING = 210
-        private const val IO_WHITE_DOOR_CLOSING = 194
+        private const val IO_WHITE_DOOR_CLOSING = 194 
         private const val IO_SECOND_CLICK = 210
     }
 }
+

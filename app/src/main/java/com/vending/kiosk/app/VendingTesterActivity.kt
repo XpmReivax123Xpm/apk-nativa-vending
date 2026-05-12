@@ -71,7 +71,7 @@ class VendingTesterActivity : AppCompatActivity() {
                 setPromptBody("Error en el proceso. Presiona STOP y vuelve a intentar.")
                 waitingForContinue = false
                 setContinueEnabled(false)
-                setResetLiftEnabled(msg.contains("status 0000"))
+                setResetLiftEnabled(shouldEnableResetLift(msg))
                 clearQueue()
             }
 
@@ -257,6 +257,16 @@ class VendingTesterActivity : AppCompatActivity() {
 
     private fun setResetLiftEnabled(enabled: Boolean) {
         runOnUiThread { btnResetLift.isEnabled = enabled }
+    }
+
+    private fun shouldEnableResetLift(rawMessage: String): Boolean {
+        val message = rawMessage.trim()
+        val code = message.substringBefore("|", "").trim()
+        if (code.isNotEmpty()) {
+            return code == "DRIVER_0000" || code == "ANOMALO" || code == "IO_TIMEOUT" || code == "IO_TIMEOUT_CANCEL"
+        }
+        // Compatibilidad con mensajes legacy sin codigo
+        return message.contains("status 0000", ignoreCase = true)
     }
 
     private fun appendLog(msg: String) {

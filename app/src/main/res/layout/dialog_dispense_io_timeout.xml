@@ -13,7 +13,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:text="NO SE DETECTO RETIRO"
+        android:text="TUVIMOS UN PROBLEMA"
         android:textColor="#000000"
         android:textSize="26sp"
         android:textStyle="bold" />
@@ -33,7 +33,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:gravity="center"
-        android:text="No se detecto el segundo click de retiro en el tiempo esperado."
+        android:text="La puerta de retiro no logró abrirse"
         android:textColor="#0B456F"
         android:textSize="20sp"
         android:textStyle="bold" />
@@ -42,19 +42,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:text="Verifique que la puerta chica cierre correctamente y vuelva a intentar."
+        android:gravity="center"
+        android:text="espere un momento en su reintento"
         android:textColor="#0B456F"
-        android:textSize="18sp"
-        android:textStyle="bold" />
-
-    <Button
-        android:id="@+id/btnIoTimeoutClose"
-        android:layout_width="match_parent"
-        android:layout_height="46dp"
-        android:layout_marginTop="16dp"
-        android:backgroundTint="#0965AF"
-        android:text="Cerrar"
-        android:textColor="#FFFFFF"
         android:textSize="18sp"
         android:textStyle="bold" />
 

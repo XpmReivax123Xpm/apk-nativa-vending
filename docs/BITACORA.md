@@ -836,3 +836,23 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - `app/src/main/res/layout/dialog_dispense_io_timeout.xml`
 - Ajuste funcional:
   - en cierre del modal de timeout IO se refresca catalogo para volver a estado operativo.
+
+## 2026-05-12 - Flujo IO timeout extendido + anulacion controlada
+
+### Hecho en esta iteracion
+- Se ajusto `VendingFlowController` para separar timeout IO en dos etapas:
+  - `IO_TIMEOUT` (10s): aviso no fatal, mantiene espera de datos IO.
+  - `IO_TIMEOUT_CANCEL` (120s posteriores): fallo definitivo por anulacion.
+- Se agrego recuperacion de flujo cuando aparece `82` despues del primer timeout:
+  - emite evento de recuperacion (`IO_TIMEOUT_RECOVERED`),
+  - cierra modal de timeout IO,
+  - retorna al flujo de retiro normal y espera `D2`.
+- Se actualizo `KioskCatalogActivity` para el nuevo comportamiento:
+  - `IO_TIMEOUT` ya no cancela dispensacion ni corta cola.
+  - `IO_TIMEOUT_CANCEL` marca item actual en estado `7 (ANOMALO)`, detiene continuidad y muestra modal de incidencia.
+- Se removio boton `Cerrar` del modal `dialog_dispense_io_timeout` para evitar corte manual del flujo de espera.
+- Se ajusto `VendingTesterActivity` para habilitar `Reset Lift` tambien ante `IO_TIMEOUT_CANCEL`.
+
+### Resultado operativo esperado
+- Caso recuperable: timeout inicial -> aparece `82` -> flujo continua hasta `D2` -> item completado (`tnEstado=4`) y sigue la cola.
+- Caso no recuperable: timeout inicial -> no aparece `82` en ventana de anulacion -> item actual `tnEstado=7`, resto pendiente y corte de dispensacion.

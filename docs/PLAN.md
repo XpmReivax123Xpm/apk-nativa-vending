@@ -356,3 +356,11 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - UX en Kiosk:
   - timeout IO muestra modal dedicado (`dialog_dispense_io_timeout`),
   - otros errores mantienen modal de incidencia general.
+
+## Actualizacion 2026-05-12 - Timeout IO en dos fases
+- Se formaliza flujo de retiro con dos ventanas de tiempo:
+  - ventana 1: timeout IO no fatal (alerta visual, sin cortar cola),
+  - ventana 2: timeout de anulacion fatal (corte de dispensacion).
+- Regla operativa vigente:
+  - si despues del primer timeout aparece `82`, se retoma flujo normal de retiro hasta `D2`;
+  - si no aparece `82` en la ventana de anulacion, el item actual queda `ANOMALO` y se corta continuidad.

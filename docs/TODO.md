@@ -190,3 +190,12 @@
 - [x] Ajuste fino visual de burbuja del carrito:
   - posicion en borde superior derecho del boton azul
   - sin recorte y sin tapar icono.
+
+### Actualizacion 2026-05-12
+- [x] Implementar timeout IO en dos etapas en runtime:
+  - [x] `IO_TIMEOUT` no fatal (mantener espera de datos IO).
+  - [x] `IO_TIMEOUT_CANCEL` fatal tras ventana de anulacion (120s).
+- [x] Reanudar flujo de retiro cuando aparece `82` despues del primer timeout (volver a espera de `D2`).
+- [x] Marcar item actual en `tnEstado=7` cuando vence timeout de anulacion sin `82`.
+- [x] Remover boton de cierre en `dialog_dispense_io_timeout`.
+- [x] Habilitar `Reset Lift` en tester para `IO_TIMEOUT_CANCEL`.

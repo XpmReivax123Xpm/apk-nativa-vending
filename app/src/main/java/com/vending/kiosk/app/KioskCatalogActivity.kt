@@ -130,7 +130,6 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvRetrieveTitle: TextView? = null
     private var tvRetrieveMessage: TextView? = null
     private var kioskLocked = false
-    private var lockTaskStarted = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
     private val inactivityHandler = Handler(Looper.getMainLooper())
@@ -302,10 +301,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         super.onResume()
         applyImmersiveKioskUi()
         scheduleInactivityRefresh()
-        if (kioskLocked && !lockTaskStarted) {
-            Log.d(TAG, "onResume: kiosk locked but lock task not started. Retrying managed lock task.")
-            attemptManagedLockTaskStart()
-        }
         if (useLegacyCarousel && tvPromoTitle != null && tvPromoSubtitle != null) {
             carouselHandler.removeCallbacks(carouselTicker)
             carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
@@ -414,53 +409,14 @@ class KioskCatalogActivity : AppCompatActivity() {
         kioskLocked = true
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applyImmersiveKioskUi()
-        attemptManagedLockTaskStart()
-        if (!lockTaskStarted) {
-            Log.w(TAG, "fallback visual mode only: managed lock task not active")
-        }
+        Log.d(TAG, "Android LockTask disabled; OEM kiosk mode is responsible for navigation hiding")
     }
 
     private fun exitKioskMode() {
         Log.d(TAG, "exiting kiosk mode")
         kioskLocked = false
-        if (lockTaskStarted) {
-            runCatching { stopLockTask() }
-                .onSuccess { Log.d(TAG, "stopLockTask success") }
-                .onFailure { Log.w(TAG, "stopLockTask failed: ${it.message}") }
-            lockTaskStarted = false
-        }
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         Toast.makeText(this, "Modo kiosk desbloqueado", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun attemptManagedLockTaskStart() {
-        if (lockTaskStarted) return
-
-        val isDeviceOwner = kioskPolicyManager.isDeviceOwner()
-        Log.d(TAG, "device owner status: $isDeviceOwner")
-        if (!isDeviceOwner) {
-            Log.w(TAG, "app is not Device Owner")
-        } else {
-            val allowlisted = kioskPolicyManager.allowCurrentPackageForLockTask()
-            Log.d(TAG, "allowlisting result: $allowlisted")
-        }
-
-        val permitted = kioskPolicyManager.isCurrentPackageLockTaskPermitted()
-        Log.d(TAG, "lock task permitted: $permitted")
-        if (!permitted) {
-            Log.w(TAG, "package is not permitted for lock task")
-            return
-        }
-
-        runCatching { startLockTask() }
-            .onSuccess {
-                lockTaskStarted = true
-                Log.d(TAG, "startLockTask success")
-            }
-            .onFailure {
-                lockTaskStarted = false
-                Log.w(TAG, "startLockTask failed: ${it.message}")
-            }
     }
 
     private fun applyImmersiveKioskUi() {

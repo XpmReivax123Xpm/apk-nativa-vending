@@ -871,3 +871,19 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 
 ### Resultado operativo esperado
 - Si durante la ventana de anulacion aparece `82` o `02`, el flujo se considera recuperado y continua retiro normal hasta `D2`.
+
+## 2026-05-15 - Boton "Atras" condicionado por desbloqueo PIN en KioskCatalog
+
+### Hecho en esta iteracion
+- Se reemplazo la franja blanca inferior en `activity_kiosk_catalog` y `activity_kiosk_catalog_legacy` por una barra con boton `Atras` (`btnKioskBackToMain`).
+- Comportamiento del boton:
+  - oculto por defecto durante modo kiosk bloqueado,
+  - visible solo despues de desbloqueo exitoso por PIN (cuando se ejecuta `exitKioskMode()`),
+  - al presionarlo vuelve al selector principal (`MainActivity`) y cierra `KioskCatalogActivity`.
+- Se agrego control de estado en `KioskCatalogActivity`:
+  - flag `kioskUnlockedByPin`,
+  - funciones `setupBackToMainButton()` y `updateBackToMainVisibility()`.
+
+### Criterio operativo
+- No se habilita navegacion de retorno desde catalogo mientras el kiosk siga bloqueado.
+- El retorno a pantalla principal queda permitido solo tras validacion de PIN de salida.

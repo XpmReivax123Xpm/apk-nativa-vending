@@ -1,6 +1,7 @@
 ﻿package com.vending.kiosk.app
 
 import android.content.res.ColorStateList
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
@@ -64,6 +65,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvPromoTitle: TextView? = null
     private var tvPromoSubtitle: TextView? = null
     private lateinit var contentContainer: LinearLayout
+    private var btnKioskBackToMain: Button? = null
+    private var kioskUnlockedByPin = false
 
     private val authSessionManager by lazy { AuthSessionManager(this) }
     private val kioskPolicyManager by lazy { KioskPolicyManager(this) }
@@ -263,6 +266,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvCartBadge = findViewById(R.id.tvCartBadge)
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         contentContainer = findViewById(R.id.llCatalogContainer)
+        btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
         screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
         useLegacyCarousel = promoCarousel !is ViewFlipper
 
@@ -276,6 +280,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         setupDispenseRuntime()
         setupCartBadge()
+        setupBackToMainButton()
         applyCarouselHeight()
         setupCarouselTouchControls()
 
@@ -369,6 +374,19 @@ class KioskCatalogActivity : AppCompatActivity() {
         cartFabContainer.setOnClickListener { showCartDialog() }
     }
 
+    private fun setupBackToMainButton() {
+        btnKioskBackToMain?.setOnClickListener {
+            if (!kioskUnlockedByPin) return@setOnClickListener
+            startActivity(Intent(this, MainActivity::class.java))
+            finish()
+        }
+        updateBackToMainVisibility()
+    }
+
+    private fun updateBackToMainVisibility() {
+        btnKioskBackToMain?.visibility = if (kioskUnlockedByPin) View.VISIBLE else View.GONE
+    }
+
     override fun onBackPressed() {
         if (kioskLocked) {
             Toast.makeText(this, "Modo kiosk activo", Toast.LENGTH_SHORT).show()
@@ -407,6 +425,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun enterKioskMode() {
         Log.d(TAG, "entering kiosk mode")
         kioskLocked = true
+        kioskUnlockedByPin = false
+        updateBackToMainVisibility()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applyImmersiveKioskUi()
         Log.d(TAG, "Android LockTask disabled; OEM kiosk mode is responsible for navigation hiding")
@@ -415,6 +435,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun exitKioskMode() {
         Log.d(TAG, "exiting kiosk mode")
         kioskLocked = false
+        kioskUnlockedByPin = true
+        updateBackToMainVisibility()
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         Toast.makeText(this, "Modo kiosk desbloqueado", Toast.LENGTH_SHORT).show()
     }

@@ -45,7 +45,7 @@
 - [~] Endurecer bloqueo total de navegacion del sistema segun politica del dispositivo (Device Owner / launcher kiosk).
   - [x] Infraestructura base de kiosk administrado (DeviceAdminReceiver + policy XML + `KioskPolicyManager` + `lockTaskMode` en manifest).
   - [x] Integracion de intento de lock task administrado en `KioskCatalogActivity` con fallback visual.
-  - [ ] Provisioning real de Device Owner en tablet vending y validacion final contra barra OEM.
+  - [x] Provisioning real de Device Owner en tablet vending y validacion final contra barra OEM.
 
 ### Fase 2 - Integracion backend
 - [x] Definir autenticacion y refresh de sesion.
@@ -206,3 +206,9 @@
   - [x] `12` (`IO_PRODUCT_REMOVED_DOOR_OPEN`).
 - [x] Ajustar recuperacion post-timeout IO a `82` o `02`.
 - [x] Exponer eventos `onStep` en `VendingTester` para trazabilidad (`STEP: ...`).
+
+### Actualizacion 2026-05-15
+- [x] Agregar boton `Atras` en barra inferior de `activity_kiosk_catalog`.
+- [x] Replicar boton `Atras` en `activity_kiosk_catalog_legacy`.
+- [x] Mostrar `Atras` solo cuando se desbloquea kiosk con PIN valido.
+- [x] Navegar a `MainActivity` al presionar `Atras` tras desbloqueo.

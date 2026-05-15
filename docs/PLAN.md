@@ -372,3 +372,10 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - junto a estados ya vigentes (`82`, `92`, `D2`).
 - Regla de recuperacion de timeout IO actualizada:
   - recupera por `82` o `02` (ya no solo `82`).
+
+## Actualizacion 2026-05-15 - Retorno controlado desde KioskCatalog
+- Se incorpora barra inferior con boton `Atras` en layouts normal y legacy de catalogo.
+- Regla de seguridad:
+  - `Atras` solo aparece tras desbloqueo por PIN (`exitKioskMode`).
+- Flujo de salida controlada:
+  - desbloqueo PIN -> mostrar `Atras` -> retorno a `MainActivity`.

@@ -36,7 +36,9 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
+import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
+import com.vending.kiosk.integration.serial.runtime.HexUtil
 import com.vending.kiosk.integration.serial.runtime.SerialManager
 import com.vending.kiosk.integration.serial.runtime.VendingFlowController
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +68,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvPromoSubtitle: TextView? = null
     private lateinit var contentContainer: LinearLayout
     private var btnKioskBackToMain: Button? = null
+    private var btnKioskViewLogs: Button? = null
+    private var btnKioskViewBitacora: Button? = null
     private var btnDisableAutoResumeKiosk: Button? = null
     private var kioskUnlockedByPin = false
 
@@ -133,6 +137,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var retrieveDialog: AlertDialog? = null
     private var tvRetrieveTitle: TextView? = null
     private var tvRetrieveMessage: TextView? = null
+    private var monitorViewerDialog: AlertDialog? = null
+    private var monitorViewerRunnable: Runnable? = null
     private var kioskLocked = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
@@ -175,6 +181,8 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private val serialListener = object : SerialManager.Listener {
         override fun onRx(data: ByteArray, size: Int) {
+            val rx = HexUtil.bytesToHex(data, size).replace(" ", "").uppercase()
+            interactionMonitor.appendBitacora("RX: $rx")
             if (::vendFlow.isInitialized) {
                 vendFlow.onRx(data, size)
             }
@@ -189,6 +197,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         override fun onStatus(msg: String) {
+            interactionMonitor.appendBitacora(msg)
             if (dispensingInProgress && msg.startsWith("TX:")) {
                 runOnUiThread {
                     tvDispenseStatus?.text = "Espera un momento, por favor..."
@@ -199,10 +208,11 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private val vendingUi = object : VendingFlowController.Ui {
         override fun onLog(msg: String) {
-            // Se mantiene silencioso para no saturar UI en modo kiosk.
+            interactionMonitor.appendBoth(msg)
         }
 
         override fun onNeedRetrieve(msg: String) {
+            interactionMonitor.appendBoth("NEED_RETRIEVE: $msg")
             runOnUiThread {
                 if (dispensingInProgress) {
                     reportDispenseStateByIndex(
@@ -220,10 +230,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         override fun onDone() {
+            interactionMonitor.appendBoth("DONE: ciclo de retiro confirmado")
             runOnUiThread { onDispenseItemDone() }
         }
 
         override fun onError(msg: String) {
+            interactionMonitor.appendBoth("ERROR_RUNTIME: $msg")
             runOnUiThread {
                 val parsed = parseRuntimeDispenseError(msg)
                 onDispenseError(parsed.second, parsed.first)
@@ -231,6 +243,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         override fun onStep(stepMsg: String) {
+            interactionMonitor.appendBoth("STEP: $stepMsg")
             runOnUiThread {
                 val parts = stepMsg.split("|", limit = 2)
                 val code = parts.firstOrNull()?.trim().orEmpty()
@@ -268,6 +281,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         contentContainer = findViewById(R.id.llCatalogContainer)
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
+        btnKioskViewLogs = findViewById(R.id.btnKioskViewLogs)
+        btnKioskViewBitacora = findViewById(R.id.btnKioskViewBitacora)
         screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
         useLegacyCarousel = promoCarousel !is ViewFlipper
 
@@ -282,6 +297,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         setupDispenseRuntime()
         setupCartBadge()
         setupBackToMainButton()
+        setupMonitoringButtons()
         applyCarouselHeight()
         setupCarouselTouchControls()
 
@@ -338,6 +354,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
         dismissRetrieveDialog()
+        monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
+        monitorViewerDialog = null
+        monitorViewerRunnable?.let { inactivityHandler.removeCallbacks(it) }
+        monitorViewerRunnable = null
         unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
         inactivityHandler.removeCallbacksAndMessages(null)
@@ -375,6 +395,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         cartFabContainer.setOnClickListener { showCartDialog() }
     }
 
+    private val interactionMonitor by lazy { CustomerInteractionMonitor(this) }
+
     private fun setupBackToMainButton() {
         setupDisableAutoResumeButton()
         btnKioskBackToMain?.setOnClickListener {
@@ -388,7 +410,36 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun updateBackToMainVisibility() {
         val visibility = if (kioskUnlockedByPin) View.VISIBLE else View.GONE
         btnKioskBackToMain?.visibility = visibility
+        btnKioskViewLogs?.visibility = visibility
+        btnKioskViewBitacora?.visibility = visibility
         btnDisableAutoResumeKiosk?.visibility = visibility
+    }
+
+    private fun setupMonitoringButtons() {
+        btnKioskViewLogs?.setOnClickListener {
+            val text = interactionMonitor.getLastLogsText()
+            if (text.isBlank()) {
+                Toast.makeText(this, "Aun no hay logs guardados de clientes.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showMonitoringViewerDialog(
+                title = "Logs - ultima interaccion",
+                live = false,
+                bitacora = false
+            )
+        }
+        btnKioskViewBitacora?.setOnClickListener {
+            val text = interactionMonitor.getLastBitacoraText()
+            if (text.isBlank()) {
+                Toast.makeText(this, "Aun no hay bitacora guardada de clientes.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            showMonitoringViewerDialog(
+                title = "Bitacora - ultima interaccion",
+                live = false,
+                bitacora = true
+            )
+        }
     }
 
     private fun setupDisableAutoResumeButton() {
@@ -2019,7 +2070,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 when (result) {
                     is QrGenerationResult.Success -> {
                         dialog.dismiss()
-                        openQrDialog(result, selections, fromCart)
+                        openQrDialog(result, selections, fromCart, paymentMethod.label)
                     }
 
                     is QrGenerationResult.Error -> {
@@ -2401,7 +2452,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun openQrDialog(result: QrGenerationResult.Success, selections: List<PurchaseSelection>, fromCart: Boolean) {
+    private fun openQrDialog(
+        result: QrGenerationResult.Success,
+        selections: List<PurchaseSelection>,
+        fromCart: Boolean,
+        paymentMethodLabel: String
+    ) {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_qr_payment, null)
         val ivQr = view.findViewById<ImageView>(R.id.ivPaymentQr)
         val tvExpiration = view.findViewById<TextView>(R.id.tvQrExpiration)
@@ -2455,7 +2511,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 if (!cancelInProgress && dialog.isShowing) {
                     tvQrStatus.text = "Esperando confirmacion de pago..."
                     progressQr.visibility = View.VISIBLE
-                    startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart)
+                    startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
                 }
             }
             btnYes.setOnClickListener {
@@ -2496,7 +2552,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                             tvQrStatus.text = cancelResult.message.ifBlank { "No se pudo cancelar el pedido." }
                             btnClose.isEnabled = true
                             cancelInProgress = false
-                            startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart)
+                            startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
                         }
                     }
                 }
@@ -2515,7 +2571,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             onModalDismissed()
         }
 
-        startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart)
+        startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
     }
 
     private fun startQrPaymentPolling(
@@ -2525,7 +2581,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnClose: Button,
         result: QrGenerationResult.Success,
         selections: List<PurchaseSelection>,
-        fromCart: Boolean
+        fromCart: Boolean,
+        paymentMethodLabel: String
     ) {
         qrPollingJob?.cancel()
         qrPollingJob = lifecycleScope.launch {
@@ -2557,7 +2614,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         btnClose.isEnabled = false
                         delay(500)
                         dialog.dismiss()
-                        showDispenseDialogAndStart(selections, fromCart, result)
+                        showDispenseDialogAndStart(selections, fromCart, result, paymentMethodLabel)
                         return@launch
                     }
 
@@ -2713,7 +2770,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun showDispenseDialogAndStart(
         selections: List<PurchaseSelection>,
         fromCart: Boolean,
-        qrResult: QrGenerationResult.Success
+        qrResult: QrGenerationResult.Success,
+        paymentMethodLabel: String
     ) {
         val queue = mutableListOf<DispenseQueueItem>()
         val detallePendiente = qrResult.detalles.toMutableList()
@@ -2788,6 +2846,16 @@ class KioskCatalogActivity : AppCompatActivity() {
         clearCartOnDispenseFinish = fromCart
         activeDispensePedidoId = qrResult.pedidoId
 
+        interactionMonitor.startSession(
+            machineCode = machineCode,
+            pedidoId = qrResult.pedidoId,
+            paymentMethodLabel = paymentMethodLabel,
+            selectedCellsSummary = selections.map {
+                "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
+            }
+        )
+        interactionMonitor.appendBoth("Dispensacion iniciada para ${dispensingQueue.size} item(s)")
+
         tvDispenseTitle?.text = "DISPENSANDO..."
         tvDispenseStatus?.text = "Espere un momento, por favor..."
         tvDispenseProgress?.text = "1 de ${dispensingQueue.size}"
@@ -2821,6 +2889,9 @@ class KioskCatalogActivity : AppCompatActivity() {
             loadProductImage(currentItem.item.imagenUrl, imageView)
         }
         tvDispenseStatus?.text = "Espera un momento, por favor..."
+        interactionMonitor.appendBoth(
+            "Inicio dispensacion celda ${currentItem.item.codigoCelda} (fisica $currentCell) | producto=${currentItem.item.producto} | item ${currentNumber} de $total"
+        )
         reportDispenseStateByIndex(
             index = dispensingCursor,
             tnEstado = 2,
@@ -2831,6 +2902,12 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun onDispenseItemDone() {
         if (!dispensingInProgress) return
+        val justDone = dispensingQueue.getOrNull(dispensingCursor)
+        if (justDone != null) {
+            interactionMonitor.appendBoth(
+                "Dispensacion celda ${justDone.item.codigoCelda} completa | producto=${justDone.item.producto}"
+            )
+        }
         dismissRetrieveDialog()
         reportDispenseStateByIndex(
             index = dispensingCursor,
@@ -2842,6 +2919,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun onDispenseError(message: String, errorCode: String = "") {
+        interactionMonitor.appendBoth("Incidencia en dispensacion | code=$errorCode | message=$message")
         if (errorCode == "IO_TIMEOUT") {
             if (dispensingInProgress) {
                 showDispenseIoTimeoutDialog(message)
@@ -2881,6 +2959,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         runCatching { vendFlow.stop() }
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
+        interactionMonitor.appendBoth("Compra finalizada sin incidencias fatales")
+        interactionMonitor.finalizeAndSave()
 
         if (clearCartOnDispenseFinish) {
             cartItems.clear()
@@ -2967,6 +3047,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         val llDelivered = view.findViewById<LinearLayout>(R.id.llDispenseDeliveredItems)
         val llPending = view.findViewById<LinearLayout>(R.id.llDispensePendingItems)
         val llAnomalous = view.findViewById<LinearLayout>(R.id.llDispenseAnomalousItems)
+        val btnErrorViewLogs = view.findViewById<Button>(R.id.btnErrorViewLogs)
+        val btnErrorViewBitacora = view.findViewById<Button>(R.id.btnErrorViewBitacora)
+        val btnErrorSaveMonitoring = view.findViewById<Button>(R.id.btnErrorSaveMonitoring)
         tvMessage.text = message.ifBlank { "No se pudo completar la dispensacion." }
 
         val delivered = dispensingQueue.filter { it.tnEstadoDispensacion == 4 }
@@ -3004,6 +3087,33 @@ class KioskCatalogActivity : AppCompatActivity() {
         renderItems(llDelivered, delivered)
         renderItems(llPending, pending)
         renderItems(llAnomalous, anomalous)
+
+        btnErrorViewLogs.setOnClickListener {
+            showMonitoringViewerDialog(
+                title = "Logs en vivo - incidencia",
+                live = true,
+                bitacora = false
+            )
+        }
+        btnErrorViewBitacora.setOnClickListener {
+            showMonitoringViewerDialog(
+                title = "Bitacora en vivo - incidencia",
+                live = true,
+                bitacora = true
+            )
+        }
+        btnErrorSaveMonitoring.setOnClickListener {
+            val saved = interactionMonitor.finalizeAndSave()
+            if (saved == null) {
+                Toast.makeText(this, "No habia una sesion activa para guardar.", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(
+                    this,
+                    "Guardado en: ${saved.logsFile.parentFile?.absolutePath.orEmpty()}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
@@ -3166,6 +3276,81 @@ class KioskCatalogActivity : AppCompatActivity() {
         retrieveDialog = null
         tvRetrieveTitle = null
         tvRetrieveMessage = null
+    }
+
+    private fun showMonitoringViewerDialog(
+        title: String,
+        live: Boolean,
+        bitacora: Boolean
+    ) {
+        monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        val tvTitle = TextView(this).apply {
+            text = title
+            setTextColor(Color.parseColor("#0B456F"))
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        val scroll = android.widget.ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(420)
+            ).apply { topMargin = dp(10) }
+        }
+        val tvContent = TextView(this).apply {
+            setTextColor(Color.parseColor("#0A2239"))
+            textSize = 13f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setBackgroundColor(Color.parseColor("#F3F7FB"))
+        }
+        scroll.addView(tvContent)
+        container.addView(tvTitle)
+        container.addView(scroll)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(container)
+            .setPositiveButton("Cerrar", null)
+            .create()
+
+        fun updateContent() {
+            val text = when {
+                live && interactionMonitor.isActive() && bitacora -> interactionMonitor.getCurrentBitacoraText()
+                live && interactionMonitor.isActive() -> interactionMonitor.getCurrentLogsText()
+                bitacora -> interactionMonitor.getLastBitacoraText()
+                else -> interactionMonitor.getLastLogsText()
+            }
+            tvContent.text = text.ifBlank { "Sin datos para mostrar." }
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        }
+
+        updateContent()
+        if (live) {
+            val runnable = object : Runnable {
+                override fun run() {
+                    if (monitorViewerDialog?.isShowing != true) return
+                    updateContent()
+                    inactivityHandler.postDelayed(this, 350L)
+                }
+            }
+            monitorViewerRunnable = runnable
+            inactivityHandler.post(runnable)
+        }
+
+        dialog.setOnDismissListener {
+            monitorViewerDialog = null
+            monitorViewerRunnable?.let { inactivityHandler.removeCallbacks(it) }
+            monitorViewerRunnable = null
+        }
+
+        monitorViewerDialog = dialog
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.WHITE))
     }
 
     private fun decodeQrBase64(rawBase64: String): android.graphics.Bitmap? {

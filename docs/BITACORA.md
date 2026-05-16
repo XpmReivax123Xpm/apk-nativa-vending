@@ -926,3 +926,42 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ### Resultado operativo esperado
 - Caso con secuencia rapida (`...42/52...D2`): no debe quedarse colgado; debe finalizar retiro.
 - Caso con secuencia clasica (`...82/02/12/92/D2`): mantiene finalizacion normal.
+
+## 2026-05-16 - Monitoreo de interaccion cliente (logs + bitacora)
+
+### Hecho en esta iteracion
+- Se creo monitor dedicado de ciclo de vida de interaccion cliente:
+  - `app/src/main/java/com/vending/kiosk/app/interaction/CustomerInteractionMonitor.kt`.
+- El monitor registra dos canales con timestamp `HH:mm:ss.SSS`:
+  - `logs`: eventos funcionales/resumen de flujo.
+  - `bitacora`: eventos completos incluyendo `RX`/`TX`.
+- Se integra inicio de sesion de monitoreo cuando inicia dispensacion post pago:
+  - incluye metodo de pago elegido,
+  - incluye celdas/productos seleccionados.
+- Se integra registro durante el ciclo de dispensacion:
+  - inicio por celda,
+  - progreso runtime (puerta blanca/plataforma/IO/STEP/ERROR),
+  - cierre por celda y fin de ciclo.
+- Se integra captura de serial en vivo para bitacora:
+  - `RX` desde `serialListener.onRx`.
+  - `TX/Status` desde `serialListener.onStatus`.
+- Guardado automatico en flujo normal:
+  - al completar compra sin incidencias fatales se cierra sesion y se persisten archivos.
+- Se agregan botones en barra inferior de catalogo (visibles tras desbloqueo PIN):
+  - `Ver logs`
+  - `Ver bitacora`
+  - muestran la ultima interaccion guardada.
+- Se agregan botones en modal de incidencia (`dialog_dispense_error`):
+  - `Ver logs` (en vivo),
+  - `Ver bitacora` (en vivo),
+  - `Guardar informacion` (cierre manual y persistencia de sesion activa).
+- Carpeta de almacenamiento definida:
+  - `monitoreo de ciclo de vida de interaccion con el cliente`
+  - dentro del almacenamiento de archivos de la app (`getExternalFilesDir(null)` con fallback interno).
+
+### Archivos impactados
+- `app/src/main/java/com/vending/kiosk/app/interaction/CustomerInteractionMonitor.kt` (nuevo)
+- `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+- `app/src/main/res/layout/activity_kiosk_catalog.xml`
+- `app/src/main/res/layout/activity_kiosk_catalog_legacy.xml`
+- `app/src/main/res/layout/dialog_dispense_error.xml`

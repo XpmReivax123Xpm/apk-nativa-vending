@@ -393,3 +393,17 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - progreso valido para recuperar timeout: `82`, `02`, `12`, `92`, `D2`,
   - `42`/`52` tratados como transiciones informativas,
   - `D2` elevado a criterio terminal para evitar polling infinito cuando `92` no queda estable.
+
+## Actualizacion 2026-05-16 - Monitoreo de ciclo de interaccion con cliente
+- Se incorpora monitoreo operativo por sesion de cliente en `KioskCatalog` con doble salida:
+  - `logs` (resumen funcional),
+  - `bitacora` (traza completa con `RX/TX`).
+- Se habilita consulta de evidencia desde UI:
+  - barra inferior de catalogo: `Ver logs` / `Ver bitacora` (ultima sesion guardada),
+  - modal de incidencia: `Ver logs` / `Ver bitacora` en vivo + `Guardar informacion`.
+- Estrategia de persistencia:
+  - una sesion por interaccion cliente,
+  - archivos fechados por sesion,
+  - carpeta dedicada `monitoreo de ciclo de vida de interaccion con el cliente`.
+- Objetivo:
+  - observabilidad de campo para depurar diferencias de controladora/tiempos IO y mejorar logica con evidencia historica.

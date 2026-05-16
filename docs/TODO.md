@@ -225,3 +225,24 @@
   - [x] Recuperacion timeout por `82/02/12/92/D2`.
   - [x] Logging de transiciones `42` y `52`.
   - [x] Tratar `D2` como terminal para evitar polling infinito si `92` no queda estable.
+
+### Actualizacion 2026-05-16 (monitoreo cliente)
+- [x] Crear monitor de interaccion cliente con doble buffer:
+  - [x] `logs` (resumen con timestamp).
+  - [x] `bitacora` (completo con `RX/TX` + timestamp).
+- [x] Iniciar sesion de monitoreo al iniciar dispensacion post pago.
+- [x] Registrar:
+  - [x] celdas/productos seleccionados,
+  - [x] metodo de pago elegido,
+  - [x] eventos runtime por celda,
+  - [x] trazas serial `RX/TX`.
+- [x] Guardado automatico al finalizar compra sin incidencia fatal.
+- [x] Agregar en barra inferior de catalogo:
+  - [x] boton `Ver logs`,
+  - [x] boton `Ver bitacora`.
+- [x] Agregar en modal de incidencia:
+  - [x] `Ver logs` en vivo,
+  - [x] `Ver bitacora` en vivo,
+  - [x] `Guardar informacion` para persistencia manual de sesion activa.
+- [x] Definir carpeta dedicada de persistencia:
+  - [x] `monitoreo de ciclo de vida de interaccion con el cliente`.

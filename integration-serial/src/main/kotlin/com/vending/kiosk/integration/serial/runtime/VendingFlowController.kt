@@ -25,7 +25,7 @@ class VendingFlowController(
     private var ioStableValue: Int? = null
     private var ioStableSinceMs = 0L
     private var seenClosedNoProduct = false
-    private var seenFirstClick = false
+    private var seenPickupProgress = false
     private var seenDoorOpenedFirstTime = false
     private var seenProductRemovedDoorOpen = false
     @Volatile private var expectDriverRx = false
@@ -70,7 +70,7 @@ class VendingFlowController(
             ioStableSinceMs = 0L
             ioStartMs = 0L
             seenClosedNoProduct = false
-            seenFirstClick = false
+            seenPickupProgress = false
             seenDoorOpenedFirstTime = false
             seenProductRemovedDoorOpen = false
             lastVendIoValue = null
@@ -131,7 +131,7 @@ class VendingFlowController(
                 ioStableValue = null
                 ioStableSinceMs = 0L
                 seenClosedNoProduct = false
-                seenFirstClick = false
+                seenPickupProgress = false
                 seenDoorOpenedFirstTime = false
                 seenProductRemovedDoorOpen = false
                 ioTimeoutWarningEmitted = false
@@ -185,8 +185,15 @@ class VendingFlowController(
             ui.onLog("Puerta chica: producto retirado, puerta abierta (0012)")
         }
 
-        if ((value == IO_AFTER_FIRST_CLICK || value == IO_DOOR_OPEN_FIRST_TIME) && !seenFirstClick) {
-            seenFirstClick = true
+        if (value == IO_TRANSITION_42) {
+            ui.onLog("Puerta chica: transicion detectada (0042)")
+        }
+        if (value == IO_TRANSITION_52) {
+            ui.onLog("Puerta chica: transicion detectada (0052)")
+        }
+
+        if (isValidPickupProgressValue(value) && !seenPickupProgress) {
+            seenPickupProgress = true
             if (ioTimeoutWarningEmitted) {
                 ui.onStep("IO_TIMEOUT_RECOVERED|Puerta habilitada nuevamente")
             }
@@ -194,15 +201,29 @@ class VendingFlowController(
             ioCancelStartMs = 0L
             if (value == IO_AFTER_FIRST_CLICK) {
                 ui.onLog("Puerta chica: 1er click confirmado (0082)")
-            } else {
+            } else if (value == IO_DOOR_OPEN_FIRST_TIME) {
                 ui.onLog("Puerta chica: recuperacion por apertura inicial (0002)")
+            } else if (value == IO_PRODUCT_REMOVED_DOOR_OPEN) {
+                ui.onLog("Puerta chica: recuperacion por producto retirado (0012)")
+            } else if (value == IO_DOOR_CLOSED_NO_PROD) {
+                ui.onLog("Puerta chica: recuperacion por cerrada sin producto (0092)")
+            } else if (value == IO_SECOND_CLICK) {
+                ui.onLog("Puerta chica: recuperacion directa por fin de retiro (00D2)")
             }
         }
         if (value == IO_DOOR_CLOSED_NO_PROD && !seenClosedNoProduct) {
             seenClosedNoProduct = true
             ui.onLog("Puerta chica: cerrada SIN producto (0092)")
         }
-        if (seenClosedNoProduct && value == IO_SECOND_CLICK) {
+        if (value == IO_SECOND_CLICK) {
+            if (ioTimeoutWarningEmitted) {
+                ui.onStep("IO_TIMEOUT_RECOVERED|Puerta habilitada nuevamente")
+                ioTimeoutWarningEmitted = false
+                ioCancelStartMs = 0L
+            }
+            if (!seenClosedNoProduct) {
+                ui.onLog("Puerta chica: D2 recibido sin 92 estable previo (cierre forzado por fin de retiro)")
+            }
             ui.onLog("Puerta chica: 2do click confirmado (00D2) -> FIN")
             waitingPickup = false
             h.removeCallbacksAndMessages(null)
@@ -229,6 +250,14 @@ class VendingFlowController(
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun isValidPickupProgressValue(value: Int): Boolean {
+        return value == IO_AFTER_FIRST_CLICK ||
+            value == IO_DOOR_OPEN_FIRST_TIME ||
+            value == IO_PRODUCT_REMOVED_DOOR_OPEN ||
+            value == IO_DOOR_CLOSED_NO_PROD ||
+            value == IO_SECOND_CLICK
     }
 
     private val pollDriverRunnable = object : Runnable {
@@ -269,7 +298,7 @@ class VendingFlowController(
             if (!waitingPickup) return
             val now = System.currentTimeMillis()
             val elapsed = now - ioStartMs
-            if (!seenFirstClick && elapsed > IO_WAIT_TIMEOUT_MS) {
+            if (!seenPickupProgress && elapsed > IO_WAIT_TIMEOUT_MS) {
                 if (!ioTimeoutWarningEmitted) {
                     ioTimeoutWarningEmitted = true
                     ioCancelStartMs = now
@@ -311,6 +340,8 @@ class VendingFlowController(
         private const val IO_WHITE_DOOR_OPENING = 210
         private const val IO_WHITE_DOOR_CLOSING = 194  // este es el C2
         private const val IO_SECOND_CLICK = 210 // este es el D2
+        private const val IO_TRANSITION_42 = 66 // este es el 42
+        private const val IO_TRANSITION_52 = 82 // este es el 52
     }
 }
 

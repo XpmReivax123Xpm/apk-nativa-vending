@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import android.util.Log
 
 class KioskMachinesActivity : AppCompatActivity() {
 
@@ -34,6 +35,10 @@ class KioskMachinesActivity : AppCompatActivity() {
 
         tvStatus = findViewById(R.id.tvMachinesStatus)
         contentContainer = findViewById(R.id.llMachinesContainer)
+        findViewById<Button>(R.id.btnMachinesBack).setOnClickListener {
+            startActivity(Intent(this, MainActivity::class.java))
+            finish()
+        }
 
         val authHeader = authSessionManager.getAuthorizationHeader()
         if (authHeader.isNullOrBlank()) {
@@ -206,21 +211,30 @@ class KioskMachinesActivity : AppCompatActivity() {
 
                 when (loginResult) {
                     is MachineLoginResult.Success -> {
+                        val resolvedMachineId = if (loginResult.machineId > 0) loginResult.machineId else maquina.id
+                        val resolvedMachineCode = loginResult.machineCode.ifBlank { maquina.codigo }
                         authSessionManager.saveSession(
                             accessToken = loginResult.accessToken,
                             tokenType = loginResult.tokenType,
                             expiresInMinutes = loginResult.expiresInMinutes
                         )
                         authSessionManager.saveMachineCredentials(
-                            machineId = if (loginResult.machineId > 0) loginResult.machineId else maquina.id,
-                            machineCode = loginResult.machineCode,
+                            machineId = resolvedMachineId,
+                            machineCode = resolvedMachineCode,
                             machinePin = pin
                         )
+                        authSessionManager.saveMachineLocation(maquina.locacion)
+                        authSessionManager.setKioskAutoResumeEnabled(true)
+                        Log.d(
+                            TAG,
+                            "Machine saved for auto-resume. machineId=$resolvedMachineId machineCode=$resolvedMachineCode location='${maquina.locacion}'"
+                        )
+                        Log.d(TAG, "Auto-resume enabled=true")
                         dialog.dismiss()
 
                         val intent = Intent(this@KioskMachinesActivity, KioskCatalogActivity::class.java).apply {
-                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_ID, maquina.id)
-                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_CODE, maquina.codigo)
+                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_ID, resolvedMachineId)
+                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_CODE, resolvedMachineCode)
                             putExtra(KioskCatalogActivity.EXTRA_MACHINE_LOCATION, maquina.locacion)
                         }
                         startActivity(intent)
@@ -238,6 +252,8 @@ class KioskMachinesActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
     }
 }
+
+private const val TAG = "KioskMachinesActivity"
 
 private data class MaquinaUi(
     val id: Int,

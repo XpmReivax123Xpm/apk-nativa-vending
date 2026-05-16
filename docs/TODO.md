@@ -212,3 +212,16 @@
 - [x] Replicar boton `Atras` en `activity_kiosk_catalog_legacy`.
 - [x] Mostrar `Atras` solo cuando se desbloquea kiosk con PIN valido.
 - [x] Navegar a `MainActivity` al presionar `Atras` tras desbloqueo.
+
+### Actualizacion 2026-05-16
+- [x] Implementar auto-resume kiosk persistente:
+  - [x] `kiosk_auto_resume_enabled` en `AuthSessionManager`.
+  - [x] `last_machine_location` en `AuthSessionManager`.
+  - [x] Activar auto-resume al login PIN de maquina (`KioskMachinesActivity`).
+  - [x] Redireccion segura desde `MainActivity` a `KioskCatalogActivity` con refresh de sesion.
+  - [x] Fallback a menu normal si refresh falla o faltan datos (sin loop).
+- [x] Agregar accion administrativa explicita para desactivar auto-resume en `KioskCatalogActivity` (post desbloqueo PIN).
+- [x] Ajustar runtime IO para variaciones de campo:
+  - [x] Recuperacion timeout por `82/02/12/92/D2`.
+  - [x] Logging de transiciones `42` y `52`.
+  - [x] Tratar `D2` como terminal para evitar polling infinito si `92` no queda estable.

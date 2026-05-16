@@ -887,3 +887,42 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ### Criterio operativo
 - No se habilita navegacion de retorno desde catalogo mientras el kiosk siga bloqueado.
 - El retorno a pantalla principal queda permitido solo tras validacion de PIN de salida.
+
+## 2026-05-16 - Auto-resume kiosk + ajuste robusto IO retiro (D2 terminal)
+
+### Hecho en esta iteracion
+- Se implemento auto-resume kiosk persistente sin depender de LockTask/Device Owner:
+  - `AuthSessionManager` ahora guarda:
+    - `kiosk_auto_resume_enabled`
+    - `last_machine_location`
+  - Se agregaron funciones:
+    - `setKioskAutoResumeEnabled(...)`
+    - `isKioskAutoResumeEnabled()`
+    - `saveMachineLocation(...)`
+    - `getMachineLocation()`
+    - `disableKioskAutoResume()`
+- En `KioskMachinesActivity`, tras PIN correcto:
+  - se sobreescriben credenciales de maquina (`id`, `code`, `pin`),
+  - se guarda `last_machine_location`,
+  - se activa `kiosk_auto_resume_enabled=true`.
+- En `MainActivity`:
+  - al abrir, si auto-resume esta activo y hay credenciales completas, intenta refresh con `MachineAuthGateway`;
+  - si refresh es exitoso, redirige directo a `KioskCatalogActivity`;
+  - si falla, no crashea ni entra en loop: muestra menu normal.
+- En `KioskCatalogActivity`:
+  - se agrego accion administrativa explicita `Desactivar auto-resume kiosk` (visible solo tras desbloqueo por PIN),
+  - esta accion desactiva auto-resume sin limpiar credenciales ni sesion.
+
+### Ajuste critico en flujo IO/driver (runtime)
+- Se amplio criterio de progreso valido en retiro para timeout IO:
+  - estados validos: `82`, `02`, `12`, `92`, `D2`.
+- Se agregaron logs para transiciones observadas en campo:
+  - `42` (`0042`) y `52` (`0052`) como estados transitorios.
+- Correccion de regresion detectada en `VendingTester`:
+  - antes podia quedar en polling infinito con `D2` repetido si `92` no quedaba estable,
+  - ahora `D2` se trata como estado terminal de retiro y dispara cierre de flujo (`onDone`) aunque no haya `92` estable previo.
+- Se mantiene recuperacion de timeout IO cuando llega progreso valido despues de advertencia.
+
+### Resultado operativo esperado
+- Caso con secuencia rapida (`...42/52...D2`): no debe quedarse colgado; debe finalizar retiro.
+- Caso con secuencia clasica (`...82/02/12/92/D2`): mantiene finalizacion normal.

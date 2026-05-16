@@ -379,3 +379,17 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - `Atras` solo aparece tras desbloqueo por PIN (`exitKioskMode`).
 - Flujo de salida controlada:
   - desbloqueo PIN -> mostrar `Atras` -> retorno a `MainActivity`.
+
+## Actualizacion 2026-05-16 - Auto-resume kiosk y robustez IO en retiro
+- Auto-resume kiosk operativo:
+  - persistencia de bandera `kiosk_auto_resume_enabled` y `last_machine_location`,
+  - activacion automatica al autenticar maquina por PIN,
+  - reingreso directo desde `MainActivity` a `KioskCatalogActivity` tras refresh de sesion exitoso,
+  - fallback seguro a menu normal si faltan datos o falla refresh (sin loops).
+- Desactivacion de auto-resume:
+  - accion administrativa explicita desde `KioskCatalogActivity` (visible solo tras desbloqueo PIN),
+  - no depende del boton `Salir`.
+- Flujo IO de retiro endurecido para variaciones reales de controladora:
+  - progreso valido para recuperar timeout: `82`, `02`, `12`, `92`, `D2`,
+  - `42`/`52` tratados como transiciones informativas,
+  - `D2` elevado a criterio terminal para evitar polling infinito cuando `92` no queda estable.

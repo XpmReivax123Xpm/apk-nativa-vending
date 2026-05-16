@@ -66,6 +66,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvPromoSubtitle: TextView? = null
     private lateinit var contentContainer: LinearLayout
     private var btnKioskBackToMain: Button? = null
+    private var btnDisableAutoResumeKiosk: Button? = null
     private var kioskUnlockedByPin = false
 
     private val authSessionManager by lazy { AuthSessionManager(this) }
@@ -375,6 +376,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun setupBackToMainButton() {
+        setupDisableAutoResumeButton()
         btnKioskBackToMain?.setOnClickListener {
             if (!kioskUnlockedByPin) return@setOnClickListener
             startActivity(Intent(this, MainActivity::class.java))
@@ -384,7 +386,42 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun updateBackToMainVisibility() {
-        btnKioskBackToMain?.visibility = if (kioskUnlockedByPin) View.VISIBLE else View.GONE
+        val visibility = if (kioskUnlockedByPin) View.VISIBLE else View.GONE
+        btnKioskBackToMain?.visibility = visibility
+        btnDisableAutoResumeKiosk?.visibility = visibility
+    }
+
+    private fun setupDisableAutoResumeButton() {
+        val existing = btnDisableAutoResumeKiosk
+        if (existing != null) {
+            btnDisableAutoResumeKiosk = existing
+        } else {
+            val backButton = btnKioskBackToMain ?: return
+            val parent = backButton.parent as? LinearLayout ?: return
+            btnDisableAutoResumeKiosk = Button(this).apply {
+                text = "Desactivar auto-resume kiosk"
+                isAllCaps = false
+                setTextColor(Color.WHITE)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                backgroundTintList = ColorStateList.valueOf(Color.parseColor("#B3261E"))
+                visibility = View.GONE
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(40)
+                ).apply {
+                    marginStart = dp(10)
+                }
+                layoutParams = params
+            }
+            parent.addView(btnDisableAutoResumeKiosk)
+        }
+
+        btnDisableAutoResumeKiosk?.setOnClickListener {
+            if (!kioskUnlockedByPin) return@setOnClickListener
+            authSessionManager.disableKioskAutoResume()
+            Log.d(TAG, "Auto-resume kiosk disabled by admin action")
+            Toast.makeText(this, "Auto-resume kiosk desactivado", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onBackPressed() {

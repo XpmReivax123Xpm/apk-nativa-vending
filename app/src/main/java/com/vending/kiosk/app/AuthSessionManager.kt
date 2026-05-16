@@ -54,6 +54,35 @@ class AuthSessionManager(context: Context) {
         prefs.edit().clear().apply()
     }
 
+    fun setKioskAutoResumeEnabled(enabled: Boolean) {
+        prefs.edit()
+            .putBoolean(KEY_KIOSK_AUTO_RESUME_ENABLED, enabled)
+            .apply()
+    }
+
+    fun isKioskAutoResumeEnabled(): Boolean {
+        return prefs.getBoolean(KEY_KIOSK_AUTO_RESUME_ENABLED, false)
+    }
+
+    fun saveMachineLocation(location: String?) {
+        prefs.edit()
+            .putString(KEY_LAST_MACHINE_LOCATION, location.orEmpty().trim())
+            .apply()
+    }
+
+    fun getMachineLocation(): String? {
+        return prefs.getString(KEY_LAST_MACHINE_LOCATION, "")
+            ?.trim()
+            ?.ifBlank { "" }
+    }
+
+    fun disableKioskAutoResume() {
+        prefs.edit()
+            .putBoolean(KEY_KIOSK_AUTO_RESUME_ENABLED, false)
+            .remove(KEY_LAST_MACHINE_LOCATION)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "bp_auth_session"
         private const val KEY_ACCESS_TOKEN = "access_token"
@@ -62,6 +91,8 @@ class AuthSessionManager(context: Context) {
         private const val KEY_MACHINE_ID = "machine_id"
         private const val KEY_MACHINE_CODE = "machine_code"
         private const val KEY_MACHINE_PIN = "machine_pin"
+        private const val KEY_KIOSK_AUTO_RESUME_ENABLED = "kiosk_auto_resume_enabled"
+        private const val KEY_LAST_MACHINE_LOCATION = "last_machine_location"
     }
 }
 

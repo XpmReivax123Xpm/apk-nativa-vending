@@ -407,3 +407,14 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - carpeta dedicada `monitoreo de ciclo de vida de interaccion con el cliente`.
 - Objetivo:
   - observabilidad de campo para depurar diferencias de controladora/tiempos IO y mejorar logica con evidencia historica.
+
+## Actualizacion 2026-05-19 - Estrategia driver 0000 con continuidad por IO
+- Se formaliza regla operativa para casos ambiguos de driver:
+  - `driver 0000` deja de ser fatal inmediato cuando ya existe progreso fisico en IO vend;
+  - en ese escenario se prioriza continuidad por pickup IO hasta cierre de ciclo.
+- Se conserva seguridad de corte:
+  - si no hay progreso IO y se alcanza umbral de `driver 0000`, el flujo sigue marcando falla.
+- Trazabilidad:
+  - evento runtime `DRIVER_ZERO_PICKUP_MODE` para auditoria de decisiones en campo.
+- Estado:
+  - validado en pruebas reales por usuario.

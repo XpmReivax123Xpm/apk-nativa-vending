@@ -965,3 +965,21 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - `app/src/main/res/layout/activity_kiosk_catalog.xml`
 - `app/src/main/res/layout/activity_kiosk_catalog_legacy.xml`
 - `app/src/main/res/layout/dialog_dispense_error.xml`
+
+## 2026-05-19 - Driver 0000 tolerante con progreso IO + validacion en campo
+
+### Hecho en esta iteracion
+- Se ajusto el flujo runtime de driver en `VendingFlowController` para evitar corte prematuro cuando hay evidencia fisica de avance por IO vend:
+  - si aparece `driver 0000` y ya hubo progreso IO (`vendStage > 0` o `seenC2InCurrentVend`), ya no se marca incidencia inmediata;
+  - en ese caso se fuerza paso a `waitingPickup` y se continua por flujo IO de retiro.
+- Se agrego evento de trazabilidad:
+  - `DRIVER_ZERO_PICKUP_MODE|...|decision=WAIT_IO_PICKUP`.
+- Se mantiene corte fatal por `DRIVER_0000` solo cuando no existe progreso IO de venta.
+- Se incorporo marca por item en `KioskCatalogActivity` para reporteria backend:
+  - si el item termina retiro tras modo driver-zero tolerado, se reporta:
+    - `tnEstadoDispensacion = 7`
+    - `tcEstadoDispensacion = ENTREGADO_CON_DRIVER_0000`.
+
+### Validacion
+- Pruebas en campo realizadas por usuario:
+  - resultado: comportamiento correcto (ajuste validado).

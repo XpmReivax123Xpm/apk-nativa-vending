@@ -252,6 +252,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                     if (dispensingInProgress) {
                         showRetrieveDialogForCurrentItem()
                     }
+                } else if (code == "DRIVER_ZERO_PICKUP_MODE") {
+                    dispensingQueue.getOrNull(dispensingCursor)?.driverZeroDelivered = true
                 }
             }
         }
@@ -2909,11 +2911,19 @@ class KioskCatalogActivity : AppCompatActivity() {
             )
         }
         dismissRetrieveDialog()
-        reportDispenseStateByIndex(
-            index = dispensingCursor,
-            tnEstado = 4,
-            tcEstado = "COMPLETADO"
-        )
+        if (justDone?.driverZeroDelivered == true) {
+            reportDispenseStateByIndex(
+                index = dispensingCursor,
+                tnEstado = 7,
+                tcEstado = "ENTREGADO_CON_DRIVER_0000"
+            )
+        } else {
+            reportDispenseStateByIndex(
+                index = dispensingCursor,
+                tnEstado = 4,
+                tcEstado = "COMPLETADO"
+            )
+        }
         dispensingCursor++
         startNextDispenseItem()
     }
@@ -3848,7 +3858,8 @@ private data class DispenseQueueItem(
     val cell: Int,
     val item: CeldaUi,
     val tnPedidoDetalle: Int = 0,
-    var tnEstadoDispensacion: Int = 0
+    var tnEstadoDispensacion: Int = 0,
+    var driverZeroDelivered: Boolean = false
 )
 
 private data class PaymentMethodOption(val id: Int, val label: String)

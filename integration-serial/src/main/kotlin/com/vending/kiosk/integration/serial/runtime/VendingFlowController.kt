@@ -35,6 +35,7 @@ class VendingFlowController(
     private var lastVendIoValue: Int? = null
     private var vendStage = 0
     private var seenC2InCurrentVend = false
+    private var forcedPickupByDriverZero = false
     private var ioTimeoutWarningEmitted = false
     private var ioCancelStartMs = 0L
 
@@ -77,6 +78,7 @@ class VendingFlowController(
             vendStage = 0
             driverZeroCount = 0
             seenC2InCurrentVend = false
+            forcedPickupByDriverZero = false
             ioTimeoutWarningEmitted = false
             ioCancelStartMs = 0L
             ui.onLog("VEND iniciado para celda: $selectedCell")
@@ -102,7 +104,29 @@ class VendingFlowController(
                 if (drvVal == 0) {
                     driverZeroCount++
                     ui.onLog("Driver status=0000 ($driverZeroCount/3)")
-                    if (driverZeroCount >= DRIVER_ZERO_MAX) {
+                    val hasVendIoProgress = vendStage > 0 || seenC2InCurrentVend
+                    if (hasVendIoProgress && driverZeroCount >= DRIVER_ZERO_MAX && !forcedPickupByDriverZero) {
+                        forcedPickupByDriverZero = true
+                        ui.onStep(
+                            "DRIVER_ZERO_PICKUP_MODE|count=$driverZeroCount|vendStage=$vendStage|seenC2=$seenC2InCurrentVend|decision=WAIT_IO_PICKUP"
+                        )
+                        h.removeCallbacks(pollDriverRunnable)
+                        h.removeCallbacks(pollIoVendRunnable)
+                        running = false
+                        waitingPickup = true
+                        ioStartMs = System.currentTimeMillis()
+                        ioStableValue = null
+                        ioStableSinceMs = 0L
+                        seenClosedNoProduct = false
+                        seenPickupProgress = false
+                        seenDoorOpenedFirstTime = false
+                        seenProductRemovedDoorOpen = false
+                        ioTimeoutWarningEmitted = false
+                        ioCancelStartMs = 0L
+                        ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
+                        schedulePollIoPickup()
+                        return
+                    } else if (!hasVendIoProgress && driverZeroCount >= DRIVER_ZERO_MAX) {
                         running = false
                         waitingPickup = false
                         h.removeCallbacksAndMessages(null)

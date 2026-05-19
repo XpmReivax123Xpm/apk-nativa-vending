@@ -7,6 +7,8 @@ import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import android.os.Handler
+import android.os.Looper
 import com.vending.kiosk.R
 import com.vending.kiosk.integration.serial.runtime.CommandSet
 import com.vending.kiosk.integration.serial.runtime.HexUtil
@@ -41,6 +43,9 @@ class VendingTesterActivity : AppCompatActivity() {
     private var pollLogCounter = 0
     private var pollIoLogCounter = 0
     private var promptBody = ""
+    private val idleIoHandler = Handler(Looper.getMainLooper())
+    private var idleIoPollingActive = false
+    private lateinit var serialListener: SerialManager.Listener
 
     private var logFile: File? = null
     private var logWriter: FileWriter? = null
@@ -80,7 +85,7 @@ class VendingTesterActivity : AppCompatActivity() {
             }
         }
 
-        val serialListener = object : SerialManager.Listener {
+        serialListener = object : SerialManager.Listener {
             override fun onRx(data: ByteArray, size: Int) {
                 val rxHex = HexUtil.bytesToHex(data, size)
                 appendLog("RX: $rxHex")
@@ -122,6 +127,7 @@ class VendingTesterActivity : AppCompatActivity() {
             }
             try {
                 serial.open(port, baudStr.toInt(), serialListener)
+                startIdleIoPolling()
             } catch (_: Exception) {
                 appendLog("Baud invalido: $baudStr")
             }
@@ -318,6 +324,7 @@ class VendingTesterActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopIdleIoPolling()
         try {
             vendFlow.stop()
         } catch (_: Exception) {
@@ -327,5 +334,36 @@ class VendingTesterActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         closeLogFile()
+    }
+
+    private fun startIdleIoPolling() {
+        if (idleIoPollingActive) return
+        idleIoPollingActive = true
+        appendLog("Idle IO polling activo (desde conectar).")
+        idleIoHandler.post(idleIoPollRunnable)
+    }
+
+    private fun stopIdleIoPolling() {
+        idleIoPollingActive = false
+        idleIoHandler.removeCallbacks(idleIoPollRunnable)
+    }
+
+    private val idleIoPollRunnable = object : Runnable {
+        override fun run() {
+            if (!idleIoPollingActive) return
+            try {
+                if (serial.isOpen() && !vendFlow.isRunning() && !vendFlow.isWaitingPickup()) {
+                    serial.sendHex(CommandSet.POLL_IO_STATUS, serialListener)
+                }
+            } catch (_: Exception) {
+                // no interrumpe UX
+            } finally {
+                idleIoHandler.postDelayed(this, IDLE_IO_POLL_MS)
+            }
+        }
+    }
+
+    companion object {
+        private const val IDLE_IO_POLL_MS = 750L
     }
 }

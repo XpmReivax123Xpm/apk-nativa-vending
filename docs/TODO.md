@@ -246,3 +246,12 @@
   - [x] `Guardar informacion` para persistencia manual de sesion activa.
 - [x] Definir carpeta dedicada de persistencia:
   - [x] `monitoreo de ciclo de vida de interaccion con el cliente`.
+
+### Actualizacion 2026-05-19
+- [x] Ajustar `VendingFlowController` para no cortar por `DRIVER_0000` cuando existe progreso IO vend.
+- [x] Forzar transicion a `waitingPickup` en escenario tolerado por IO (`DRIVER_ZERO_PICKUP_MODE`).
+- [x] Mantener falla fatal por `DRIVER_0000` solo si no hay progreso IO.
+- [x] Reportar item finalizado bajo este escenario como:
+  - [x] `tnEstadoDispensacion=7`
+  - [x] `tcEstadoDispensacion=ENTREGADO_CON_DRIVER_0000`.
+- [x] Validacion en campo completada por usuario.

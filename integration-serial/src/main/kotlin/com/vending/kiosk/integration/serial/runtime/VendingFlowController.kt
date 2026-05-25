@@ -11,6 +11,7 @@ class VendingFlowController(
     interface Ui {
         fun onLog(msg: String)
         fun onNeedRetrieve(msg: String)
+        fun onPlatformStuck(msg: String)
         fun onDone()
         fun onError(msg: String)
         fun onStep(stepMsg: String)
@@ -31,23 +32,31 @@ class VendingFlowController(
     @Volatile private var expectDriverRx = false
     @Volatile private var expectIoVendRx = false
     @Volatile private var expectIoPickupRx = false
+    @Volatile private var expectIoRecoveryRx = false
     private var driverZeroCount = 0
     private var lastVendIoValue: Int? = null
     private var vendStage = 0
     private var seenC2InCurrentVend = false
+    private var platformDownStartedAtMs = 0L
+    private var seenC2AfterPlatformDown = false
     private var forcedPickupByDriverZero = false
+    private var waitingPlatformRecovery = false
+    private var recoveryStartedAtMs = 0L
     private var ioTimeoutWarningEmitted = false
     private var ioCancelStartMs = 0L
 
     fun isRunning(): Boolean = running
     fun isWaitingPickup(): Boolean = waitingPickup
+    fun isWaitingPlatformRecovery(): Boolean = waitingPlatformRecovery
 
     fun stop() {
         running = false
         waitingPickup = false
+        waitingPlatformRecovery = false
         expectDriverRx = false
         expectIoVendRx = false
         expectIoPickupRx = false
+        expectIoRecoveryRx = false
         h.removeCallbacksAndMessages(null)
         ui.onLog("STOP: vendtest detenido.")
     }
@@ -66,6 +75,7 @@ class VendingFlowController(
             val select = CommandSet.buildSelectCellFull(selectedCell)
             running = true
             waitingPickup = false
+            waitingPlatformRecovery = false
             startTimeMs = System.currentTimeMillis()
             ioStableValue = null
             ioStableSinceMs = 0L
@@ -78,7 +88,10 @@ class VendingFlowController(
             vendStage = 0
             driverZeroCount = 0
             seenC2InCurrentVend = false
+            platformDownStartedAtMs = 0L
+            seenC2AfterPlatformDown = false
             forcedPickupByDriverZero = false
+            recoveryStartedAtMs = 0L
             ioTimeoutWarningEmitted = false
             ioCancelStartMs = 0L
             ui.onLog("VEND iniciado para celda: $selectedCell")
@@ -103,7 +116,7 @@ class VendingFlowController(
             if (running && !waitingPickup && drvVal != null) {
                 if (drvVal == 0) {
                     driverZeroCount++
-                    ui.onLog("Driver status=0000 ($driverZeroCount/3)")
+                    ui.onLog("Driver status=0000 ($driverZeroCount/$DRIVER_ZERO_MAX)")
                     val hasVendIoProgress = vendStage > 0 || seenC2InCurrentVend
                     if (hasVendIoProgress && driverZeroCount >= DRIVER_ZERO_MAX && !forcedPickupByDriverZero) {
                         forcedPickupByDriverZero = true
@@ -142,6 +155,30 @@ class VendingFlowController(
                 }
             }
             if (running && !waitingPickup && isDriverDone(rx)) {
+                val now = System.currentTimeMillis()
+                val elapsedDownMs = if (platformDownStartedAtMs > 0L) now - platformDownStartedAtMs else -1L
+                val doneTooFastAfterDown = elapsedDownMs in 0..PLATFORM_DOWN_FAST_DONE_MS
+                val possibleCrushedProduct =
+                    platformDownStartedAtMs > 0L &&
+                        !seenC2AfterPlatformDown &&
+                        elapsedDownMs > PLATFORM_DOWN_CRUSHED_TIMEOUT_MS
+
+                if (doneTooFastAfterDown) {
+                    enterPlatformRecoveryMode(
+                        reason = "PLATFORM_STUCK|La plataforma parece atorada. Presione arreglar plataforma para volver a base."
+                    )
+                    return
+                }
+                if (possibleCrushedProduct) {
+                    running = false
+                    waitingPickup = false
+                    h.removeCallbacksAndMessages(null)
+                    ui.onError(
+                        "PRODUCT_CRUSHED|Producto aplastado interrumpio la dispensacion (DONE sin C2 tras ${elapsedDownMs}ms en C8)"
+                    )
+                    return
+                }
+
                 h.removeCallbacks(pollDriverRunnable)
                 h.removeCallbacks(pollIoVendRunnable)
                 ui.onLog("DISPENSACION COMPLETA")
@@ -175,6 +212,11 @@ class VendingFlowController(
             val ioValue = parseFirstRegisterFrom0103(rx)
             if (waitingPickup && ioValue != null) handlePickupIoValue(ioValue)
         }
+        if (expectIoRecoveryRx) {
+            expectIoRecoveryRx = false
+            val ioValue = parseFirstRegisterFrom0103(rx)
+            if (waitingPlatformRecovery && ioValue != null) handlePlatformRecoveryIoValue(ioValue)
+        }
     }
 
     private fun handleVendIo(value: Int) {
@@ -183,9 +225,17 @@ class VendingFlowController(
         when (value) {
             IO_WHITE_DOOR_OPENING -> advanceVendStage(1, "Puerta blanca: ABRIENDO")
             IO_PLATFORM_UP -> advanceVendStage(2, "Plataforma: SUBIENDO")
-            IO_PLATFORM_DOWN -> advanceVendStage(3, "Plataforma: BAJANDO")
+            IO_PLATFORM_DOWN -> {
+                if (platformDownStartedAtMs <= 0L) {
+                    platformDownStartedAtMs = System.currentTimeMillis()
+                }
+                advanceVendStage(3, "Plataforma: BAJANDO")
+            }
             IO_WHITE_DOOR_CLOSING -> {
                 seenC2InCurrentVend = true
+                if (platformDownStartedAtMs > 0L) {
+                    seenC2AfterPlatformDown = true
+                }
                 advanceVendStage(4, "Puerta blanca: CERRANDO")
             }
         }
@@ -255,6 +305,59 @@ class VendingFlowController(
         }
     }
 
+    fun requestPlatformRecoveryToBase(): Boolean {
+        if (!waitingPlatformRecovery) {
+            ui.onLog("Recuperacion ignorada: no hay plataforma atorada en espera.")
+            return false
+        }
+        if (!serial.isOpen()) {
+            ui.onError("Abre el puerto primero.")
+            return false
+        }
+        recoveryStartedAtMs = System.currentTimeMillis()
+        val resetHex = CommandSet.buildResetLift()
+        ui.onLog("Recuperacion de plataforma: enviando retorno a base (0cm equivalente).")
+        ui.onLog("TX RECOVERY_TO_BASE: $resetHex")
+        serial.sendHex(resetHex, serialListener)
+        schedulePollIoRecovery()
+        return true
+    }
+
+    private fun enterPlatformRecoveryMode(reason: String) {
+        h.removeCallbacks(pollDriverRunnable)
+        h.removeCallbacks(pollIoVendRunnable)
+        h.removeCallbacks(pollIoPickupRunnable)
+        running = false
+        waitingPickup = false
+        waitingPlatformRecovery = true
+        expectDriverRx = false
+        expectIoVendRx = false
+        expectIoPickupRx = false
+        expectIoRecoveryRx = false
+        recoveryStartedAtMs = 0L
+        ui.onStep("PLATFORM_STUCK_WAITING_ACTION|decision=WAIT_RESET_LIFT")
+        ui.onPlatformStuck(reason.substringAfter("|", reason))
+    }
+
+    private fun handlePlatformRecoveryIoValue(value: Int) {
+        if (value != IO_WHITE_DOOR_CLOSING) return
+        ui.onLog("Recuperacion de plataforma confirmada por IO=C2 (00C2).")
+        waitingPlatformRecovery = false
+        waitingPickup = true
+        ioStartMs = System.currentTimeMillis()
+        ioStableValue = null
+        ioStableSinceMs = 0L
+        seenClosedNoProduct = false
+        seenPickupProgress = false
+        seenDoorOpenedFirstTime = false
+        seenProductRemovedDoorOpen = false
+        ioTimeoutWarningEmitted = false
+        ioCancelStartMs = 0L
+        ui.onStep("PLATFORM_RECOVERY_DONE|io=00C2|decision=RESUME_PICKUP")
+        ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
+        schedulePollIoPickup()
+    }
+
     private fun advanceVendStage(newStage: Int, logMsg: String) {
         if (newStage <= vendStage) return
         vendStage = newStage
@@ -264,6 +367,7 @@ class VendingFlowController(
     private fun schedulePollDriver() = h.postDelayed(pollDriverRunnable, 120L)
     private fun schedulePollIoVend() = h.postDelayed(pollIoVendRunnable, 250L)
     private fun schedulePollIoPickup() = h.postDelayed(pollIoPickupRunnable, 80L)
+    private fun schedulePollIoRecovery() = h.postDelayed(pollIoRecoveryRunnable, 120L)
 
     private fun isDriverDone(rxNoSpacesUpper: String): Boolean = rxNoSpacesUpper.contains("0103020200")
 
@@ -344,6 +448,25 @@ class VendingFlowController(
         }
     }
 
+    private val pollIoRecoveryRunnable = object : Runnable {
+        override fun run() {
+            if (!waitingPlatformRecovery) return
+            if (recoveryStartedAtMs > 0L && (System.currentTimeMillis() - recoveryStartedAtMs) > PLATFORM_RECOVERY_TIMEOUT_MS) {
+                waitingPlatformRecovery = false
+                h.removeCallbacksAndMessages(null)
+                ui.onError("PLATFORM_RECOVERY_TIMEOUT|No se pudo volver a base a tiempo.")
+                return
+            }
+            if (expectDriverRx || expectIoVendRx || expectIoPickupRx || expectIoRecoveryRx) {
+                h.postDelayed(this, 220L)
+                return
+            }
+            expectIoRecoveryRx = true
+            serial.sendHex(CommandSet.POLL_IO_STATUS, serialListener)
+            h.postDelayed(this, POLL_IO_RECOVERY_MS)
+        }
+    }
+
     companion object {
         private const val DRIVER_TIMEOUT_MS = 60_000L
         private const val DRIVER_ZERO_MAX = 3
@@ -352,8 +475,12 @@ class VendingFlowController(
         private const val POLL_IO_PICKUP_MS = 420L
         private const val IO_WAIT_TIMEOUT_MS = 10_000L
         private const val IO_CANCEL_TIMEOUT_MS = 120_000L
+        private const val PLATFORM_DOWN_FAST_DONE_MS = 3_000L
+        private const val PLATFORM_DOWN_CRUSHED_TIMEOUT_MS = 12_000L
+        private const val PLATFORM_RECOVERY_TIMEOUT_MS = 120_000L
         private const val IO_STABLE_MS = 600L
         private const val VEND_START_DELAY_MS = 350L
+        private const val POLL_IO_RECOVERY_MS = 450L
 
         private const val IO_DOOR_OPEN_FIRST_TIME = 2 // este es el 02
         private const val IO_PRODUCT_REMOVED_DOOR_OPEN = 18 // este es el 12

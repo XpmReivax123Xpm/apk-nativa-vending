@@ -64,6 +64,14 @@ class VendingTesterActivity : AppCompatActivity() {
                 setContinueEnabled(false)
             }
 
+            override fun onPlatformStuck(msg: String) {
+                appendLog("PLATAFORMA ATORADA: $msg")
+                setPromptBody("Plataforma atorada. Presiona Reset Lift para arreglarla y continuar.")
+                waitingForContinue = false
+                setContinueEnabled(false)
+                setResetLiftEnabled(true)
+            }
+
             override fun onDone() {
                 waitingForContinue = true
                 setPromptBody("Ciclo terminado (segundo click confirmado). Presione Continuar.")
@@ -194,14 +202,14 @@ class VendingTesterActivity : AppCompatActivity() {
             }
             waitingForContinue = false
             setContinueEnabled(false)
-            clearQueue()
-            vendFlow.stop()
-            val resetHex = CommandSet.buildResetLift()
-            appendLog("Intentando RESET LIFT para volver a estado base...")
-            appendLog("TX RESET LIFT: $resetHex")
-            serial.sendHex(resetHex, serialListener)
+            appendLog("Intentando arreglar plataforma atorada (retorno a base)...")
+            val started = vendFlow.requestPlatformRecoveryToBase()
+            if (!started) {
+                appendLog("No hay una recuperacion de plataforma pendiente.")
+                return@setOnClickListener
+            }
             setResetLiftEnabled(false)
-            setPromptBody("ResetLift enviado. Verifica si la plataforma vuelve a base.")
+            setPromptBody("Arreglando plataforma atorada... esperando confirmacion de IO.")
         }
     }
 

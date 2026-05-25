@@ -255,3 +255,14 @@
   - [x] `tnEstadoDispensacion=7`
   - [x] `tcEstadoDispensacion=ENTREGADO_CON_DRIVER_0000`.
 - [x] Validacion en campo completada por usuario.
+
+### Actualizacion 2026-05-25
+- [x] Agregar estado de recuperacion de plataforma atorada en `VendingFlowController` (compartido entre kiosk y tester).
+- [x] Agregar callback runtime `onPlatformStuck(msg)` para disparar UX especifica.
+- [x] Implementar accion de recuperacion a base desde runtime (`requestPlatformRecoveryToBase()`), con polling IO hasta `C2`.
+- [x] Reanudar flujo de retiro normal tras recuperacion confirmada (`C2` -> `dialog_dispense_retrieve` -> espera `D2`).
+- [x] Ajustar `Reset Lift` en tester para usar flujo de recuperacion del runtime.
+- [x] Agregar modales en kiosk para:
+  - [x] `Plataforma atorada` (accion operador),
+  - [x] `Arreglando plataforma` (proceso en curso).
+- [x] Agregar modal dedicado para `PRODUCT_CRUSHED` (sin afectar modal general de otras incidencias).

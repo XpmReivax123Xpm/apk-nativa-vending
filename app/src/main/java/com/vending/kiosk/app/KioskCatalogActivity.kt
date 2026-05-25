@@ -38,6 +38,7 @@ import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
+import com.vending.kiosk.integration.serial.runtime.CommandSet
 import com.vending.kiosk.integration.serial.runtime.HexUtil
 import com.vending.kiosk.integration.serial.runtime.SerialManager
 import com.vending.kiosk.integration.serial.runtime.VendingFlowController
@@ -130,6 +131,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispenseSuccessDialog: AlertDialog? = null
     private var dispenseErrorDialog: AlertDialog? = null
     private var ioTimeoutDialog: AlertDialog? = null
+    private var platformStuckDialog: AlertDialog? = null
+    private var platformRecoveringDialog: AlertDialog? = null
     private var tvDispenseSuccessTimer: TextView? = null
     private var btnDispenseSuccessClose: Button? = null
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
@@ -143,6 +146,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
     private val inactivityHandler = Handler(Looper.getMainLooper())
+    private val idleIoHandler = Handler(Looper.getMainLooper())
+    private var idleIoPollingActive = false
     private var activeModalCount = 0
     private val inactivityRunnable = Runnable {
         if (activeModalCount > 0) {
@@ -214,6 +219,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun onNeedRetrieve(msg: String) {
             interactionMonitor.appendBoth("NEED_RETRIEVE: $msg")
             runOnUiThread {
+                dismissPlatformStuckDialog()
+                dismissPlatformRecoveringDialog()
                 if (dispensingInProgress) {
                     reportDispenseStateByIndex(
                         index = dispensingCursor,
@@ -232,6 +239,15 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun onDone() {
             interactionMonitor.appendBoth("DONE: ciclo de retiro confirmado")
             runOnUiThread { onDispenseItemDone() }
+        }
+
+        override fun onPlatformStuck(msg: String) {
+            interactionMonitor.appendBoth("PLATFORM_STUCK: $msg")
+            runOnUiThread {
+                if (dispensingInProgress) {
+                    showPlatformStuckDialog(msg)
+                }
+            }
         }
 
         override fun onError(msg: String) {
@@ -324,6 +340,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         applyImmersiveKioskUi()
+        startIdleIoPolling()
         scheduleInactivityRefresh()
         if (useLegacyCarousel && tvPromoTitle != null && tvPromoSubtitle != null) {
             carouselHandler.removeCallbacks(carouselTicker)
@@ -338,6 +355,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         unlockHoldHandler.removeCallbacksAndMessages(null)
         carouselHandler.removeCallbacks(carouselTicker)
         inactivityHandler.removeCallbacksAndMessages(null)
+        stopIdleIoPolling()
         (promoCarousel as? ViewFlipper)?.stopFlipping()
         super.onPause()
     }
@@ -353,6 +371,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseErrorDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseErrorDialog = null
         dismissIoTimeoutDialog()
+        dismissPlatformStuckDialog()
+        dismissPlatformRecoveringDialog()
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
         dismissRetrieveDialog()
@@ -2871,7 +2891,21 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun ensureSerialConnection(): Boolean {
         if (serial.isOpen()) return true
         serial.open(DEFAULT_PORT, DEFAULT_BAUD, serialListener)
+        if (serial.isOpen()) {
+            startIdleIoPolling()
+        }
         return serial.isOpen()
+    }
+
+    private fun startIdleIoPolling() {
+        if (idleIoPollingActive) return
+        idleIoPollingActive = true
+        idleIoHandler.post(idleIoPollRunnable)
+    }
+
+    private fun stopIdleIoPolling() {
+        idleIoPollingActive = false
+        idleIoHandler.removeCallbacks(idleIoPollRunnable)
     }
 
     private fun startNextDispenseItem() {
@@ -2958,9 +2992,18 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
         dismissIoTimeoutDialog()
+        dismissPlatformStuckDialog()
+        dismissPlatformRecoveringDialog()
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
-        showDispenseErrorDialog(message)
+        if (errorCode == "PRODUCT_CRUSHED") {
+            showDispenseErrorDialog(
+                message = message,
+                layoutRes = R.layout.dialog_dispense_product_crushed
+            )
+        } else {
+            showDispenseErrorDialog(message)
+        }
     }
 
     private fun onDispenseFinished() {
@@ -2978,6 +3021,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
+        dismissPlatformStuckDialog()
+        dismissPlatformRecoveringDialog()
         showDispenseSuccessDialog()
 
         loadCatalog(machineId, authHeader)
@@ -2989,7 +3034,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         val code = parts[0].trim()
         val message = parts[1].trim()
         return when (code) {
-            "ANOMALO", "DRIVER_0000", "DRIVER_TIMEOUT", "IO_TIMEOUT", "IO_TIMEOUT_CANCEL" -> code to message
+            "ANOMALO", "DRIVER_0000", "DRIVER_TIMEOUT", "IO_TIMEOUT", "IO_TIMEOUT_CANCEL", "PRODUCT_CRUSHED", "PLATFORM_RECOVERY_TIMEOUT" -> code to message
             else -> "" to raw
         }
     }
@@ -3049,9 +3094,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun showDispenseErrorDialog(message: String) {
+    private fun showDispenseErrorDialog(
+        message: String,
+        layoutRes: Int = R.layout.dialog_dispense_error
+    ) {
         if (dispenseErrorDialog?.isShowing == true) return
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_error, null)
+        val view = LayoutInflater.from(this).inflate(layoutRes, null)
         val tvMessage = view.findViewById<TextView>(R.id.tvDispenseErrorMessage)
         val ivHero = view.findViewById<ImageView>(R.id.ivDispenseErrorHero)
         val llDelivered = view.findViewById<LinearLayout>(R.id.llDispenseDeliveredItems)
@@ -3176,6 +3224,69 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun dismissIoTimeoutDialog() {
         ioTimeoutDialog?.takeIf { it.isShowing }?.dismiss()
         ioTimeoutDialog = null
+    }
+
+    private fun showPlatformStuckDialog(message: String) {
+        if (platformStuckDialog?.isShowing == true) return
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_platform_stuck, null)
+        val tvMessage = view.findViewById<TextView>(R.id.tvPlatformStuckMessage)
+        val btnFix = view.findViewById<Button>(R.id.btnFixPlatformStuck)
+        tvMessage.text = message.ifBlank { "Se detecto plataforma atorada. Presiona el boton para volver a base." }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        btnFix.setOnClickListener {
+            val started = runCatching { vendFlow.requestPlatformRecoveryToBase() }.getOrDefault(false)
+            if (!started) {
+                Toast.makeText(this, "No hay recuperacion pendiente.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            dialog.dismiss()
+            showPlatformRecoveringDialog()
+        }
+
+        onModalShown()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.90f).toInt()
+        dialog.window?.setLayout(dialogWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
+        platformStuckDialog = dialog
+        dialog.setOnDismissListener {
+            platformStuckDialog = null
+            onModalDismissed()
+        }
+    }
+
+    private fun dismissPlatformStuckDialog() {
+        platformStuckDialog?.takeIf { it.isShowing }?.dismiss()
+        platformStuckDialog = null
+    }
+
+    private fun showPlatformRecoveringDialog() {
+        if (platformRecoveringDialog?.isShowing == true) return
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_platform_recovering, null)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        onModalShown()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        platformRecoveringDialog = dialog
+        dialog.setOnDismissListener {
+            platformRecoveringDialog = null
+            onModalDismissed()
+        }
+    }
+
+    private fun dismissPlatformRecoveringDialog() {
+        platformRecoveringDialog?.takeIf { it.isShowing }?.dismiss()
+        platformRecoveringDialog = null
     }
 
     private fun showDispenseSuccessDialog() {
@@ -3798,6 +3909,27 @@ class KioskCatalogActivity : AppCompatActivity() {
         window.decorView.systemUiVisibility = flags
     }
 
+    private val idleIoPollRunnable = object : Runnable {
+        override fun run() {
+            if (!idleIoPollingActive) return
+            try {
+                if (
+                    serial.isOpen() &&
+                    ::vendFlow.isInitialized &&
+                    !vendFlow.isRunning() &&
+                    !vendFlow.isWaitingPickup() &&
+                    !vendFlow.isWaitingPlatformRecovery()
+                ) {
+                    serial.sendHex(CommandSet.POLL_IO_STATUS, serialListener)
+                }
+            } catch (_: Exception) {
+                // no bloquea UX
+            } finally {
+                idleIoHandler.postDelayed(this, IDLE_IO_POLL_MS)
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "KioskCatalogActivity"
         const val EXTRA_MACHINE_ID = "extra_machine_id"
@@ -3816,6 +3948,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val PRODUCT_DIALOG_TIMEOUT_MS = 60_000L
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
+        private const val IDLE_IO_POLL_MS = 750L
     }
 }
 

@@ -259,6 +259,45 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ## 2026-03-24 - Incidente de edicion y nuevo protocolo de trabajo
 - Incidente registrado:
 
+## 2026-05-25 - Recuperacion de plataforma atorada + modal dedicado de producto aplastado
+
+### Hecho en esta iteracion
+- Se implemento modo de recuperacion de plataforma atorada en runtime compartido (`VendingFlowController`), aplicable a `KioskCatalog` y `VendingTester`.
+- Se agrego callback UI nuevo en runtime:
+  - `onPlatformStuck(msg: String)`
+- Flujo nuevo de plataforma atorada:
+  - ante deteccion `PLATFORM_STUCK` (DONE demasiado rapido tras `C8`), ya no se corta directo a incidencia,
+  - runtime entra a estado `waitingPlatformRecovery`,
+  - se espera accion de operador para recuperar plataforma a base.
+- Se agrego metodo de recuperacion en runtime:
+  - `requestPlatformRecoveryToBase()`
+  - envia comando de retorno a base usando `CommandSet.buildResetLift()`,
+  - inicia polling IO de recuperacion,
+  - al detectar `C2` (`00C2`) vuelve automaticamente al flujo de retiro (`onNeedRetrieve`) y se reanuda secuencia normal hasta `D2`.
+- Se agrego timeout dedicado de recuperacion:
+  - `PLATFORM_RECOVERY_TIMEOUT_MS = 120_000`.
+- `VendingTester`:
+  - `Reset Lift` ahora usa `vendFlow.requestPlatformRecoveryToBase()` cuando hay plataforma atorada,
+  - deja de enviar recuperacion manual fuera del controller para ese caso.
+- `KioskCatalog`:
+  - se agrego polling IO idle (similar al tester) cuando el puerto esta abierto y no hay flujo activo.
+  - se agregaron modales nuevos para plataforma atorada:
+    - `dialog_platform_stuck.xml` (con boton `Arreglar plataforma atorada`)
+    - `dialog_platform_recovering.xml` (estado de proceso, estilo similar a generacion QR)
+  - al confirmar `C2`, se cierra modal de recuperacion y se muestra modal de retiro normal (`dialog_dispense_retrieve`).
+- Se agrego modal dedicado para `PRODUCT_CRUSHED`:
+  - layout nuevo `dialog_dispense_product_crushed.xml`,
+  - se abre solo cuando `errorCode == PRODUCT_CRUSHED`,
+  - el resto de errores sigue usando `dialog_dispense_error.xml`.
+
+### Archivos principales tocados
+- `integration-serial/src/main/kotlin/com/vending/kiosk/integration/serial/runtime/VendingFlowController.kt`
+- `app/src/main/java/com/vending/kiosk/app/KioskCatalogActivity.kt`
+- `app/src/main/java/com/vending/kiosk/app/VendingTesterActivity.kt`
+- `app/src/main/res/layout/dialog_platform_stuck.xml`
+- `app/src/main/res/layout/dialog_platform_recovering.xml`
+- `app/src/main/res/layout/dialog_dispense_product_crushed.xml`
+
 ## 2026-04-20 - Actualizacion de planograma (cache local por ID + imagen secundaria)
 
 ### Hecho en esta iteracion

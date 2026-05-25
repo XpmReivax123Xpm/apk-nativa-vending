@@ -162,6 +162,19 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - reinicio por interaccion del usuario en el modal
   - cierre automatico al llegar a 0.
 
+## Runtime de dispensacion (actualizado 2026-05-25)
+- Se incorporo estrategia de recuperacion operativa para `plataforma atorada` dentro del runtime compartido:
+  - deteccion de escenario atorado,
+  - transicion a estado de espera de recuperacion,
+  - accion de operador para retorno a base,
+  - confirmacion por IO (`C2`) y reanudacion del flujo de retiro.
+- Esta estrategia aplica en ambos frentes:
+  - `KioskCatalogActivity`
+  - `VendingTesterActivity`
+- Se agrego separacion visual de incidencias:
+  - `PRODUCT_CRUSHED` usa modal dedicado,
+  - demas incidencias mantienen modal general.
+
 ## Estado visual Kiosk Catalog (actualizado 2026-03-31)
 - Cabecera superior (nombre de maquina + ubicacion) definida como franja blanca independiente del fondo general.
 - Ajuste aplicado en layout normal y layout legacy para mantener consistencia en Android `7.1.2`.

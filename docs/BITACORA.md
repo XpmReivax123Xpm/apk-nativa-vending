@@ -259,6 +259,40 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ## 2026-03-24 - Incidente de edicion y nuevo protocolo de trabajo
 - Incidente registrado:
 
+## 2026-06-03 - Analisis de recuperacion PLATFORM_STUCK con calibrador
+
+### Hallazgo en bitacora de campo
+- Se reviso una incidencia donde la dispensacion detecto correctamente `PLATFORM_STUCK`:
+  - IO `C8` (`Plataforma: BAJANDO`) a las `08:02:57.077`,
+  - driver `DONE` (`0103020200`) a las `08:02:58.854`,
+  - diferencia aproximada: `1.78s`, menor al umbral `PLATFORM_DOWN_FAST_DONE_MS = 3_000`.
+- El runtime entro a `PLATFORM_STUCK_WAITING_ACTION` y emitio `PLATFORM_STUCK`.
+- La accion del boton de recuperacion envio:
+  - `TX RECOVERY_TO_BASE: 010610020001ED0A`
+  - comando asociado a `CommandSet.buildResetLift()` / SDK `ResetLift`.
+- Luego el polling IO siguio devolviendo `C8` durante la ventana de recuperacion y termino en:
+  - `PLATFORM_RECOVERY_TIMEOUT|No se pudo volver a base a tiempo.`
+
+### Diferencia funcional detectada
+- La intencion operativa no era usar `ResetLift` como recuperacion primaria.
+- El comportamiento buscado es tomar la funcionalidad del `VendingCalibrator` cuando se prueba `0cm`:
+  - `VendingCalibratorActivity.testPosition()`
+  - `TYReplyPara(INTERNAL_ADDR, points.toShort())`
+  - `board?.ToY(para)`
+  - con `0cm`, la conversion queda en `0` puntos Y por `max(0, cmToPoints(cm))`.
+- `ToY(0)` mueve la plataforma a posicion Y 0 como movimiento controlado de calibrador y mantiene activa la informacion de sensores.
+- `ResetLift` es un reset/retorno de lift distinto; en campo puede dejar sin informacion util de sensores o no producir movimiento bajo estado `C8`.
+
+### Decision pendiente
+- Cambiar la recuperacion primaria de plataforma atorada para usar `ToY(0)` / posicion Y 0.
+- Mantener `ResetLift` solo como fallback tecnico/manual.
+- Definir una integracion segura entre el runtime raw (`SerialManager`) y el SDK (`UBoard`) para no competir por `/dev/ttyS1`.
+- Mejorar logs de recuperacion para distinguir:
+  - comando enviado,
+  - respuesta/confirmacion recibida,
+  - cambios de IO,
+  - timeout por IO fijo en `C8`.
+
 ## 2026-05-25 - Recuperacion de plataforma atorada + modal dedicado de producto aplastado
 
 ### Hecho en esta iteracion

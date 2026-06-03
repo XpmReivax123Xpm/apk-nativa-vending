@@ -162,7 +162,7 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - reinicio por interaccion del usuario en el modal
   - cierre automatico al llegar a 0.
 
-## Runtime de dispensacion (actualizado 2026-05-25)
+## Runtime de dispensacion (actualizado 2026-06-03)
 - Se incorporo estrategia de recuperacion operativa para `plataforma atorada` dentro del runtime compartido:
   - deteccion de escenario atorado,
   - transicion a estado de espera de recuperacion,
@@ -174,6 +174,12 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
 - Se agrego separacion visual de incidencias:
   - `PRODUCT_CRUSHED` usa modal dedicado,
   - demas incidencias mantienen modal general.
+- Hallazgo de campo 2026-06-03:
+  - la deteccion `PLATFORM_STUCK` funciono con `DONE` demasiado rapido tras `C8`,
+  - la recuperacion actual con `ResetLift` no movio la plataforma en el incidente analizado y el IO quedo fijo en `C8`,
+  - la recuperacion deseada debe tomar la funcionalidad del calibrador: `ToY(0)` / posicion Y 0,
+  - `ToY(0)` mantiene activa la logica de sensores de plataforma, mientras `ResetLift` puede dejar sin informacion util de sensores,
+  - proximo ajuste: usar `ToY(0)` como recuperacion primaria y reservar `ResetLift` como fallback tecnico.
 
 ## Estado visual Kiosk Catalog (actualizado 2026-03-31)
 - Cabecera superior (nombre de maquina + ubicacion) definida como franja blanca independiente del fondo general.

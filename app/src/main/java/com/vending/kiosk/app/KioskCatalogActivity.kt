@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
+import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
@@ -31,6 +33,7 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.VideoView
 import android.widget.ViewFlipper
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -142,6 +145,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvRetrieveMessage: TextView? = null
     private var monitorViewerDialog: AlertDialog? = null
     private var monitorViewerRunnable: Runnable? = null
+    private var idleVideoOverlay: View? = null
+    private var idleVideoView: VideoView? = null
+    private var idleVideoVisible = false
     private var kioskLocked = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
@@ -156,17 +162,13 @@ class KioskCatalogActivity : AppCompatActivity() {
             return@Runnable
         }
         if (machineId <= 0 || authHeader.isBlank()) return@Runnable
-        if (cartItems.isNotEmpty()) {
-            cartItems.clear()
-            updateCartBadge()
-            Toast.makeText(
-                this,
-                "Inactividad detectada. Carrito vaciado y planograma actualizado.",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-        loadCatalog(machineId, authHeader)
-        scheduleInactivityRefresh()
+        refreshCatalogAndClearCart()
+        showIdleVideoOverlay()
+        Toast.makeText(
+            this,
+            "Inactividad detectada. Mostrando video de espera.",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private val carouselTicker = object : Runnable {
@@ -297,6 +299,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         cartFabContainer = findViewById(R.id.cartFabContainer)
         tvCartBadge = findViewById(R.id.tvCartBadge)
         promoCarousel = findViewById(R.id.vfPromoCarousel)
+        idleVideoOverlay = findViewById(R.id.idleVideoOverlay)
+        idleVideoView = findViewById(R.id.idleVideoView)
         contentContainer = findViewById(R.id.llCatalogContainer)
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
         btnKioskViewLogs = findViewById(R.id.btnKioskViewLogs)
@@ -316,6 +320,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         setupCartBadge()
         setupBackToMainButton()
         setupMonitoringButtons()
+        setupIdleVideoOverlay()
         applyCarouselHeight()
         setupCarouselTouchControls()
 
@@ -376,6 +381,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
         dismissRetrieveDialog()
+        hideIdleVideoOverlay()
+        idleVideoView?.stopPlayback()
         monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
         monitorViewerDialog = null
         monitorViewerRunnable?.let { inactivityHandler.removeCallbacks(it) }
@@ -780,6 +787,16 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshCatalogAndClearCart() {
+        if (cartItems.isNotEmpty()) {
+            cartItems.clear()
+            updateCartBadge()
+        }
+        if (machineId > 0 && authHeader.isNotBlank()) {
+            loadCatalog(machineId, authHeader)
+        }
+    }
+
     private fun fetchCatalog(machineId: Int, authHeader: String): CatalogResult {
         val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/$machineId/planograma"
         var connection: HttpURLConnection? = null
@@ -849,7 +866,50 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onUserInteraction() {
         super.onUserInteraction()
+        if (idleVideoVisible) {
+            hideIdleVideoOverlay()
+        }
         scheduleInactivityRefresh()
+    }
+
+    private fun setupIdleVideoOverlay() {
+        idleVideoOverlay?.visibility = View.GONE
+        idleVideoOverlay?.setOnClickListener {
+            hideIdleVideoOverlay()
+            scheduleInactivityRefresh()
+        }
+    }
+
+    private fun showIdleVideoOverlay() {
+        val overlay = idleVideoOverlay ?: return
+        val video = idleVideoView ?: return
+        if (idleVideoVisible) return
+        idleVideoVisible = true
+        inactivityHandler.removeCallbacks(inactivityRunnable)
+        overlay.visibility = View.VISIBLE
+
+        val uri = Uri.parse("android.resource://$packageName/${R.raw.video_de_vengan}")
+        video.setVideoURI(uri)
+        video.setOnPreparedListener { mp: MediaPlayer ->
+            mp.isLooping = true
+            video.start()
+        }
+        video.setOnCompletionListener {
+            video.start()
+        }
+        video.setOnErrorListener { _, _, _ ->
+            hideIdleVideoOverlay()
+            scheduleInactivityRefresh()
+            true
+        }
+        video.start()
+    }
+
+    private fun hideIdleVideoOverlay() {
+        if (!idleVideoVisible) return
+        idleVideoVisible = false
+        idleVideoView?.pause()
+        idleVideoOverlay?.visibility = View.GONE
     }
 
     private fun scheduleInactivityRefresh() {
@@ -1389,9 +1449,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
-                    if (machineId > 0 && authHeader.isNotBlank()) {
-                        loadCatalog(machineId, authHeader)
-                    }
+                    refreshCatalogAndClearCart()
                 }
             }.start()
         }
@@ -1506,9 +1564,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
-                    if (machineId > 0 && authHeader.isNotBlank()) {
-                        loadCatalog(machineId, authHeader)
-                    }
+                    refreshCatalogAndClearCart()
                 }
             }.start()
         }
@@ -1703,9 +1759,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
-                    if (machineId > 0 && authHeader.isNotBlank()) {
-                        loadCatalog(machineId, authHeader)
-                    }
+                    refreshCatalogAndClearCart()
                 }
             }.start()
         }
@@ -1848,9 +1902,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
-                    if (machineId > 0 && authHeader.isNotBlank()) {
-                        loadCatalog(machineId, authHeader)
-                    }
+                    refreshCatalogAndClearCart()
                 }
             }.start()
         }
@@ -2008,9 +2060,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
-                    if (machineId > 0 && authHeader.isNotBlank()) {
-                        loadCatalog(machineId, authHeader)
-                    }
+                    refreshCatalogAndClearCart()
                 }
             }.start()
         }
@@ -2558,7 +2608,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     when (cancelResult) {
                         is OrderCancelResult.Success -> {
                             dialog.dismiss()
-                            loadCatalog(machineId, authHeader)
+                            refreshCatalogAndClearCart()
                             Toast.makeText(
                                 this@KioskCatalogActivity,
                                 cancelResult.message.ifBlank { "Pedido cancelado." },
@@ -2668,7 +2718,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 progressQr.visibility = View.GONE
                 tvQrStatus.text = "Tiempo de espera agotado"
                 dialog.dismiss()
-                loadCatalog(machineId, authHeader)
+                refreshCatalogAndClearCart()
                 Toast.makeText(this@KioskCatalogActivity, "QR vencido, vuelve a intentar", Toast.LENGTH_SHORT).show()
             }
         }
@@ -4044,3 +4094,4 @@ private data class PedidoDetalleRef(
     val tnPedidoDetalle: Int,
     val tnPlanogramaCelda: Int
 )
+

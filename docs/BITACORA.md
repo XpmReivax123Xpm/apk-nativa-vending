@@ -269,6 +269,14 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 - Por lo tanto, en un pedido de 3 productos donde el segundo se atora, si la recuperacion y retiro del segundo finalizan correctamente, el tercero debe dispensarse normalmente.
 - El pedido no continua si falla `ToY(0)`, no se puede reabrir el serial raw, no llega `C2`, no se confirma retiro con `D2` o se emite timeout/error de recuperacion.
 
+### Ajuste UX QR
+- Se agrego arrastre al contenedor completo de `dialog_qr_payment`.
+- Objetivo: permitir que el cliente mueva el QR a una zona de pantalla con menos reflejo o resolana para facilitar el escaneo.
+- La ventana se limita dentro de la pantalla para evitar que el modal quede fuera de alcance.
+- El QR inicia en la parte inferior de la pantalla para despejar la zona central/superior.
+- Se agrego mensaje visible: el cliente puede arrastrar el QR a una posicion comoda para escanear.
+- Pendiente: validar ergonomia en tablet vending real, especialmente que el boton de cancelar siga respondiendo comodamente.
+
 ## 2026-06-03 - Analisis de recuperacion PLATFORM_STUCK con calibrador
 
 ### Hallazgo en bitacora de campo

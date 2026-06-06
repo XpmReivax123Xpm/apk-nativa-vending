@@ -275,3 +275,4 @@
 - [x] Mejorar logs de recuperacion: registrar comando usado, confirmacion/respuesta y motivo de falla al enviar recuperacion.
 - [ ] Compilar en entorno del usuario y validar en vending real que `ToY(0)` mueve plataforma a base y mantiene sensores activos.
 - [ ] Validar pedido multi-item: producto 1 OK, producto 2 con `PLATFORM_STUCK` recuperado por `ToY(0)`, retiro confirmado por `D2`, producto 3 dispensado normalmente.
+- [ ] Validar en tablet real que `dialog_qr_payment` inicie abajo, pueda arrastrarse con fluidez y que el boton cancelar siga operable.

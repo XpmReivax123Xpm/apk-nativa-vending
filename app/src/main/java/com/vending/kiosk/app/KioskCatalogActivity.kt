@@ -16,6 +16,7 @@ import android.os.Looper
 import android.util.Base64
 import android.util.Log
 import android.util.LruCache
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -2649,12 +2650,70 @@ class KioskCatalogActivity : AppCompatActivity() {
         onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        makeDialogDraggable(dialog, view)
         dialog.setOnDismissListener {
             qrPollingJob?.cancel()
             onModalDismissed()
         }
 
         startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
+    }
+
+    private fun makeDialogDraggable(dialog: AlertDialog, dragView: View) {
+        val window = dialog.window ?: return
+        val displayMetrics = resources.displayMetrics
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = 0
+        var startY = 0
+        var dragging = false
+        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+
+        dragView.post {
+            val maxY = (displayMetrics.heightPixels - dragView.height).coerceAtLeast(0)
+            window.attributes = window.attributes.apply {
+                gravity = Gravity.TOP or Gravity.START
+                x = ((displayMetrics.widthPixels - dragView.width) / 2).coerceAtLeast(0)
+                y = maxY
+            }
+        }
+
+        dragView.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    val attrs = window.attributes
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = attrs.x
+                    startY = attrs.y
+                    dragging = false
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downRawX
+                    val dy = event.rawY - downRawY
+                    if (!dragging && kotlin.math.abs(dx) < touchSlop && kotlin.math.abs(dy) < touchSlop) {
+                        return@setOnTouchListener true
+                    }
+                    dragging = true
+                    val maxX = (displayMetrics.widthPixels - dragView.width).coerceAtLeast(0)
+                    val maxY = (displayMetrics.heightPixels - dragView.height).coerceAtLeast(0)
+                    window.attributes = window.attributes.apply {
+                        x = (startX + dx.toInt()).coerceIn(0, maxX)
+                        y = (startY + dy.toInt()).coerceIn(0, maxY)
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    dragging = false
+                    true
+                }
+
+                else -> false
+            }
+        }
     }
 
     private fun startQrPaymentPolling(

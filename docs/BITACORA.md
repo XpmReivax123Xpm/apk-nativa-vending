@@ -259,6 +259,16 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ## 2026-03-24 - Incidente de edicion y nuevo protocolo de trabajo
 - Incidente registrado:
 
+## 2026-06-06 - Aclaracion de continuidad de pedido tras PLATFORM_STUCK
+
+### Flujo esperado en pedido multi-item
+- Si un pedido tiene varios productos y un item intermedio entra en `PLATFORM_STUCK`, el cursor de dispensacion queda apuntando a ese item.
+- Al presionar `Arreglar plataforma atorada`, la recuperacion primaria debe ejecutar `ToY(0)` mediante `SdkYZeroPlatformRecoveryCommand`.
+- Si la recuperacion llega a `C2`, el runtime vuelve a `waitingPickup` y dispara `onNeedRetrieve(...)` para completar el retiro del item atorado.
+- Cuando el retiro termina con `D2`, `KioskCatalogActivity.onDispenseItemDone()` marca ese item como completado, incrementa `dispensingCursor` y llama `startNextDispenseItem()`.
+- Por lo tanto, en un pedido de 3 productos donde el segundo se atora, si la recuperacion y retiro del segundo finalizan correctamente, el tercero debe dispensarse normalmente.
+- El pedido no continua si falla `ToY(0)`, no se puede reabrir el serial raw, no llega `C2`, no se confirma retiro con `D2` o se emite timeout/error de recuperacion.
+
 ## 2026-06-03 - Analisis de recuperacion PLATFORM_STUCK con calibrador
 
 ### Hallazgo en bitacora de campo
@@ -292,6 +302,19 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
   - respuesta/confirmacion recibida,
   - cambios de IO,
   - timeout por IO fijo en `C8`.
+
+### Ajuste implementado
+- `VendingFlowController` ahora acepta un `PlatformRecoveryCommand` inyectable.
+- `KioskCatalogActivity` y `VendingTesterActivity` inyectan `SdkYZeroPlatformRecoveryCommand`.
+- `SdkYZeroPlatformRecoveryCommand` replica el flujo del calibrador:
+  - cierra `SerialManager` raw,
+  - inicializa SDK `USDK`,
+  - abre `/dev/ttyS1` con `UBoard`,
+  - ejecuta `TYReplyPara(addr=1, y=0)` + `board.ToY(...)`,
+  - cierra `UBoard`,
+  - reabre `SerialManager` raw para continuar polling IO del runtime.
+- `ResetLift` queda como fallback dentro del runtime solo cuando no se inyecta un recuperador custom.
+- Pendiente de usuario: compilar y validar en vending real.
 
 ## 2026-05-25 - Recuperacion de plataforma atorada + modal dedicado de producto aplastado
 

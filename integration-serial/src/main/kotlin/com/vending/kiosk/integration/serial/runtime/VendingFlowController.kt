@@ -7,6 +7,7 @@ class VendingFlowController(
     private val serial: SerialManager,
     private val serialListener: SerialManager.Listener,
     private val ui: Ui,
+    private val platformRecoveryCommand: PlatformRecoveryCommand? = null,
 ) {
     interface Ui {
         fun onLog(msg: String)
@@ -16,6 +17,16 @@ class VendingFlowController(
         fun onError(msg: String)
         fun onStep(stepMsg: String)
     }
+
+    interface PlatformRecoveryCommand {
+        fun moveToBase(): PlatformRecoveryCommandResult
+    }
+
+    data class PlatformRecoveryCommandResult(
+        val ok: Boolean,
+        val commandName: String,
+        val detail: String = ""
+    )
 
     private val h = Handler(Looper.getMainLooper())
     private var running = false
@@ -310,15 +321,36 @@ class VendingFlowController(
             ui.onLog("Recuperacion ignorada: no hay plataforma atorada en espera.")
             return false
         }
-        if (!serial.isOpen()) {
-            ui.onError("Abre el puerto primero.")
-            return false
-        }
         recoveryStartedAtMs = System.currentTimeMillis()
-        val resetHex = CommandSet.buildResetLift()
-        ui.onLog("Recuperacion de plataforma: enviando retorno a base (0cm equivalente).")
-        ui.onLog("TX RECOVERY_TO_BASE: $resetHex")
-        serial.sendHex(resetHex, serialListener)
+
+        val customRecovery = platformRecoveryCommand
+        if (customRecovery != null) {
+            ui.onLog("Recuperacion de plataforma: enviando posicion Y 0 con flujo calibrador.")
+            val result = try {
+                customRecovery.moveToBase()
+            } catch (ex: Exception) {
+                PlatformRecoveryCommandResult(
+                    ok = false,
+                    commandName = "ToY(0)",
+                    detail = ex.message ?: "sin detalle"
+                )
+            }
+            ui.onLog("RECOVERY_TO_BASE ${result.commandName}: ${if (result.ok) "OK" else "ERROR"} ${result.detail}".trim())
+            if (!result.ok) {
+                ui.onError("PLATFORM_RECOVERY_COMMAND_FAILED|No se pudo enviar recuperacion a base: ${result.detail.ifBlank { result.commandName }}")
+                return false
+            }
+        } else {
+            if (!serial.isOpen()) {
+                ui.onError("Abre el puerto primero.")
+                return false
+            }
+            val resetHex = CommandSet.buildResetLift()
+            ui.onLog("Recuperacion de plataforma: enviando ResetLift fallback.")
+            ui.onLog("TX RECOVERY_TO_BASE: $resetHex")
+            serial.sendHex(resetHex, serialListener)
+        }
+
         schedulePollIoRecovery()
         return true
     }

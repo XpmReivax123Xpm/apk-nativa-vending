@@ -416,7 +416,18 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun setupDispenseRuntime() {
-        vendFlow = VendingFlowController(serial, serialListener, vendingUi)
+        vendFlow = VendingFlowController(
+            serial = serial,
+            serialListener = serialListener,
+            ui = vendingUi,
+            platformRecoveryCommand = SdkYZeroPlatformRecoveryCommand(
+                context = this,
+                serial = serial,
+                serialListener = serialListener,
+                portProvider = { DEFAULT_PORT },
+                baudProvider = { DEFAULT_BAUD }
+            )
+        )
     }
 
     private fun setupCartBadge() {
@@ -3084,7 +3095,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         val code = parts[0].trim()
         val message = parts[1].trim()
         return when (code) {
-            "ANOMALO", "DRIVER_0000", "DRIVER_TIMEOUT", "IO_TIMEOUT", "IO_TIMEOUT_CANCEL", "PRODUCT_CRUSHED", "PLATFORM_RECOVERY_TIMEOUT" -> code to message
+            "ANOMALO", "DRIVER_0000", "DRIVER_TIMEOUT", "IO_TIMEOUT", "IO_TIMEOUT_CANCEL", "PRODUCT_CRUSHED", "PLATFORM_RECOVERY_COMMAND_FAILED", "PLATFORM_RECOVERY_TIMEOUT" -> code to message
             else -> "" to raw
         }
     }

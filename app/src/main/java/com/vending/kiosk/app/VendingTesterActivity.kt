@@ -119,7 +119,18 @@ class VendingTesterActivity : AppCompatActivity() {
             }
         }
 
-        vendFlow = VendingFlowController(serial, serialListener, flowUi)
+        vendFlow = VendingFlowController(
+            serial = serial,
+            serialListener = serialListener,
+            ui = flowUi,
+            platformRecoveryCommand = SdkYZeroPlatformRecoveryCommand(
+                context = this,
+                serial = serial,
+                serialListener = serialListener,
+                portProvider = { etPort.text.toString().trim() },
+                baudProvider = { etBaud.text.toString().trim().toIntOrNull() ?: 9600 }
+            )
+        )
         appendLog("App lista.")
         appendLog("Log guardandose en: ${logFile?.absolutePath ?: "N/A"}")
         setPromptBody("Listo. Escribe pedido ej: 38,40,22 y presiona INICIAR PEDIDO.")

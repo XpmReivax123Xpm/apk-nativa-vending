@@ -268,8 +268,10 @@
 - [x] Agregar modal dedicado para `PRODUCT_CRUSHED` (sin afectar modal general de otras incidencias).
 
 ### Actualizacion 2026-06-03
-- [ ] Corregir recuperacion de `PLATFORM_STUCK`: la accion primaria debe usar la funcionalidad del calibrador (`ToY(0)` / posicion Y 0), no `ResetLift`.
-- [ ] Mantener lectura/estado de sensores durante la recuperacion de plataforma; evitar `ResetLift` como primera opcion porque puede dejar sin informacion util de sensores.
-- [ ] Definir integracion tecnica segura entre `SerialManager` raw y SDK `UBoard` para no competir por `/dev/ttyS1`.
-- [ ] Dejar `ResetLift` solo como fallback tecnico/manual si `ToY(0)` no recupera la plataforma.
-- [ ] Mejorar logs de recuperacion: registrar comando usado, confirmacion/respuesta, cambio de IO y motivo de timeout si IO queda fijo en `C8`.
+- [x] Corregir recuperacion de `PLATFORM_STUCK`: la accion primaria debe usar la funcionalidad del calibrador (`ToY(0)` / posicion Y 0), no `ResetLift`.
+- [x] Mantener lectura/estado de sensores durante la recuperacion de plataforma; evitar `ResetLift` como primera opcion porque puede dejar sin informacion util de sensores.
+- [x] Definir integracion tecnica segura entre `SerialManager` raw y SDK `UBoard` para no competir por `/dev/ttyS1`.
+- [x] Dejar `ResetLift` solo como fallback tecnico/manual si no existe recuperador SDK inyectado.
+- [x] Mejorar logs de recuperacion: registrar comando usado, confirmacion/respuesta y motivo de falla al enviar recuperacion.
+- [ ] Compilar en entorno del usuario y validar en vending real que `ToY(0)` mueve plataforma a base y mantiene sensores activos.
+- [ ] Validar pedido multi-item: producto 1 OK, producto 2 con `PLATFORM_STUCK` recuperado por `ToY(0)`, retiro confirmado por `D2`, producto 3 dispensado normalmente.

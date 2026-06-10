@@ -148,6 +148,24 @@
                 android:layout_height="1dp" />
 
             <Button
+                android:id="@+id/btnDisconnect"
+                android:layout_width="0dp"
+                android:layout_height="54dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_btn_stop"
+                android:backgroundTint="@null"
+                android:enabled="false"
+                android:text="Desconectar"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                app:backgroundTint="@null" />
+
+            <Space
+                android:layout_width="10dp"
+                android:layout_height="1dp" />
+
+            <Button
                 android:id="@+id/btnVendTest"
                 android:layout_width="0dp"
                 android:layout_height="54dp"
@@ -197,6 +215,19 @@
             android:background="@drawable/bg_btn_stop"
             android:backgroundTint="@null"
             android:text="Stop"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            app:backgroundTint="@null" />
+
+        <Button
+            android:id="@+id/btnExit"
+            android:layout_width="match_parent"
+            android:layout_height="54dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_btn_close"
+            android:backgroundTint="@null"
+            android:text="Salir"
             android:textAllCaps="false"
             android:textColor="#FFFFFF"
             android:textSize="18sp"

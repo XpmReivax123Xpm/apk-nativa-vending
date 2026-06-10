@@ -276,3 +276,29 @@
 - [ ] Compilar en entorno del usuario y validar en vending real que `ToY(0)` mueve plataforma a base y mantiene sensores activos.
 - [ ] Validar pedido multi-item: producto 1 OK, producto 2 con `PLATFORM_STUCK` recuperado por `ToY(0)`, retiro confirmado por `D2`, producto 3 dispensado normalmente.
 - [ ] Validar en tablet real que `dialog_qr_payment` inicie abajo, pueda arrastrarse con fluidez y que el boton cancelar siga operable.
+
+### Actualizacion 2026-06-10
+- [x] Implementar traspaso temporal de puerto para recuperacion SDK:
+  - [x] detener polling raw,
+  - [x] cerrar raw,
+  - [x] esperar liberacion,
+  - [x] abrir SDK,
+  - [x] enviar `ToY(0)`,
+  - [x] cerrar SDK,
+  - [x] reabrir raw,
+  - [x] reactivar polling.
+- [x] Agregar recuperacion manual forzada en `VendingTester` para pruebas controladas.
+- [x] Separar controles de `VendingTester`:
+  - [x] `Conectar`,
+  - [x] `Desconectar`,
+  - [x] `Salir`.
+- [x] Evitar crash por `SerialPort.closeNative()` inexistente en la libreria nativa actual.
+- [x] Confirmar en prueba real que `ToY(0)` puede bajar fisicamente la plataforma desde el flujo integrado.
+- [ ] Ajustar `SdkYZeroPlatformRecoveryCommand` para tratar `ToY(0)` con `resultCode=204` como advertencia/no fatal durante recuperacion, ya que se observo movimiento fisico.
+- [ ] Asegurar que, tras reabrir raw, el tester vuelva a mostrar RX/polling de forma evidente.
+- [ ] Validar el flujo completo desde el modal real `Plataforma atorada` en `KioskCatalogActivity`.
+- [ ] Validar caso multi-item despues de recuperacion exitosa:
+  - producto previo OK,
+  - producto atorado recuperado con `ToY(0)`,
+  - retiro confirmado,
+  - siguiente producto continua normalmente.

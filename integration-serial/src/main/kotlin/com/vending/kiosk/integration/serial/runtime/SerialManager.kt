@@ -35,16 +35,16 @@ class SerialManager {
                     try {
                         val n = inStream.read(buffer)
                         if (n > 0) listener.onRx(buffer.copyOf(n), n)
-                    } catch (e: Exception) {
-                        listener.onError(e)
+                    } catch (e: Throwable) {
+                        listener.onError(Exception(e.message ?: e.javaClass.simpleName, e))
                         return@Thread
                     }
                 }
             }, "SerialRx")
             rxThread?.start()
             listener.onStatus("Puerto abierto")
-        } catch (e: Exception) {
-            listener.onError(e)
+        } catch (e: Throwable) {
+            listener.onError(Exception(e.message ?: e.javaClass.simpleName, e))
         }
     }
 
@@ -58,8 +58,8 @@ class SerialManager {
             out.write(data)
             out.flush()
             listener.onStatus("TX: ${HexUtil.bytesToHex(data)}")
-        } catch (e: Exception) {
-            listener.onError(e)
+        } catch (e: Throwable) {
+            listener.onError(Exception(e.message ?: e.javaClass.simpleName, e))
         }
     }
 
@@ -67,20 +67,18 @@ class SerialManager {
         running = false
         try {
             rxThread?.interrupt()
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         try {
             input?.close()
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
         try {
             output?.close()
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
         }
-        try {
-            serialPort?.close()
-        } catch (_: Exception) {
-        }
+        // La libreria nativa ronyuanserial_port incluida en esta APK no expone closeNative().
+        // Los streams anteriores cierran el descriptor; llamar serialPort.close() aborta el flujo SDK.
         rxThread = null
         input = null
         output = null

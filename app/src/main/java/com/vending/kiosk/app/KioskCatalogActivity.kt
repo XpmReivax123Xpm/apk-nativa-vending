@@ -426,7 +426,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                 serial = serial,
                 serialListener = serialListener,
                 portProvider = { DEFAULT_PORT },
-                baudProvider = { DEFAULT_BAUD }
+                baudProvider = { DEFAULT_BAUD },
+                beforeSdkOpen = { stopIdleIoPolling() },
+                afterRawReopen = { startIdleIoPolling() }
             )
         )
     }

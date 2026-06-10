@@ -442,3 +442,22 @@ Este proyecto Android se coordina con otro equipo/Codex de backend. Los contrato
   - evento runtime `DRIVER_ZERO_PICKUP_MODE` para auditoria de decisiones en campo.
 - Estado:
   - validado en pruebas reales por usuario.
+
+## Actualizacion 2026-06-10 - Recuperacion plataforma por ToY(0) con traspaso de puerto
+- Decision tecnica vigente:
+  - la recuperacion primaria de `PLATFORM_STUCK` debe usar la misma familia funcional del calibrador (`ToY(0)` / posicion Y 0), no `ResetLift`, para conservar visibilidad de sensores y bajar plataforma a base.
+- Estrategia de integracion:
+  - el runtime de dispensacion libera temporalmente `/dev/ttyS1`,
+  - el SDK toma el puerto para mandar `ToY(0)`,
+  - despues de una ventana fija de movimiento se cierra SDK,
+  - el runtime raw vuelve a abrir el puerto y retoma polling.
+- Ajuste operativo en `VendingTester`:
+  - conexion y desconexion quedan separadas,
+  - se agrega salida explicita,
+  - la recuperacion manual fuerza el flujo para pruebas de campo sin depender de esperar un atasco real.
+- Hallazgo abierto:
+  - en prueba real `ToY(0)` bajo la plataforma, pero el SDK devolvio `resultCode=204` y `isOK=false`.
+  - esto debe tratarse como falso negativo posible para recuperacion; queda pendiente convertir `204` en advertencia/no fatal dentro de este flujo.
+- Estado:
+  - checkpoint documentado antes de commit.
+  - compilacion y validacion en vending quedan a cargo del usuario.

@@ -28,10 +28,12 @@ class VendingTesterActivity : AppCompatActivity() {
     private lateinit var tvLog: TextView
     private lateinit var svLog: ScrollView
     private lateinit var btnConnect: Button
+    private lateinit var btnDisconnect: Button
     private lateinit var btnVendTest: Button
     private lateinit var btnContinue: Button
     private lateinit var btnResetLift: Button
     private lateinit var btnStop: Button
+    private lateinit var btnExit: Button
 
     private val serial = SerialManager()
     private lateinit var vendFlow: VendingFlowController
@@ -43,6 +45,8 @@ class VendingTesterActivity : AppCompatActivity() {
     private var pollLogCounter = 0
     private var pollIoLogCounter = 0
     private var promptBody = ""
+    private var activePort = "/dev/ttyS1"
+    private var activeBaud = 9600
     private val idleIoHandler = Handler(Looper.getMainLooper())
     private var idleIoPollingActive = false
     private lateinit var serialListener: SerialManager.Listener
@@ -127,8 +131,10 @@ class VendingTesterActivity : AppCompatActivity() {
                 context = this,
                 serial = serial,
                 serialListener = serialListener,
-                portProvider = { etPort.text.toString().trim() },
-                baudProvider = { etBaud.text.toString().trim().toIntOrNull() ?: 9600 }
+                portProvider = { activePort },
+                baudProvider = { activeBaud },
+                beforeSdkOpen = { stopIdleIoPolling() },
+                afterRawReopen = { startIdleIoPolling() }
             )
         )
         appendLog("App lista.")
@@ -136,8 +142,14 @@ class VendingTesterActivity : AppCompatActivity() {
         setPromptBody("Listo. Escribe pedido ej: 38,40,22 y presiona INICIAR PEDIDO.")
         setContinueEnabled(false)
         setResetLiftEnabled(false)
+        renderConnectionButtons(false)
 
         btnConnect.setOnClickListener {
+            if (serial.isOpen()) {
+                appendLog("Puerto ya conectado. Usa Desconectar para cerrarlo.")
+                renderConnectionButtons(true)
+                return@setOnClickListener
+            }
             val port = etPort.text.toString().trim()
             val baudStr = etBaud.text.toString().trim()
             if (TextUtils.isEmpty(port) || TextUtils.isEmpty(baudStr)) {
@@ -145,11 +157,34 @@ class VendingTesterActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             try {
-                serial.open(port, baudStr.toInt(), serialListener)
-                startIdleIoPolling()
+                val baud = baudStr.toInt()
+                activePort = port
+                activeBaud = baud
+                serial.open(activePort, activeBaud, serialListener)
+                if (serial.isOpen()) {
+                    renderConnectionButtons(true)
+                    startIdleIoPolling()
+                } else {
+                    renderConnectionButtons(false)
+                }
             } catch (_: Exception) {
                 appendLog("Baud invalido: $baudStr")
+                renderConnectionButtons(serial.isOpen())
             }
+        }
+
+        btnDisconnect.setOnClickListener {
+            appendLog("Desconectando puerto serial...")
+            waitingForContinue = false
+            setContinueEnabled(false)
+            setResetLiftEnabled(false)
+            clearQueue()
+            stopIdleIoPolling()
+            runCatching { vendFlow.stop() }
+            runCatching { serial.close() }
+            renderConnectionButtons(false)
+            setPromptBody("Puerto desconectado. Presiona Conectar para continuar pruebas.")
+            appendLog("Puerto serial desconectado.")
         }
 
         btnVendTest.setOnClickListener {
@@ -206,6 +241,15 @@ class VendingTesterActivity : AppCompatActivity() {
             vendFlow.stop()
         }
 
+        btnExit.setOnClickListener {
+            appendLog("Saliendo de Vending Tester...")
+            stopIdleIoPolling()
+            runCatching { vendFlow.stop() }
+            runCatching { serial.close() }
+            closeLogFile()
+            finish()
+        }
+
         btnResetLift.setOnClickListener {
             if (!serial.isOpen()) {
                 appendLog("Abre el puerto primero.")
@@ -214,7 +258,7 @@ class VendingTesterActivity : AppCompatActivity() {
             waitingForContinue = false
             setContinueEnabled(false)
             appendLog("Intentando arreglar plataforma atorada (retorno a base)...")
-            val started = vendFlow.requestPlatformRecoveryToBase()
+            val started = vendFlow.requestManualPlatformRecoveryToBase()
             if (!started) {
                 appendLog("No hay una recuperacion de plataforma pendiente.")
                 return@setOnClickListener
@@ -232,10 +276,12 @@ class VendingTesterActivity : AppCompatActivity() {
         tvLog = findViewById(R.id.tvLog)
         svLog = findViewById(R.id.svLog)
         btnConnect = findViewById(R.id.btnConnect)
+        btnDisconnect = findViewById(R.id.btnDisconnect)
         btnVendTest = findViewById(R.id.btnVendTest)
         btnContinue = findViewById(R.id.btnContinue)
         btnResetLift = findViewById(R.id.btnResetLift)
         btnStop = findViewById(R.id.btnStop)
+        btnExit = findViewById(R.id.btnExit)
     }
 
     private fun startNextFromQueue() {
@@ -284,6 +330,17 @@ class VendingTesterActivity : AppCompatActivity() {
 
     private fun setResetLiftEnabled(enabled: Boolean) {
         runOnUiThread { btnResetLift.isEnabled = enabled }
+    }
+
+    private fun renderConnectionButtons(connected: Boolean) {
+        runOnUiThread {
+            btnConnect.isEnabled = !connected
+            btnDisconnect.isEnabled = connected
+            btnVendTest.isEnabled = connected
+            btnConnect.alpha = if (connected) 0.45f else 1.0f
+            btnDisconnect.alpha = if (connected) 1.0f else 0.45f
+            btnVendTest.alpha = if (connected) 1.0f else 0.55f
+        }
     }
 
     private fun shouldEnableResetLift(rawMessage: String): Boolean {
@@ -371,7 +428,12 @@ class VendingTesterActivity : AppCompatActivity() {
         override fun run() {
             if (!idleIoPollingActive) return
             try {
-                if (serial.isOpen() && !vendFlow.isRunning() && !vendFlow.isWaitingPickup()) {
+                if (
+                    serial.isOpen() &&
+                    !vendFlow.isRunning() &&
+                    !vendFlow.isWaitingPickup() &&
+                    !vendFlow.isWaitingPlatformRecovery()
+                ) {
                     serial.sendHex(CommandSet.POLL_IO_STATUS, serialListener)
                 }
             } catch (_: Exception) {

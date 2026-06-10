@@ -1087,3 +1087,48 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 ### Validacion
 - Pruebas en campo realizadas por usuario:
   - resultado: comportamiento correcto (ajuste validado).
+
+## 2026-06-10 - Checkpoint recuperacion plataforma atorada por SDK ToY(0)
+
+### Contexto
+- El flujo anterior de recuperacion de plataforma atorada enviaba un retorno a base equivalente, pero en evidencia de campo la plataforma quedaba reportando `C8` por largo tiempo y no bajaba.
+- Se confirmo que la funcionalidad del calibrador (`ToY(0)` / posicion Y 0) puede bajar fisicamente la plataforma cuando se usa de forma independiente.
+- La hipotesis principal de trabajo es conflicto de control sobre `/dev/ttyS1`: el runtime raw de dispensacion mantiene el puerto abierto y el SDK necesita tomarlo temporalmente para ejecutar la orden de calibrador.
+
+### Hecho en esta iteracion
+- Se agrego traspaso controlado de puerto para recuperacion:
+  - detener polling IO raw,
+  - cerrar conexion raw,
+  - esperar liberacion del puerto,
+  - abrir SDK en `/dev/ttyS1 @ 9600`,
+  - enviar `ToY(0)`,
+  - esperar ventana fija para movimiento,
+  - cerrar SDK,
+  - reabrir conexion raw,
+  - reactivar polling IO.
+- Se agrego ruta manual en `VendingTester` para forzar recuperacion durante pruebas, incluso cuando el escenario no viene exactamente del estado real `PLATFORM_STUCK`.
+- Se separo el control de conexion en `VendingTester`:
+  - `Conectar` ya no funciona como toggle de salida,
+  - se agrego `Desconectar`,
+  - se agrego `Salir`.
+- Se corrigio falla nativa detectada al cerrar puerto raw:
+  - `android_serialport_api.SerialPort.closeNative()` no existe en la libreria actual,
+  - `SerialManager.close()` ya no llama ese cierre nativo; cierra streams y limpia referencias para evitar crash.
+- `VendingFlowController` ahora protege la recuperacion SDK contra dobles ejecuciones simultaneas.
+
+### Hallazgo importante de prueba
+- En prueba real, la plataforma si bajo fisicamente con `ToY(0)`.
+- Aun asi, el SDK devolvio `para.isOK=false` con `resultCode=204`.
+- Por esa razon la app registro falsamente:
+  - `ToY(0) rechazado por placa (codigo 204)`,
+  - `PLATFORM_RECOVERY_COMMAND_FAILED`.
+- Interpretacion actual: para este caso de recuperacion, `204` no debe tratarse automaticamente como falla fatal si la orden ya produjo movimiento fisico. Es un falso negativo operativo del SDK/placa para este flujo.
+
+### Pendiente inmediato
+- Ajustar `SdkYZeroPlatformRecoveryCommand` para que `ToY(0)` con codigo `204` se trate como aceptado con advertencia en recuperacion, no como rechazo fatal.
+- Mantener la espera de movimiento y el retorno a polling raw aunque el SDK reporte `204`.
+- Verificar que despues de reabrir raw vuelvan a verse RX/polling con claridad en tester y kiosk.
+- Validar el flujo real desde modal `Plataforma atorada` en `KioskCatalogActivity`.
+
+### Nota operativa
+- No se compilo desde Codex. La compilacion y prueba en vending quedan a cargo del usuario.

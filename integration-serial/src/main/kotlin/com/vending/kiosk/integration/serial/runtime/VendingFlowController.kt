@@ -53,6 +53,7 @@ class VendingFlowController(
     private var forcedPickupByDriverZero = false
     private var waitingPlatformRecovery = false
     private var recoveryStartedAtMs = 0L
+    @Volatile private var recoveryCommandRunning = false
     private var ioTimeoutWarningEmitted = false
     private var ioCancelStartMs = 0L
 
@@ -68,6 +69,7 @@ class VendingFlowController(
         expectIoVendRx = false
         expectIoPickupRx = false
         expectIoRecoveryRx = false
+        recoveryCommandRunning = false
         h.removeCallbacksAndMessages(null)
         ui.onLog("STOP: vendtest detenido.")
     }
@@ -321,25 +323,59 @@ class VendingFlowController(
             ui.onLog("Recuperacion ignorada: no hay plataforma atorada en espera.")
             return false
         }
+        return startPlatformRecoveryToBase()
+    }
+
+    fun requestManualPlatformRecoveryToBase(): Boolean {
+        if (waitingPlatformRecovery) return requestPlatformRecoveryToBase()
+        waitingPlatformRecovery = true
+        recoveryStartedAtMs = 0L
+        ui.onStep("PLATFORM_MANUAL_RECOVERY|decision=FORCE_TOY_0")
+        return startPlatformRecoveryToBase()
+    }
+
+    private fun startPlatformRecoveryToBase(): Boolean {
+        if (recoveryCommandRunning) {
+            ui.onLog("Recuperacion ignorada: ya hay una recuperacion en curso.")
+            return false
+        }
         recoveryStartedAtMs = System.currentTimeMillis()
 
         val customRecovery = platformRecoveryCommand
         if (customRecovery != null) {
+            recoveryCommandRunning = true
+            h.removeCallbacks(pollDriverRunnable)
+            h.removeCallbacks(pollIoVendRunnable)
+            h.removeCallbacks(pollIoPickupRunnable)
+            h.removeCallbacks(pollIoRecoveryRunnable)
+            expectDriverRx = false
+            expectIoVendRx = false
+            expectIoPickupRx = false
+            expectIoRecoveryRx = false
             ui.onLog("Recuperacion de plataforma: enviando posicion Y 0 con flujo calibrador.")
-            val result = try {
-                customRecovery.moveToBase()
-            } catch (ex: Exception) {
-                PlatformRecoveryCommandResult(
-                    ok = false,
-                    commandName = "ToY(0)",
-                    detail = ex.message ?: "sin detalle"
-                )
-            }
-            ui.onLog("RECOVERY_TO_BASE ${result.commandName}: ${if (result.ok) "OK" else "ERROR"} ${result.detail}".trim())
-            if (!result.ok) {
-                ui.onError("PLATFORM_RECOVERY_COMMAND_FAILED|No se pudo enviar recuperacion a base: ${result.detail.ifBlank { result.commandName }}")
-                return false
-            }
+            Thread({
+                val result = try {
+                    customRecovery.moveToBase()
+                } catch (ex: Throwable) {
+                    PlatformRecoveryCommandResult(
+                        ok = false,
+                        commandName = "ToY(0)",
+                        detail = ex.message ?: ex.javaClass.simpleName
+                    )
+                }
+                h.post {
+                    recoveryCommandRunning = false
+                    ui.onLog("RECOVERY_TO_BASE ${result.commandName}: ${if (result.ok) "OK" else "ERROR"} ${result.detail}".trim())
+                    if (!result.ok) {
+                        waitingPlatformRecovery = false
+                        ui.onError("PLATFORM_RECOVERY_COMMAND_FAILED|No se pudo enviar recuperacion a base: ${result.detail.ifBlank { result.commandName }}")
+                    } else if (waitingPlatformRecovery) {
+                        recoveryStartedAtMs = System.currentTimeMillis()
+                        schedulePollIoRecovery()
+                    }
+                }
+            }, "PlatformRecoverySdk").start()
+            return true
         } else {
             if (!serial.isOpen()) {
                 ui.onError("Abre el puerto primero.")

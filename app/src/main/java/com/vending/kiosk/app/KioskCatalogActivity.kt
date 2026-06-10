@@ -1544,7 +1544,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         tvTimer.setBackgroundColor(Color.TRANSPARENT)
         tvTimer.setTextColor(Color.WHITE)
-        btnClose.text = "X"
+        btnClose.text = "SEGUIR BUSCANDO PRODUCTOS"
         btnClose.setTextColor(Color.WHITE)
 
         tvCode.text = "Casilla ${item.codigoCelda}"

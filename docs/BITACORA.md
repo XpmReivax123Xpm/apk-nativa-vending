@@ -1132,3 +1132,37 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 
 ### Nota operativa
 - No se compilo desde Codex. La compilacion y prueba en vending quedan a cargo del usuario.
+
+## 2026-06-10 - Ajuste posterior: codigo SDK 204 no fatal en recuperacion
+
+### Hecho en esta iteracion
+- Se ajusto `SdkYZeroPlatformRecoveryCommand` para que `ToY(0)` con `resultCode=204` no corte la recuperacion como error fatal.
+- Si aparece `204`, la app ahora registra una advertencia y continua:
+  - mantiene SDK abierto durante la ventana de movimiento,
+  - cierra SDK,
+  - reabre serial raw,
+  - devuelve resultado OK al runtime.
+- Se agrego log en `VendingFlowController` para indicar que, tras recuperar el puerto raw, queda activo el polling IO esperando confirmacion de base.
+
+### Resultado esperado
+- En la prueba donde la plataforma baja fisicamente pero SDK responde `204`, ya no debe aparecer `PLATFORM_RECOVERY_COMMAND_FAILED`.
+- Debe verse `RECOVERY_TO_BASE ToY(0): OK ... sdkCode=204` y luego polling IO de recuperacion esperando base.
+
+### Pendiente
+- Compilar y validar en vending real.
+- Confirmar si tras `ToY(0)` la placa realmente llega a `C2` o si necesitamos aceptar otro estado como base equivalente.
+
+## 2026-06-10 - Recuperacion plataforma: confirmacion IO menos rigida
+
+### Hecho en esta iteracion
+- Se amplio el criterio de confirmacion despues de `ToY(0)`.
+- Antes la recuperacion solo continuaba si el polling IO detectaba `C2`.
+- Ahora se considera recuperacion suficiente si llega cualquiera de estos estados:
+  - `C2`
+  - `82`
+  - `02`
+  - `92`
+- El log de runtime ahora indica el IO exacto que confirmo la recuperacion.
+
+### Motivo
+- Evitar que el flujo quede atrapado por esperar solo `C2` cuando la placa ya puede haber pasado por un estado operativo equivalente para continuar retiro.

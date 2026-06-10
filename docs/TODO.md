@@ -294,7 +294,8 @@
   - [x] `Salir`.
 - [x] Evitar crash por `SerialPort.closeNative()` inexistente en la libreria nativa actual.
 - [x] Confirmar en prueba real que `ToY(0)` puede bajar fisicamente la plataforma desde el flujo integrado.
-- [ ] Ajustar `SdkYZeroPlatformRecoveryCommand` para tratar `ToY(0)` con `resultCode=204` como advertencia/no fatal durante recuperacion, ya que se observo movimiento fisico.
+- [x] Ajustar `SdkYZeroPlatformRecoveryCommand` para tratar `ToY(0)` con `resultCode=204` como advertencia/no fatal durante recuperacion, ya que se observo movimiento fisico.
+- [x] Ampliar confirmacion IO post recuperacion de plataforma: aceptar `C2`, `82`, `02` o `92`.
 - [ ] Asegurar que, tras reabrir raw, el tester vuelva a mostrar RX/polling de forma evidente.
 - [ ] Validar el flujo completo desde el modal real `Plataforma atorada` en `KioskCatalogActivity`.
 - [ ] Validar caso multi-item despues de recuperacion exitosa:

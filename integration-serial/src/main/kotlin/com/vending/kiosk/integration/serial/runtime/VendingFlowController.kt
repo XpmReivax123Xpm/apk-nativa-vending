@@ -371,6 +371,7 @@ class VendingFlowController(
                         ui.onError("PLATFORM_RECOVERY_COMMAND_FAILED|No se pudo enviar recuperacion a base: ${result.detail.ifBlank { result.commandName }}")
                     } else if (waitingPlatformRecovery) {
                         recoveryStartedAtMs = System.currentTimeMillis()
+                        ui.onLog("Recuperacion de plataforma: polling IO activo, esperando base C2/82/02/92.")
                         schedulePollIoRecovery()
                     }
                 }
@@ -408,8 +409,8 @@ class VendingFlowController(
     }
 
     private fun handlePlatformRecoveryIoValue(value: Int) {
-        if (value != IO_WHITE_DOOR_CLOSING) return
-        ui.onLog("Recuperacion de plataforma confirmada por IO=C2 (00C2).")
+        if (!isPlatformRecoveryBaseSignal(value)) return
+        ui.onLog("Recuperacion de plataforma confirmada por IO=${formatIoValue(value)}.")
         waitingPlatformRecovery = false
         waitingPickup = true
         ioStartMs = System.currentTimeMillis()
@@ -424,6 +425,17 @@ class VendingFlowController(
         ui.onStep("PLATFORM_RECOVERY_DONE|io=00C2|decision=RESUME_PICKUP")
         ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
         schedulePollIoPickup()
+    }
+
+    private fun isPlatformRecoveryBaseSignal(value: Int): Boolean {
+        return value == IO_WHITE_DOOR_CLOSING ||
+            value == IO_AFTER_FIRST_CLICK ||
+            value == IO_DOOR_OPEN_FIRST_TIME ||
+            value == IO_DOOR_CLOSED_NO_PROD
+    }
+
+    private fun formatIoValue(value: Int): String {
+        return value.toString(16).uppercase().padStart(2, '0')
     }
 
     private fun advanceVendStage(newStage: Int, logMsg: String) {

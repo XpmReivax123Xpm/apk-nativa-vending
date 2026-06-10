@@ -60,8 +60,15 @@ class SdkYZeroPlatformRecoveryCommand(
             if (toYError != null) {
                 return errorResult("ToY(0) fallo (${toYError.message ?: toYError.javaClass.simpleName})")
             }
-            if (!para.isOK) {
-                return errorResult("ToY(0) rechazado por placa (codigo ${para.resultCode})")
+            val toYResultCode = para.resultCode
+            val toYAcceptedWithWarning = !para.isOK && isRecoverableToYResultCode(toYResultCode)
+            if (!para.isOK && !toYAcceptedWithWarning) {
+                return errorResult("ToY(0) rechazado por placa (codigo $toYResultCode)")
+            }
+            if (toYAcceptedWithWarning) {
+                runCatching {
+                    serialListener.onStatus("RECOVERY_SDK: ToY(0) devolvio codigo $toYResultCode; se continua como advertencia porque en campo puede mover la plataforma.")
+                }
             }
             runCatching { serialListener.onStatus("RECOVERY_SDK: ToY(0) aceptado, manteniendo SDK abierto ${SDK_HOLD_AFTER_TOY_MS / 1000}s.") }
             sleepQuietly(SDK_HOLD_AFTER_TOY_MS)
@@ -82,7 +89,7 @@ class SdkYZeroPlatformRecoveryCommand(
             VendingFlowController.PlatformRecoveryCommandResult(
                 ok = true,
                 commandName = COMMAND_NAME,
-                detail = "posicion=0 puntos Y; puerto=$port"
+                detail = "posicion=0 puntos Y; puerto=$port; sdkCode=$toYResultCode"
             )
         } catch (ex: Throwable) {
             errorResult(ex.message ?: ex.javaClass.simpleName)
@@ -98,6 +105,10 @@ class SdkYZeroPlatformRecoveryCommand(
                 }
             }
         }
+    }
+
+    private fun isRecoverableToYResultCode(resultCode: Int): Boolean {
+        return resultCode == TOY_RECOVERY_WARNING_CODE
     }
 
     private fun reopenRawSerial(port: String, baud: Int): Boolean {
@@ -162,5 +173,6 @@ class SdkYZeroPlatformRecoveryCommand(
         private const val RAW_RELEASE_DELAY_MS = 3_000L
         private const val SDK_HOLD_AFTER_TOY_MS = 7_000L
         private const val RAW_REOPEN_DELAY_MS = 2_000L
+        private const val TOY_RECOVERY_WARNING_CODE = 204
     }
 }

@@ -149,6 +149,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var idleVideoOverlay: View? = null
     private var idleVideoView: VideoView? = null
     private var idleVideoVisible = false
+    private var idleVideoIndex = 0
     private var kioskLocked = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
@@ -170,6 +171,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             "Inactividad detectada. Mostrando video de espera.",
             Toast.LENGTH_SHORT
         ).show()
+        scheduleInactivityRefresh()
     }
 
     private val carouselTicker = object : Runnable {
@@ -899,31 +901,43 @@ class KioskCatalogActivity : AppCompatActivity() {
         val video = idleVideoView ?: return
         if (idleVideoVisible) return
         idleVideoVisible = true
-        inactivityHandler.removeCallbacks(inactivityRunnable)
+        idleVideoIndex = 0
         overlay.visibility = View.VISIBLE
 
-        val uri = Uri.parse("android.resource://$packageName/${R.raw.video_de_vengan}")
-        video.setVideoURI(uri)
         video.setOnPreparedListener { mp: MediaPlayer ->
-            mp.isLooping = true
             video.start()
         }
         video.setOnCompletionListener {
-            video.start()
+            playNextIdleVideo()
         }
         video.setOnErrorListener { _, _, _ ->
             hideIdleVideoOverlay()
             scheduleInactivityRefresh()
             true
         }
-        video.start()
+        playIdleVideoAt(idleVideoIndex)
     }
 
     private fun hideIdleVideoOverlay() {
         if (!idleVideoVisible) return
         idleVideoVisible = false
+        idleVideoIndex = 0
         idleVideoView?.pause()
         idleVideoOverlay?.visibility = View.GONE
+    }
+
+    private fun playNextIdleVideo() {
+        if (!idleVideoVisible) return
+        idleVideoIndex = (idleVideoIndex + 1) % IDLE_VIDEO_RES_IDS.size
+        playIdleVideoAt(idleVideoIndex)
+    }
+
+    private fun playIdleVideoAt(index: Int) {
+        val video = idleVideoView ?: return
+        val videoResId = IDLE_VIDEO_RES_IDS.getOrNull(index) ?: return
+        val uri = Uri.parse("android.resource://$packageName/$videoResId")
+        video.setVideoURI(uri)
+        video.start()
     }
 
     private fun scheduleInactivityRefresh() {
@@ -4071,6 +4085,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
         private const val IDLE_IO_POLL_MS = 750L
+        private val IDLE_VIDEO_RES_IDS = intArrayOf(
+            R.raw.video_de_vengan,
+            R.raw.presentacion_pago_facil,
+            R.raw.sra_nelly_labor_aqui
+        )
     }
 }
 

@@ -303,3 +303,12 @@
   - producto atorado recuperado con `ToY(0)`,
   - retiro confirmado,
   - siguiente producto continua normalmente.
+
+### Actualizacion 2026-06-12
+- [x] Corregir refresco de planograma por inactividad durante video promocional:
+  - [x] reprogramar timer despues de mostrar video,
+  - [x] evitar que `showIdleVideoOverlay()` cancele el callback de inactividad.
+
+### Actualizacion 2026-06-16
+- [x] Reproducir los 3 videos promocionales en secuencia durante modo inactividad.
+- [x] Renombrar videos nuevos en `res/raw` a nombres validos para Android.

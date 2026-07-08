@@ -1166,3 +1166,34 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 
 ### Motivo
 - Evitar que el flujo quede atrapado por esperar solo `C2` cuando la placa ya puede haber pasado por un estado operativo equivalente para continuar retiro.
+
+## 2026-06-12 - Correccion refresh de planograma durante video de inactividad
+
+### Hallazgo
+- En el commit `6317156` (`apknativaV22.1`) se agrego el video promocional de inactividad.
+- Antes de ese cambio, el timer de inactividad refrescaba planograma y luego se reprogramaba con `scheduleInactivityRefresh()`.
+- Con el video, el flujo quedo asi:
+  - `refreshCatalogAndClearCart()`
+  - `showIdleVideoOverlay()`
+  - sin reprogramar el timer.
+- Ademas, `showIdleVideoOverlay()` removia el callback de inactividad.
+- Resultado: una vez mostrado el video, el planograma podia refrescarse una sola vez y luego dejar de actualizarse hasta que hubiera interaccion del usuario.
+
+### Correccion
+- Se vuelve a llamar `scheduleInactivityRefresh()` al final del `inactivityRunnable`.
+- Se elimina la cancelacion del timer dentro de `showIdleVideoOverlay()`.
+- El video promocional queda visible como modo espera, pero el planograma puede seguir actualizandose periodicamente en segundo plano.
+
+## 2026-06-16 - Playlist de videos promocionales por inactividad
+
+### Hecho en esta iteracion
+- Se agrego reproduccion secuencial de videos cuando se cumple el minuto de inactividad.
+- Los videos en `app/src/main/res/raw` quedaron con nombres validos para recursos Android:
+  - `video_de_vengan.mp4`
+  - `presentacion_pago_facil.mp4`
+  - `sra_nelly_labor_aqui.mp4`
+- `KioskCatalogActivity` ahora usa una lista `IDLE_VIDEO_RES_IDS` y avanza al siguiente video en `setOnCompletionListener`.
+- Al terminar el tercer video, vuelve al primero y mantiene el ciclo mientras el overlay de inactividad siga visible.
+
+### Nota
+- Se renombraron los archivos nuevos porque Android no acepta espacios, mayusculas ni acentos en nombres dentro de `res/raw`.

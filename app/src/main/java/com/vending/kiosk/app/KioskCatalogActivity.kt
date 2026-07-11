@@ -41,7 +41,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
+import com.vending.kiosk.app.backend.HttpVendingBackendGateway
+import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
+import com.vending.kiosk.integration.backend.models.PaymentMethod as BackendPaymentMethod
 import com.vending.kiosk.integration.serial.runtime.CommandSet
 import com.vending.kiosk.integration.serial.runtime.HexUtil
 import com.vending.kiosk.integration.serial.runtime.SerialManager
@@ -79,6 +82,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var kioskUnlockedByPin = false
 
     private val authSessionManager by lazy { AuthSessionManager(this) }
+    private val vendingBackendGateway by lazy { HttpVendingBackendGateway(authSessionManager) }
     private val kioskPolicyManager by lazy { KioskPolicyManager(this) }
 
     private var useLegacyCarousel = false
@@ -2348,17 +2352,17 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadEnabledPaymentMethods(): PaymentMethodsResult {
+    private suspend fun loadEnabledPaymentMethods(): PaymentMethodsResult {
         val currentHeader = resolveValidAuthHeader(forceRefresh = false)
             ?: return PaymentMethodsResult.Error("Sesion de maquina expirada", unauthorized = true)
         authHeader = currentHeader
 
-        var result = fetchEnabledPaymentMethods(currentHeader)
+        var result = fetchEnabledPaymentMethods()
         if (result is PaymentMethodsResult.Error && result.unauthorized) {
             val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
             if (!refreshedHeader.isNullOrBlank()) {
                 authHeader = refreshedHeader
-                result = fetchEnabledPaymentMethods(refreshedHeader)
+                result = fetchEnabledPaymentMethods()
             }
         }
         return result
@@ -2378,79 +2382,22 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchEnabledPaymentMethods(authHeader: String): PaymentMethodsResult {
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pago/qr/servicios-habilitados"
-        var connection: HttpURLConnection? = null
-
+    private suspend fun fetchEnabledPaymentMethods(): PaymentMethodsResult {
         return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return PaymentMethodsResult.Error(
-                    "Respuesta vacia de servicios de pago (HTTP $statusCode)",
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "No se pudo obtener servicios habilitados")
-            if (statusCode !in 200..299 || backendError != 0 || backendStatus != 1) {
-                return PaymentMethodsResult.Error(
-                    buildBackendErrorMessage(statusCode, rawBody, backendMessage),
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val providerResponse = values.optJSONObject("taProviderResponse") ?: JSONObject()
-            val providerError = providerResponse.optInt("error", -1)
-            val providerValues = providerResponse.optJSONArray("values") ?: JSONArray()
-            if (providerError != 0 || providerValues.length() <= 0) {
-                return PaymentMethodsResult.Error("No hay servicios de pago habilitados para esta maquina.")
-            }
-
-            val methods = mutableListOf<PaymentMethodOption>()
-            for (i in 0 until providerValues.length()) {
-                val item = providerValues.optJSONObject(i) ?: continue
-                val id = when (val rawId = item.opt("paymentMethodId")) {
-                    is Number -> rawId.toInt()
-                    is String -> rawId.toIntOrNull() ?: 0
-                    else -> item.optInt("paymentMethodId", 0)
-                }
-                val label = item.optString("paymentMethodName", "").trim()
-                if (id > 0 && label.isNotBlank()) {
-                    methods += PaymentMethodOption(id = id, label = label)
-                }
-            }
-
-            val unique = methods.distinctBy { it.id }
-            if (unique.isEmpty()) {
-                PaymentMethodsResult.Error("No hay servicios de pago validos en la respuesta del proveedor.")
-            } else {
-                PaymentMethodsResult.Success(unique)
-            }
+            val methods = vendingBackendGateway.fetchEnabledPaymentMethods()
+            PaymentMethodsResult.Success(methods.map { it.toPaymentMethodOption() })
+        } catch (ex: PaymentMethodsGatewayException) {
+            PaymentMethodsResult.Error(
+                ex.message ?: "Fallo obteniendo servicios habilitados: sin detalle",
+                unauthorized = ex.unauthorized
+            )
         } catch (ex: Exception) {
             PaymentMethodsResult.Error("Fallo obteniendo servicios habilitados: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
         }
+    }
+
+    private fun BackendPaymentMethod.toPaymentMethodOption(): PaymentMethodOption {
+        return PaymentMethodOption(id = id, label = label)
     }
 
     private fun extractIntFrom(source: JSONObject?, vararg paths: String): Int {

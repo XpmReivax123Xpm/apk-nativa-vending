@@ -45,6 +45,7 @@ import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
 import com.vending.kiosk.integration.backend.models.PaymentMethod as BackendPaymentMethod
+import com.vending.kiosk.integration.backend.models.PaymentStatus as BackendPaymentStatus
 import com.vending.kiosk.integration.serial.runtime.CommandSet
 import com.vending.kiosk.integration.serial.runtime.HexUtil
 import com.vending.kiosk.integration.serial.runtime.SerialManager
@@ -2699,12 +2700,12 @@ class KioskCatalogActivity : AppCompatActivity() {
                         PaymentPollResult.Error("Sesion de maquina expirada")
                     } else {
                         this@KioskCatalogActivity.authHeader = currentHeader
-                        var fetched = fetchPaymentStatus(result.pedidoId, currentHeader)
+                        var fetched = fetchPaymentStatus(result.pedidoId)
                         if (fetched is PaymentPollResult.Error && isUnauthorizedMessage(fetched.message)) {
                             val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
                             if (!refreshedHeader.isNullOrBlank()) {
                                 this@KioskCatalogActivity.authHeader = refreshedHeader
-                                fetched = fetchPaymentStatus(result.pedidoId, refreshedHeader)
+                                fetched = fetchPaymentStatus(result.pedidoId)
                             }
                         }
                         fetched
@@ -2728,6 +2729,13 @@ class KioskCatalogActivity : AppCompatActivity() {
                     }
 
                     is PaymentPollResult.Failed -> {
+                        progressQr.visibility = View.GONE
+                        tvQrStatus.text = pollResult.message
+                        btnClose.text = "Cerrar"
+                        return@launch
+                    }
+
+                    is PaymentPollResult.Cancelled -> {
                         progressQr.visibility = View.GONE
                         tvQrStatus.text = pollResult.message
                         btnClose.text = "Cerrar"
@@ -2814,61 +2822,13 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchPaymentStatus(pedidoId: Int, authHeader: String): PaymentPollResult {
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/$pedidoId/estado-pago"
-        var connection: HttpURLConnection? = null
-
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return PaymentPollResult.Error("Sin respuesta de estado pago (HTTP $statusCode)")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "Consultando estado...")
-
-            if (statusCode !in 200..299 || backendError != 0 || backendStatus != 1) {
-                return PaymentPollResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
-            }
-
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val tnEstadoPago = values.optInt("tnEstadoPago", Int.MIN_VALUE)
-            val tnEstadoPedido = values.optInt("tnEstadoPedido", Int.MIN_VALUE)
-            val estadoFallback = values.optInt("estado", 1)
-            val effectiveState = when {
-                tnEstadoPago != Int.MIN_VALUE -> tnEstadoPago
-                tnEstadoPedido != Int.MIN_VALUE -> tnEstadoPedido
-                else -> estadoFallback
-            }
-
-            return when (effectiveState) {
-                2 -> PaymentPollResult.Paid
-                3 -> PaymentPollResult.Failed("Pago cancelado")
-                4 -> PaymentPollResult.Failed("Pago fallido")
-                else -> PaymentPollResult.Pending(backendMessage)
-            }
-        } catch (ex: Exception) {
-            PaymentPollResult.Error("Error consultando estado de pago: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
+    private suspend fun fetchPaymentStatus(pedidoId: Int): PaymentPollResult {
+        return when (val status = vendingBackendGateway.fetchPaymentStatus(pedidoId.toLong())) {
+            is BackendPaymentStatus.Paid -> PaymentPollResult.Paid
+            is BackendPaymentStatus.Pending -> PaymentPollResult.Pending(status.message)
+            is BackendPaymentStatus.Cancelled -> PaymentPollResult.Cancelled(status.message)
+            is BackendPaymentStatus.Failed -> PaymentPollResult.Failed(status.message)
+            is BackendPaymentStatus.Error -> PaymentPollResult.Error(status.message)
         }
     }
 
@@ -4113,6 +4073,7 @@ private sealed interface PaymentMethodsResult {
 private sealed interface PaymentPollResult {
     data object Paid : PaymentPollResult
     data class Pending(val message: String) : PaymentPollResult
+    data class Cancelled(val message: String) : PaymentPollResult
     data class Failed(val message: String) : PaymentPollResult
     data class Error(val message: String) : PaymentPollResult
 }

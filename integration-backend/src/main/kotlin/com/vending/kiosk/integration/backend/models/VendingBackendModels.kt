@@ -60,6 +60,7 @@ data class CreateOrderQrResponse(
 sealed interface PaymentStatus {
     data object Paid : PaymentStatus
     data class Pending(val message: String) : PaymentStatus
+    data class Cancelled(val message: String) : PaymentStatus
     data class Failed(val message: String) : PaymentStatus
     data class Error(val message: String) : PaymentStatus
 }

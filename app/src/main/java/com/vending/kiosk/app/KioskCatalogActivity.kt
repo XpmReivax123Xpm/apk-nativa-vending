@@ -44,6 +44,7 @@ import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
+import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
 import com.vending.kiosk.integration.backend.models.PaymentMethod as BackendPaymentMethod
 import com.vending.kiosk.integration.backend.models.PaymentStatus as BackendPaymentStatus
 import com.vending.kiosk.integration.serial.runtime.CommandSet
@@ -2574,11 +2575,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         val currentHeader = resolveValidAuthHeader(forceRefresh = false)
                             ?: return@withContext OrderCancelResult.Error("Sesion de maquina expirada")
                         this@KioskCatalogActivity.authHeader = currentHeader
-                        cancelPendingOrder(
-                            pedidoId = result.pedidoId,
-                            authHeader = currentHeader,
-                            reason = "CANCELADO_CLIENTE_APK"
-                        )
+                        cancelOrder(result.pedidoId)
                     }
 
                     when (cancelResult) {
@@ -2765,60 +2762,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun cancelPendingOrder(
-        pedidoId: Int,
-        authHeader: String,
-        reason: String
-    ): OrderCancelResult {
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/$pedidoId/cancelar"
-        var connection: HttpURLConnection? = null
-
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                doOutput = true
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("Content-Type", "application/json")
-            }
-
-            val payload = JSONObject().apply {
-                put("tcMotivo", reason.ifBlank { "CANCELADO_CLIENTE_APK" })
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return OrderCancelResult.Error("Sin respuesta al cancelar pedido (HTTP $statusCode)")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "No se pudo cancelar el pedido.")
-
-            return if (statusCode in 200..299 && backendError == 0 && backendStatus == 1) {
-                OrderCancelResult.Success(backendMessage)
-            } else {
-                OrderCancelResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
-            }
-        } catch (ex: Exception) {
-            OrderCancelResult.Error("Error cancelando pedido: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
+    private suspend fun cancelOrder(pedidoId: Int): OrderCancelResult {
+        return when (val result = vendingBackendGateway.cancelOrder(pedidoId.toLong())) {
+            is BackendCancelOrderResult.Success -> OrderCancelResult.Success(result.message)
+            is BackendCancelOrderResult.Error -> OrderCancelResult.Error(result.message)
         }
     }
 

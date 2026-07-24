@@ -160,7 +160,60 @@ class HttpVendingBackendGateway(
         }
     }
 
-    override suspend fun cancelOrder(orderId: Long): CancelOrderResult = notImplemented()
+    override suspend fun cancelOrder(orderId: Long): CancelOrderResult {
+        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/$orderId/cancelar"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                doOutput = true
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Content-Type", "application/json")
+            }
+
+            val payload = JSONObject().apply {
+                put("tcMotivo", "CANCELADO_CLIENTE_APK")
+            }.toString()
+
+            connection.outputStream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                return CancelOrderResult.Error("Sin respuesta al cancelar pedido (HTTP $statusCode)")
+            }
+
+            val json = JSONObject(rawBody)
+            val backendError = json.optInt("error", -1)
+            val backendStatus = json.optInt("status", 0)
+            val backendMessage = json.optString("message", "No se pudo cancelar el pedido.")
+            json.optJSONObject("values") ?: JSONObject()
+
+            return if (statusCode in 200..299 && backendError == 0 && backendStatus == 1) {
+                CancelOrderResult.Success(backendMessage)
+            } else {
+                CancelOrderResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
+            }
+        } catch (ex: Exception) {
+            CancelOrderResult.Error("Error cancelando pedido: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
+        }
+    }
 
     override suspend fun reportDispenseStatus(request: DispenseStatusRequest): DispenseStatusResult = notImplemented()
 

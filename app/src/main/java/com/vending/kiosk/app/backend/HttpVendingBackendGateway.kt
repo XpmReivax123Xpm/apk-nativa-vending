@@ -215,7 +215,72 @@ class HttpVendingBackendGateway(
         }
     }
 
-    override suspend fun reportDispenseStatus(request: DispenseStatusRequest): DispenseStatusResult = notImplemented()
+    override suspend fun reportDispenseStatus(request: DispenseStatusRequest): DispenseStatusResult {
+        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
+        if (authHeader.isBlank()) {
+            return DispenseStatusResult.Error("Authorization header is blank")
+        }
+
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pedido/dispensacion"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                doOutput = true
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Content-Type", "application/json")
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val payload = JSONObject().apply {
+                put("tnPedido", request.orderId)
+                put("tnPedidoDetalle", request.orderDetailId)
+                put("tnPlanogramaCelda", request.planogramCellId)
+                put("tnEstadoDispensacion", request.dispenseStatusId)
+                put("tcEstadoDispensacion", request.dispenseStatus)
+            }.toString()
+
+            connection.outputStream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                return if (statusCode in 200..299) {
+                    DispenseStatusResult.Success
+                } else {
+                    DispenseStatusResult.Error("Sin respuesta al reportar dispensacion (HTTP $statusCode)")
+                }
+            }
+
+            val json = JSONObject(rawBody)
+            val backendError = json.optInt("error", -1)
+            val backendStatus = json.optInt("status", 0)
+            val backendMessage = json.optString("message", "No se pudo reportar dispensacion.")
+            json.optJSONObject("values") ?: JSONObject()
+
+            if (statusCode in 200..299 && backendError == 0 && backendStatus == 1) {
+                DispenseStatusResult.Success
+            } else {
+                DispenseStatusResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
+            }
+        } catch (ex: Exception) {
+            DispenseStatusResult.Error("Error reportando dispensacion: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
+        }
+    }
 
     private fun notImplemented(): Nothing {
         throw NotImplementedError(

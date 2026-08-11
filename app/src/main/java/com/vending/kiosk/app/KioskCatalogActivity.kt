@@ -45,6 +45,7 @@ import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
 import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
+import com.vending.kiosk.integration.backend.models.DispenseStatusRequest as BackendDispenseStatusRequest
 import com.vending.kiosk.integration.backend.models.PaymentMethod as BackendPaymentMethod
 import com.vending.kiosk.integration.backend.models.PaymentStatus as BackendPaymentStatus
 import com.vending.kiosk.integration.serial.runtime.CommandSet
@@ -3037,50 +3038,23 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             sendDispenseStatus(
-                tnPedido = activeDispensePedidoId,
-                tnPedidoDetalle = current.tnPedidoDetalle,
-                tnPlanogramaCelda = current.item.planogramaCeldaId,
-                tnEstadoDispensacion = tnEstado,
-                tcEstadoDispensacion = tcEstado
+                BackendDispenseStatusRequest(
+                    orderId = activeDispensePedidoId,
+                    orderDetailId = current.tnPedidoDetalle,
+                    planogramCellId = current.item.planogramaCeldaId,
+                    dispenseStatusId = tnEstado,
+                    dispenseStatus = tcEstado
+                )
             )
         }
     }
 
-    private fun sendDispenseStatus(
-        tnPedido: Int,
-        tnPedidoDetalle: Int,
-        tnPlanogramaCelda: Int,
-        tnEstadoDispensacion: Int,
-        tcEstadoDispensacion: String
-    ) {
+    private suspend fun sendDispenseStatus(request: BackendDispenseStatusRequest) {
         if (authHeader.isBlank()) return
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pedido/dispensacion"
-        var connection: HttpURLConnection? = null
         try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                doOutput = true
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-            }
-            val payload = JSONObject().apply {
-                put("tnPedido", tnPedido)
-                put("tnPedidoDetalle", tnPedidoDetalle)
-                put("tnPlanogramaCelda", tnPlanogramaCelda)
-                put("tnEstadoDispensacion", tnEstadoDispensacion)
-                put("tcEstadoDispensacion", tcEstadoDispensacion)
-            }.toString()
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-            connection.responseCode
+            vendingBackendGateway.reportDispenseStatus(request)
         } catch (_: Exception) {
             // no bloquea UX por falla de reporte
-        } finally {
-            connection?.disconnect()
         }
     }
 

@@ -55,6 +55,7 @@ class VendingFlowController(
     private var recoveryStartedAtMs = 0L
     @Volatile private var recoveryCommandRunning = false
     private var ioTimeoutWarningEmitted = false
+    private var ioTimeoutProlongedEmitted = false
     private var ioCancelStartMs = 0L
 
     fun isRunning(): Boolean = running
@@ -106,6 +107,7 @@ class VendingFlowController(
             forcedPickupByDriverZero = false
             recoveryStartedAtMs = 0L
             ioTimeoutWarningEmitted = false
+            ioTimeoutProlongedEmitted = false
             ioCancelStartMs = 0L
             ui.onLog("VEND iniciado para celda: $selectedCell")
             serial.sendHex(select, serialListener)
@@ -148,6 +150,7 @@ class VendingFlowController(
                         seenDoorOpenedFirstTime = false
                         seenProductRemovedDoorOpen = false
                         ioTimeoutWarningEmitted = false
+                        ioTimeoutProlongedEmitted = false
                         ioCancelStartMs = 0L
                         ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
                         schedulePollIoPickup()
@@ -209,6 +212,7 @@ class VendingFlowController(
                 seenDoorOpenedFirstTime = false
                 seenProductRemovedDoorOpen = false
                 ioTimeoutWarningEmitted = false
+                ioTimeoutProlongedEmitted = false
                 ioCancelStartMs = 0L
                 ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
                 schedulePollIoPickup()
@@ -285,6 +289,7 @@ class VendingFlowController(
                 ui.onStep("IO_TIMEOUT_RECOVERED|Puerta habilitada nuevamente")
             }
             ioTimeoutWarningEmitted = false
+            ioTimeoutProlongedEmitted = false
             ioCancelStartMs = 0L
             if (value == IO_AFTER_FIRST_CLICK) {
                 ui.onLog("Puerta chica: 1er click confirmado (0082)")
@@ -306,6 +311,7 @@ class VendingFlowController(
             if (ioTimeoutWarningEmitted) {
                 ui.onStep("IO_TIMEOUT_RECOVERED|Puerta habilitada nuevamente")
                 ioTimeoutWarningEmitted = false
+                ioTimeoutProlongedEmitted = false
                 ioCancelStartMs = 0L
             }
             if (!seenClosedNoProduct) {
@@ -421,6 +427,7 @@ class VendingFlowController(
         seenDoorOpenedFirstTime = false
         seenProductRemovedDoorOpen = false
         ioTimeoutWarningEmitted = false
+        ioTimeoutProlongedEmitted = false
         ioCancelStartMs = 0L
         ui.onStep("PLATFORM_RECOVERY_DONE|io=00C2|decision=RESUME_PICKUP")
         ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
@@ -511,11 +518,9 @@ class VendingFlowController(
                     ioTimeoutWarningEmitted = true
                     ioCancelStartMs = now
                     ui.onError("IO_TIMEOUT|Timeout: puerta atorada")
-                } else if (now - ioCancelStartMs > IO_CANCEL_TIMEOUT_MS) {
-                    waitingPickup = false
-                    h.removeCallbacksAndMessages(null)
-                    ui.onError("IO_TIMEOUT_CANCEL|Timeout anulacion: puerta atorada")
-                    return
+                } else if (!ioTimeoutProlongedEmitted && now - ioCancelStartMs > IO_CANCEL_TIMEOUT_MS) {
+                    ioTimeoutProlongedEmitted = true
+                    ui.onStep("IO_TIMEOUT_PROLONGED|Apertura de puerta tardando mas de lo esperado")
                 }
             }
             if (expectDriverRx || expectIoVendRx || expectIoPickupRx) {

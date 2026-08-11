@@ -142,6 +142,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispenseSuccessDialog: AlertDialog? = null
     private var dispenseErrorDialog: AlertDialog? = null
     private var ioTimeoutDialog: AlertDialog? = null
+    private var ioProlongedWaitDialog: AlertDialog? = null
     private var platformStuckDialog: AlertDialog? = null
     private var platformRecoveringDialog: AlertDialog? = null
     private var tvDispenseSuccessTimer: TextView? = null
@@ -277,8 +278,14 @@ class KioskCatalogActivity : AppCompatActivity() {
                 val code = parts.firstOrNull()?.trim().orEmpty()
                 if (code == "IO_TIMEOUT_RECOVERED") {
                     dismissIoTimeoutDialog()
+                    dismissDispenseIoProlongedWaitDialog()
                     if (dispensingInProgress) {
                         showRetrieveDialogForCurrentItem()
+                    }
+                } else if (code == "IO_TIMEOUT_PROLONGED") {
+                    if (dispensingInProgress) {
+                        dismissIoTimeoutDialog()
+                        showDispenseIoProlongedWaitDialog()
                     }
                 } else if (code == "DRIVER_ZERO_PICKUP_MODE") {
                     dispensingQueue.getOrNull(dispensingCursor)?.driverZeroDelivered = true
@@ -386,6 +393,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseErrorDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseErrorDialog = null
         dismissIoTimeoutDialog()
+        dismissDispenseIoProlongedWaitDialog()
         dismissPlatformStuckDialog()
         dismissPlatformRecoveringDialog()
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
@@ -2983,6 +2991,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseSuccessCloseTimer?.cancel()
         dispenseSuccessCloseTimer = null
         dismissIoTimeoutDialog()
+        dismissDispenseIoProlongedWaitDialog()
         dismissPlatformStuckDialog()
         dismissPlatformRecoveringDialog()
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
@@ -3012,6 +3021,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
+        dismissDispenseIoProlongedWaitDialog()
         dismissPlatformStuckDialog()
         dismissPlatformRecoveringDialog()
         showDispenseSuccessDialog()
@@ -3188,6 +3198,32 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun dismissIoTimeoutDialog() {
         ioTimeoutDialog?.takeIf { it.isShowing }?.dismiss()
         ioTimeoutDialog = null
+    }
+
+    private fun showDispenseIoProlongedWaitDialog() {
+        if (ioProlongedWaitDialog?.isShowing == true) return
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_io_prolonged_wait, null)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+
+        onModalShown()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.90f).toInt()
+        dialog.window?.setLayout(dialogWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
+        ioProlongedWaitDialog = dialog
+        dialog.setOnDismissListener {
+            ioProlongedWaitDialog = null
+            onModalDismissed()
+        }
+    }
+
+    private fun dismissDispenseIoProlongedWaitDialog() {
+        ioProlongedWaitDialog?.takeIf { it.isShowing }?.dismiss()
+        ioProlongedWaitDialog = null
     }
 
     private fun showPlatformStuckDialog(message: String) {

@@ -2,6 +2,7 @@
 
 import android.os.Handler
 import android.os.Looper
+import java.util.concurrent.atomic.AtomicInteger
 
 class VendingFlowController(
     private val serial: SerialManager,
@@ -20,6 +21,24 @@ class VendingFlowController(
 
     interface PlatformRecoveryCommand {
         fun moveToBase(): PlatformRecoveryCommandResult
+
+        fun runManualDoorRetrySequence(
+            shouldContinue: () -> Boolean = { true },
+            runIfActive: (() -> Unit) -> Boolean = { action ->
+                if (shouldContinue()) {
+                    action()
+                    true
+                } else {
+                    false
+                }
+            },
+        ): PlatformRecoveryCommandResult {
+            return PlatformRecoveryCommandResult(
+                ok = false,
+                commandName = "Manual ToY(2000)->ToY(0)",
+                detail = "Manual retry sequence is not available"
+            )
+        }
     }
 
     data class PlatformRecoveryCommandResult(
@@ -54,6 +73,9 @@ class VendingFlowController(
     private var waitingPlatformRecovery = false
     private var recoveryStartedAtMs = 0L
     @Volatile private var recoveryCommandRunning = false
+    @Volatile private var manualDoorRetryRunning = false
+    private val lifecycleLock = Any()
+    private val manualDoorRetryGeneration = AtomicInteger(0)
     private var ioTimeoutWarningEmitted = false
     private var ioTimeoutProlongedEmitted = false
     private var ioCancelStartMs = 0L
@@ -61,16 +83,21 @@ class VendingFlowController(
     fun isRunning(): Boolean = running
     fun isWaitingPickup(): Boolean = waitingPickup
     fun isWaitingPlatformRecovery(): Boolean = waitingPlatformRecovery
+    fun isManualDoorRetryRunning(): Boolean = manualDoorRetryRunning
 
     fun stop() {
-        running = false
-        waitingPickup = false
-        waitingPlatformRecovery = false
-        expectDriverRx = false
-        expectIoVendRx = false
-        expectIoPickupRx = false
-        expectIoRecoveryRx = false
-        recoveryCommandRunning = false
+        synchronized(lifecycleLock) {
+            running = false
+            waitingPickup = false
+            waitingPlatformRecovery = false
+            expectDriverRx = false
+            expectIoVendRx = false
+            expectIoPickupRx = false
+            expectIoRecoveryRx = false
+            recoveryCommandRunning = false
+            manualDoorRetryRunning = false
+            manualDoorRetryGeneration.incrementAndGet()
+        }
         h.removeCallbacksAndMessages(null)
         ui.onLog("STOP: vendtest detenido.")
     }
@@ -338,6 +365,72 @@ class VendingFlowController(
         recoveryStartedAtMs = 0L
         ui.onStep("PLATFORM_MANUAL_RECOVERY|decision=FORCE_TOY_0")
         return startPlatformRecoveryToBase()
+    }
+
+    fun requestManualDoorRetrySequence(): Boolean {
+        if (!waitingPickup || !ioTimeoutProlongedEmitted) {
+            ui.onLog("MANUAL_RETRY_IGNORED: prolonged pickup wait is not active.")
+            return false
+        }
+        if (manualDoorRetryRunning) {
+            ui.onLog("MANUAL_RETRY_IGNORED: retry already running.")
+            return false
+        }
+        val customRecovery = platformRecoveryCommand ?: run {
+            ui.onLog("MANUAL_RETRY_IGNORED: retry command is not configured.")
+            return false
+        }
+
+        manualDoorRetryRunning = true
+        val retryGeneration = manualDoorRetryGeneration.incrementAndGet()
+        val shouldContinueRetry = {
+            synchronized(lifecycleLock) {
+                manualDoorRetryGeneration.get() == retryGeneration && waitingPickup && ioTimeoutProlongedEmitted
+            }
+        }
+        val runIfActive = { action: () -> Unit ->
+            synchronized(lifecycleLock) {
+                if (shouldContinueRetry()) {
+                    action()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        h.removeCallbacks(pollIoPickupRunnable)
+        expectIoPickupRx = false
+        ui.onLog("MANUAL_RETRY_START: close raw serial, open SDK once, ToY(2000), wait, ToY(0), wait, close SDK, reopen raw serial.")
+        ui.onStep("MANUAL_RETRY_START|decision=TOY_2000_THEN_TOY_0")
+
+        Thread({
+            val result = try {
+                customRecovery.runManualDoorRetrySequence(
+                    shouldContinue = shouldContinueRetry,
+                    runIfActive = runIfActive,
+                )
+            } catch (ex: Throwable) {
+                PlatformRecoveryCommandResult(
+                    ok = false,
+                    commandName = "Manual ToY(2000)->ToY(0)",
+                    detail = ex.message ?: ex.javaClass.simpleName
+                )
+            }
+            h.post {
+                if (manualDoorRetryGeneration.get() != retryGeneration) {
+                    return@post
+                }
+                manualDoorRetryRunning = false
+                ui.onLog("MANUAL_RETRY_FINISHED ${result.commandName}: ${if (result.ok) "OK" else "ERROR"} ${result.detail}".trim())
+                ui.onStep("MANUAL_RETRY_FINISHED|ok=${result.ok}")
+                if (shouldContinueRetry()) {
+                    ioStartMs = System.currentTimeMillis() - IO_WAIT_TIMEOUT_MS
+                    ioCancelStartMs = System.currentTimeMillis() - IO_CANCEL_TIMEOUT_MS
+                    schedulePollIoPickup()
+                }
+            }
+        }, "ManualDoorRetrySdk").start()
+        return true
     }
 
     private fun startPlatformRecoveryToBase(): Boolean {

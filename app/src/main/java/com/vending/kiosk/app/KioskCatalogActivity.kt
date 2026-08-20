@@ -3203,11 +3203,31 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun showDispenseIoProlongedWaitDialog() {
         if (ioProlongedWaitDialog?.isShowing == true) return
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_io_prolonged_wait, null)
+        val status = view.findViewById<TextView>(R.id.tvManualRetryStatus)
+        val retryButton = view.findViewById<Button>(R.id.btnManualDoorRetry)
+        val retryProgress = view.findViewById<ProgressBar>(R.id.progressManualDoorRetry)
 
         val dialog = AlertDialog.Builder(this)
             .setView(view)
             .setCancelable(false)
             .create()
+
+        retryButton.setOnClickListener {
+            val wasAlreadyRetrying = vendFlow.isManualDoorRetryRunning()
+            val started = runCatching { vendFlow.requestManualDoorRetrySequence() }.getOrDefault(false)
+            if (!started) {
+                status.text = if (wasAlreadyRetrying || vendFlow.isManualDoorRetryRunning()) {
+                    "Ya estamos reintentando. Por favor espere."
+                } else {
+                    "No se pudo iniciar el reintento manual."
+                }
+                return@setOnClickListener
+            }
+            retryButton.isEnabled = false
+            retryButton.text = "Reintentando..."
+            retryProgress.visibility = View.VISIBLE
+            status.text = "Reintentando... Por favor espere."
+        }
 
         onModalShown()
         dialog.show()

@@ -41,26 +41,40 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:gravity="center"
-            android:text="Esto está tardando más de lo esperado. Por favor, espere mientras seguimos intentando habilitar la puerta de retiro."
+            android:text="Esto está tardando más de lo esperado. Por favor, presione el botón para un reintento manual."
             android:textColor="#0B456F"
             android:textSize="25sp"
             android:textStyle="bold" />
 
         <ProgressBar
+            android:id="@+id/progressManualDoorRetry"
             android:layout_width="64dp"
             android:layout_height="64dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="26dp"
-            android:indeterminateTint="#0B456F" />
+            android:indeterminateTint="#0B456F"
+            android:visibility="gone" />
 
         <TextView
+            android:id="@+id/tvManualRetryStatus"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:gravity="center"
-            android:text="Reintentando"
+            android:text=""
             android:textColor="#0B456F"
             android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnManualDoorRetry"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="18dp"
+            android:backgroundTint="#0B456F"
+            android:text="Reintento manual"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
             android:textStyle="bold" />
 
     </LinearLayout>

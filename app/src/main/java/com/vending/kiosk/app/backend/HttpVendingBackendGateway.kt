@@ -19,7 +19,78 @@ class HttpVendingBackendGateway(
     private val sessionManager: AuthSessionManager
 ) : VendingBackendGateway {
 
-    override suspend fun fetchCatalog(machineId: Long): CatalogResponse = notImplemented()
+    override suspend fun fetchCatalog(machineId: Long): CatalogResponse {
+        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
+        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/$machineId/planograma"
+        var connection: HttpURLConnection? = null
+
+        return try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 12_000
+                readTimeout = 12_000
+                setRequestProperty("Authorization", authHeader)
+                setRequestProperty("Accept", "application/json")
+            }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            if (rawBody.isBlank()) {
+                throw CatalogGatewayException(
+                    message = "Respuesta vacia del backend (HTTP $statusCode)",
+                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
+                )
+            }
+
+            val json = JSONObject(rawBody)
+            val error = json.optInt("error", -1)
+            val status = json.optInt("status", 0)
+            val message = json.optString("message", "Error consultando catalogo")
+
+            if (statusCode !in 200..299 || error != 0 || status != 1) {
+                throw CatalogGatewayException(
+                    message = "$message (HTTP $statusCode)",
+                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
+                )
+            }
+
+            val values = json.optJSONObject("values") ?: JSONObject()
+            val celdasJson =
+                values.optJSONArray("celdas")
+                    ?: values.optJSONArray("celdasPlanograma")
+                    ?: values.optJSONObject("planograma")?.optJSONArray("celdas")
+
+            if (celdasJson == null) {
+                throw CatalogGatewayException("Respuesta sin celdas en values")
+            }
+
+            val cells = parseCatalogCells(celdasJson).sortedWith(
+                compareBy<CatalogResponse.Cell> { parseCellCode(it.cellCode).first }
+                    .thenBy { parseCellCode(it.cellCode).second }
+                    .thenBy { it.cellCode }
+            )
+            val background = parseUiBackground(values)
+            CatalogResponse(
+                cells = cells,
+                promotions = parsePromotions(values),
+                backgroundImageUrl = background.second,
+                backgroundImageId = background.first
+            )
+        } catch (ex: CatalogGatewayException) {
+            throw ex
+        } catch (ex: Exception) {
+            throw CatalogGatewayException("Fallo de conexion: ${ex.message ?: "sin detalle"}")
+        } finally {
+            connection?.disconnect()
+        }
+    }
 
     override suspend fun fetchEnabledPaymentMethods(): List<PaymentMethod> {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
@@ -417,12 +488,6 @@ class HttpVendingBackendGateway(
         }
     }
 
-    private fun notImplemented(): Nothing {
-        throw NotImplementedError(
-            "HttpVendingBackendGateway is a Phase A Part 1 skeleton and is not wired yet."
-        )
-    }
-
     private fun buildBackendErrorMessage(
         statusCode: Int,
         rawBody: String,
@@ -492,6 +557,169 @@ class HttpVendingBackendGateway(
         return details.distinctBy { it.orderDetailId }
     }
 
+    private fun parseCatalogCells(celdasJson: JSONArray): List<CatalogResponse.Cell> {
+        val cells = mutableListOf<CatalogResponse.Cell>()
+
+        for (i in 0 until celdasJson.length()) {
+            val celda = celdasJson.optJSONObject(i) ?: continue
+            val producto = celda.optJSONObject("taProducto") ?: celda.optJSONObject("producto")
+            val inventario = celda.optJSONObject("taInventario") ?: celda.optJSONObject("inventario")
+
+            val esActiva = celda.optInt("tnEsActiva", 0) == 1
+            val estadoCeldaActiva = celda.optInt("tnEstado", 0) == 1
+            val productoActivo = producto?.optInt("tnEstado", 0) == 1
+            val inventarioCantidad = inventario?.optInt("tnCantidad", 0) ?: 0
+            val reservadas = inventario?.optInt("tnCantidadReservada", 0) ?: 0
+            val stockDisponible = (inventarioCantidad - reservadas).coerceAtLeast(0)
+
+            val nombreProducto = producto?.optString("tcNombre", "")?.trim().orEmpty()
+            val precio = producto?.optDouble("tnPrecio", 0.0) ?: 0.0
+            val codigo = celda.optString("tcCodigo", "--")
+            val planogramaCeldaId = when {
+                celda.has("tnPlanogramaCelda") -> celda.optInt("tnPlanogramaCelda", 0)
+                celda.has("tnCelda") -> celda.optInt("tnCelda", 0)
+                else -> 0
+            }
+            val productoId = when {
+                producto?.has("tnProducto") == true -> producto.optInt("tnProducto", 0)
+                celda.has("tnProducto") -> celda.optInt("tnProducto", 0)
+                else -> 0
+            }
+            val (principalId, principalRemoteUrl) = extractPrimaryImage(producto)
+            val (secondaryId, secondaryRemoteUrl) = extractSecondaryImage(producto)
+
+            cells += CatalogResponse.Cell(
+                planogramCellId = planogramaCeldaId,
+                productId = productoId,
+                cellCode = codigo,
+                productName = if (nombreProducto.isBlank()) "Sin producto" else nombreProducto,
+                price = precio,
+                availableStock = stockDisponible,
+                vendible = esActiva && estadoCeldaActiva && producto != null && productoActivo,
+                physicalCell = mapCellCodeToPhysical(codigo) ?: 0,
+                imageUrl = principalRemoteUrl,
+                secondaryImageUrl = secondaryRemoteUrl,
+                imageId = principalId,
+                secondaryImageId = secondaryId,
+                sourceCellId = celda.optInt("tnCelda", i)
+            )
+        }
+
+        return cells
+    }
+
+    private fun parsePromotions(values: JSONObject): List<CatalogResponse.Promotion> {
+        val source =
+            values.optJSONArray("taPresentacionArchivos")
+                ?: values.optJSONObject("presentacion")?.optJSONArray("taPresentacionArchivos")
+                ?: values.optJSONObject("planograma")?.optJSONArray("taPresentacionArchivos")
+                ?: values.optJSONObject("taPresentacion")?.optJSONArray("taPresentacionArchivos")
+                ?: return emptyList()
+
+        val slides = mutableListOf<CatalogResponse.Promotion>()
+        for (index in 0 until source.length()) {
+            val item = source.optJSONObject(index) ?: continue
+            val status = item.optInt("tnEstado", 0)
+            if (status != 1) continue
+            val usageType = item.optString("tcUsoTipo", "").trim()
+            if (usageType.isNotBlank() && !usageType.equals("PROMOCIONAL", ignoreCase = true)) continue
+            val mimeType = item.optString("tcMimeType", "").trim()
+            if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) continue
+            val remoteUrl = item.optString("tcUrl", "").trim()
+            if (remoteUrl.isBlank()) continue
+            val presentationId = item.optInt("tnPresentacionArchivo", index)
+
+            slides += CatalogResponse.Promotion(
+                url = remoteUrl,
+                visualOrder = item.optInt("tnOrdenVisual", Int.MAX_VALUE),
+                id = presentationId
+            )
+        }
+
+        return slides.sortedWith(compareBy<CatalogResponse.Promotion> { it.visualOrder }.thenBy { it.id })
+    }
+
+    private fun parseUiBackground(values: JSONObject): Pair<Int, String> {
+        val source =
+            values.optJSONObject("taFondoUiPrincipal")
+                ?: values.optJSONObject("presentacion")?.optJSONObject("taFondoUiPrincipal")
+                ?: values.optJSONObject("planograma")?.optJSONObject("taFondoUiPrincipal")
+                ?: return 0 to ""
+
+        val status = source.optInt("tnEstado", 0)
+        if (status != 1) return 0 to ""
+        val usageType = source.optString("tcUsoTipo", "").trim()
+        if (usageType.isNotBlank() && !usageType.equals("FONDO_PLANOGRAMA", ignoreCase = true)) return 0 to ""
+        val mimeType = source.optString("tcMimeType", "").trim()
+        if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) return 0 to ""
+        val remoteUrl = source.optString("tcUrl", "").trim()
+        if (remoteUrl.isBlank()) return 0 to ""
+        return source.optInt("tnPresentacionArchivo", 0) to remoteUrl
+    }
+
+    private fun extractPrimaryImage(producto: JSONObject?): Pair<Int, String> {
+        if (producto == null) return 0 to ""
+        val principal = producto.optJSONObject("taImagenPrincipal")
+        val principalId = principal?.optInt("tnProductoArchivo", 0) ?: 0
+        val principalUrl = principal?.optString("tcUrl", "")?.trim().orEmpty()
+        if (principalUrl.isNotBlank()) return principalId to principalUrl
+        return 0 to producto.optString("tcImagenUrlPrincipal", "")?.trim().orEmpty()
+    }
+
+    private fun extractSecondaryImage(producto: JSONObject?): Pair<Int, String> {
+        if (producto == null) return 0 to ""
+        val secondaries = producto.optJSONArray("taImagenesSecundarias")
+        if (secondaries != null) {
+            var chosen: JSONObject? = null
+            var chosenOrder = Int.MAX_VALUE
+            for (index in 0 until secondaries.length()) {
+                val candidate = secondaries.optJSONObject(index) ?: continue
+                val candidateUrl = candidate.optString("tcUrl", "").trim()
+                if (candidateUrl.isBlank()) continue
+                val order = candidate.optInt("tnOrdenVisual", Int.MAX_VALUE)
+                if (chosen == null || order < chosenOrder) {
+                    chosen = candidate
+                    chosenOrder = order
+                }
+            }
+            if (chosen != null) {
+                val id = chosen.optInt("tnProductoArchivo", 0)
+                val url = chosen.optString("tcUrl", "").trim()
+                return id to url
+            }
+        }
+
+        val fallback = producto.optString("tcImagenUrlSecundaria", "").trim()
+        return 0 to fallback
+    }
+
+    private fun mapCellCodeToPhysical(code: String): Int? {
+        val clean = code.trim().uppercase()
+        clean.toIntOrNull()?.let { direct ->
+            if (direct in 10..68) return direct
+        }
+
+        val match = Regex("^([A-F])(\\d{1,2})$").find(clean) ?: return null
+        val letter = match.groupValues[1][0]
+        val column = match.groupValues[2].toIntOrNull() ?: return null
+        if (column !in 1..9) return null
+
+        val rowIndex = letter - 'A'
+        if (rowIndex !in 0..5) return null
+
+        return ((rowIndex + 1) * 10) + (column - 1)
+    }
+
+    private fun parseCellCode(code: String): Pair<String, Int> {
+        val match = Regex("^([A-Za-z]+)(\\d+)$").find(code.trim())
+        if (match != null) {
+            val row = match.groupValues[1].uppercase()
+            val column = match.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE
+            return row to column
+        }
+        return code.uppercase() to Int.MAX_VALUE
+    }
+
     private fun resolvePath(source: JSONObject, path: String): Any? {
         val parts = path.split(".")
         var current: Any? = source
@@ -546,6 +774,11 @@ class CreateOrderQrGatewayException(
 ) : Exception(message)
 
 class PaymentMethodsGatewayException(
+    override val message: String,
+    val unauthorized: Boolean = false
+) : Exception(message)
+
+class CatalogGatewayException(
     override val message: String,
     val unauthorized: Boolean = false
 ) : Exception(message)

@@ -3,7 +3,8 @@ package com.vending.kiosk.integration.backend.models
 data class CatalogResponse(
     val cells: List<Cell>,
     val promotions: List<Promotion>,
-    val backgroundImageUrl: String
+    val backgroundImageUrl: String,
+    val backgroundImageId: Int = 0
 ) {
     data class Cell(
         val planogramCellId: Int,
@@ -15,7 +16,10 @@ data class CatalogResponse(
         val vendible: Boolean,
         val physicalCell: Int,
         val imageUrl: String,
-        val secondaryImageUrl: String
+        val secondaryImageUrl: String,
+        val imageId: Int = 0,
+        val secondaryImageId: Int = 0,
+        val sourceCellId: Int = 0
     )
 
     data class Promotion(

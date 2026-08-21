@@ -42,10 +42,12 @@ import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
+import com.vending.kiosk.app.backend.CatalogGatewayException
 import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
 import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
 import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
+import com.vending.kiosk.integration.backend.models.CatalogResponse as BackendCatalogResponse
 import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest as BackendCreateOrderQrRequest
 import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse as BackendCreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.DispenseStatusRequest as BackendDispenseStatusRequest
@@ -61,7 +63,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -782,14 +783,14 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             this@KioskCatalogActivity.authHeader = initialHeader
-            var result = withContext(Dispatchers.IO) { fetchCatalog(machineId, initialHeader) }
+            var result = withContext(Dispatchers.IO) { fetchCatalog(machineId) }
             if (result is CatalogResult.Error && result.unauthorized) {
                 val refreshedHeader = withContext(Dispatchers.IO) {
                     resolveValidAuthHeader(forceRefresh = true)
                 }
                 if (!refreshedHeader.isNullOrBlank()) {
                     this@KioskCatalogActivity.authHeader = refreshedHeader
-                    result = withContext(Dispatchers.IO) { fetchCatalog(machineId, refreshedHeader) }
+                    result = withContext(Dispatchers.IO) { fetchCatalog(machineId) }
                 }
             }
 
@@ -831,71 +832,64 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun fetchCatalog(machineId: Int, authHeader: String): CatalogResult {
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/$machineId/planograma"
-        var connection: HttpURLConnection? = null
-
+    private suspend fun fetchCatalog(machineId: Int): CatalogResult {
         return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return CatalogResult.Error(
-                    message = "Respuesta vacia del backend (HTTP $statusCode)",
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val json = JSONObject(rawBody)
-            val error = json.optInt("error", -1)
-            val status = json.optInt("status", 0)
-            val message = json.optString("message", "Error consultando catalogo")
-
-            if (statusCode !in 200..299 || error != 0 || status != 1) {
-                return CatalogResult.Error(
-                    message = "$message (HTTP $statusCode)",
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val celdasJson =
-                values.optJSONArray("celdas")
-                    ?: values.optJSONArray("celdasPlanograma")
-                    ?: values.optJSONObject("planograma")?.optJSONArray("celdas")
-
-            if (celdasJson == null) {
-                return CatalogResult.Error("Respuesta sin celdas en values")
-            }
-
-            val celdas = parseCeldas(celdasJson)
-            val promotions = parsePromotions(values)
-            val backgroundImageUrl = parseUiBackgroundUrl(values)
-            val ordenadas = celdas.sortedWith(
-                compareBy<CeldaUi> { parseCellCode(it.codigoCelda).first }
-                    .thenBy { parseCellCode(it.codigoCelda).second }
-                    .thenBy { it.codigoCelda }
-            )
-            CatalogResult.Success(ordenadas, promotions, backgroundImageUrl)
+            mapCatalogResponse(vendingBackendGateway.fetchCatalog(machineId.toLong()))
+        } catch (ex: CatalogGatewayException) {
+            CatalogResult.Error(ex.message ?: "Fallo de conexion: sin detalle", ex.unauthorized)
         } catch (ex: Exception) {
             CatalogResult.Error("Fallo de conexion: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
         }
+    }
+
+    private fun mapCatalogResponse(response: BackendCatalogResponse): CatalogResult.Success {
+        val celdas = response.cells.mapIndexed { index, cell ->
+            val slotBase = when {
+                cell.productId > 0 -> "product_${cell.productId}"
+                else -> "cell_${cell.sourceCellId.takeIf { it != 0 } ?: index}"
+            }
+            CeldaUi(
+                planogramaCeldaId = cell.planogramCellId,
+                productoId = cell.productId,
+                codigoCelda = cell.cellCode,
+                producto = cell.productName,
+                precio = cell.price,
+                stockDisponible = cell.availableStock,
+                vendible = cell.vendible,
+                physicalCell = cell.physicalCell,
+                imagenUrl = resolveImageSourceForCache(
+                    slot = "${slotBase}_principal",
+                    incomingId = cell.imageId,
+                    remoteUrl = cell.imageUrl,
+                    targetSizePx = 480
+                ),
+                imagenUrlSecundaria = resolveImageSourceForCache(
+                    slot = "${slotBase}_secondary",
+                    incomingId = cell.secondaryImageId,
+                    remoteUrl = cell.secondaryImageUrl,
+                    targetSizePx = 480
+                )
+            )
+        }
+        val promotions = response.promotions.map { promo ->
+            PromoSlideUi(
+                url = resolveImageSourceForCache(
+                    slot = "promo_${promo.id}",
+                    incomingId = promo.id,
+                    remoteUrl = promo.url,
+                    targetSizePx = 900
+                ),
+                visualOrder = promo.visualOrder,
+                id = promo.id
+            )
+        }
+        val backgroundImageUrl = resolveImageSourceForCache(
+            slot = "background_main",
+            incomingId = response.backgroundImageId,
+            remoteUrl = response.backgroundImageUrl,
+            targetSizePx = 1440
+        )
+        return CatalogResult.Success(celdas, promotions, backgroundImageUrl)
     }
 
     override fun onUserInteraction() {
@@ -979,67 +973,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun parsePromotions(values: JSONObject): List<PromoSlideUi> {
-        val source =
-            values.optJSONArray("taPresentacionArchivos")
-                ?: values.optJSONObject("presentacion")?.optJSONArray("taPresentacionArchivos")
-                ?: values.optJSONObject("planograma")?.optJSONArray("taPresentacionArchivos")
-                ?: values.optJSONObject("taPresentacion")?.optJSONArray("taPresentacionArchivos")
-                ?: return emptyList()
-
-        val slides = mutableListOf<PromoSlideUi>()
-        for (index in 0 until source.length()) {
-            val item = source.optJSONObject(index) ?: continue
-            val status = item.optInt("tnEstado", 0)
-            if (status != 1) continue
-            val usageType = item.optString("tcUsoTipo", "").trim()
-            if (usageType.isNotBlank() && !usageType.equals("PROMOCIONAL", ignoreCase = true)) continue
-            val mimeType = item.optString("tcMimeType", "").trim()
-            if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) continue
-            val remoteUrl = item.optString("tcUrl", "").trim()
-            if (remoteUrl.isBlank()) continue
-            val presentationId = item.optInt("tnPresentacionArchivo", index)
-            val imageSource = resolveImageSourceForCache(
-                slot = "promo_${presentationId}",
-                incomingId = presentationId,
-                remoteUrl = remoteUrl,
-                targetSizePx = 900
-            )
-
-            slides += PromoSlideUi(
-                url = imageSource,
-                visualOrder = item.optInt("tnOrdenVisual", Int.MAX_VALUE),
-                id = presentationId
-            )
-        }
-
-        return slides.sortedWith(compareBy<PromoSlideUi> { it.visualOrder }.thenBy { it.id })
-    }
-
-    private fun parseUiBackgroundUrl(values: JSONObject): String {
-        val source =
-            values.optJSONObject("taFondoUiPrincipal")
-                ?: values.optJSONObject("presentacion")?.optJSONObject("taFondoUiPrincipal")
-                ?: values.optJSONObject("planograma")?.optJSONObject("taFondoUiPrincipal")
-                ?: return ""
-
-        val status = source.optInt("tnEstado", 0)
-        if (status != 1) return ""
-        val usageType = source.optString("tcUsoTipo", "").trim()
-        if (usageType.isNotBlank() && !usageType.equals("FONDO_PLANOGRAMA", ignoreCase = true)) return ""
-        val mimeType = source.optString("tcMimeType", "").trim()
-        if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) return ""
-        val remoteUrl = source.optString("tcUrl", "").trim()
-        if (remoteUrl.isBlank()) return ""
-        val presentationId = source.optInt("tnPresentacionArchivo", 0)
-        return resolveImageSourceForCache(
-            slot = "background_main",
-            incomingId = presentationId,
-            remoteUrl = remoteUrl,
-            targetSizePx = 1440
-        )
-    }
-
     private fun applyUiBackground(imageUrl: String) {
         if (imageUrl.isBlank()) {
             screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
@@ -1076,42 +1009,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
             }
         }
-    }
-
-    private fun extractPrimaryImage(producto: JSONObject?): Pair<Int, String> {
-        if (producto == null) return 0 to ""
-        val principal = producto.optJSONObject("taImagenPrincipal")
-        val principalId = principal?.optInt("tnProductoArchivo", 0) ?: 0
-        val principalUrl = principal?.optString("tcUrl", "")?.trim().orEmpty()
-        if (principalUrl.isNotBlank()) return principalId to principalUrl
-        return 0 to producto.optString("tcImagenUrlPrincipal", "")?.trim().orEmpty()
-    }
-
-    private fun extractSecondaryImage(producto: JSONObject?): Pair<Int, String> {
-        if (producto == null) return 0 to ""
-        val secondaries = producto.optJSONArray("taImagenesSecundarias")
-        if (secondaries != null) {
-            var chosen: JSONObject? = null
-            var chosenOrder = Int.MAX_VALUE
-            for (index in 0 until secondaries.length()) {
-                val candidate = secondaries.optJSONObject(index) ?: continue
-                val candidateUrl = candidate.optString("tcUrl", "").trim()
-                if (candidateUrl.isBlank()) continue
-                val order = candidate.optInt("tnOrdenVisual", Int.MAX_VALUE)
-                if (chosen == null || order < chosenOrder) {
-                    chosen = candidate
-                    chosenOrder = order
-                }
-            }
-            if (chosen != null) {
-                val id = chosen.optInt("tnProductoArchivo", 0)
-                val url = chosen.optString("tcUrl", "").trim()
-                return id to url
-            }
-        }
-
-        val fallback = producto.optString("tcImagenUrlSecundaria", "").trim()
-        return 0 to fallback
     }
 
     private fun resolveImageSourceForCache(
@@ -1270,74 +1167,6 @@ class KioskCatalogActivity : AppCompatActivity() {
             slide.addView(subtitleView)
             flipper.addView(slide)
         }
-    }
-
-    private fun parseCeldas(celdasJson: JSONArray): List<CeldaUi> {
-        val celdas = mutableListOf<CeldaUi>()
-
-        for (i in 0 until celdasJson.length()) {
-            val celda = celdasJson.optJSONObject(i) ?: continue
-            val producto = celda.optJSONObject("taProducto") ?: celda.optJSONObject("producto")
-            val inventario = celda.optJSONObject("taInventario") ?: celda.optJSONObject("inventario")
-
-            val esActiva = celda.optInt("tnEsActiva", 0) == 1
-            val estadoCeldaActiva = celda.optInt("tnEstado", 0) == 1
-            val productoActivo = producto?.optInt("tnEstado", 0) == 1
-            val inventarioCantidad = inventario?.optInt("tnCantidad", 0) ?: 0
-            val reservadas = inventario?.optInt("tnCantidadReservada", 0) ?: 0
-            val stockDisponible = (inventarioCantidad - reservadas).coerceAtLeast(0)
-
-            val nombreProducto = producto?.optString("tcNombre", "")?.trim().orEmpty()
-            val precio = producto?.optDouble("tnPrecio", 0.0) ?: 0.0
-
-            val codigo = celda.optString("tcCodigo", "--")
-            val planogramaCeldaId = when {
-                celda.has("tnPlanogramaCelda") -> celda.optInt("tnPlanogramaCelda", 0)
-                celda.has("tnCelda") -> celda.optInt("tnCelda", 0)
-                else -> 0
-            }
-            val productoId = when {
-                producto?.has("tnProducto") == true -> producto.optInt("tnProducto", 0)
-                celda.has("tnProducto") -> celda.optInt("tnProducto", 0)
-                else -> 0
-            }
-            val (principalId, principalRemoteUrl) = extractPrimaryImage(producto)
-            val (secondaryId, secondaryRemoteUrl) = extractSecondaryImage(producto)
-            val slotBase = when {
-                productoId > 0 -> "product_${productoId}"
-                else -> "cell_${celda.optInt("tnCelda", i)}"
-            }
-            val imagenPrincipalUrl = resolveImageSourceForCache(
-                slot = "${slotBase}_principal",
-                incomingId = principalId,
-                remoteUrl = principalRemoteUrl,
-                targetSizePx = 480
-            )
-            val imagenSecundariaUrl = resolveImageSourceForCache(
-                slot = "${slotBase}_secondary",
-                incomingId = secondaryId,
-                remoteUrl = secondaryRemoteUrl,
-                targetSizePx = 480
-            )
-
-            val vendible = esActiva && estadoCeldaActiva && producto != null && productoActivo
-            val physicalCell = mapCellCodeToPhysical(codigo) ?: 0
-
-            celdas += CeldaUi(
-                planogramaCeldaId = planogramaCeldaId,
-                productoId = productoId,
-                codigoCelda = codigo,
-                producto = if (nombreProducto.isBlank()) "Sin producto" else nombreProducto,
-                precio = precio,
-                stockDisponible = stockDisponible,
-                vendible = vendible,
-                physicalCell = physicalCell,
-                imagenUrl = imagenPrincipalUrl,
-                imagenUrlSecundaria = imagenSecundariaUrl
-            )
-        }
-
-        return celdas
     }
 
     private fun renderCatalog(celdas: List<CeldaUi>) {
@@ -3551,16 +3380,6 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
-    }
-
-    private fun parseCellCode(code: String): Pair<String, Int> {
-        val match = Regex("^([A-Za-z]+)(\\d+)$").find(code.trim())
-        if (match != null) {
-            val row = match.groupValues[1].uppercase()
-            val column = match.groupValues[2].toIntOrNull() ?: Int.MAX_VALUE
-            return row to column
-        }
-        return code.uppercase() to Int.MAX_VALUE
     }
 
     private fun applyCarouselHeight() {

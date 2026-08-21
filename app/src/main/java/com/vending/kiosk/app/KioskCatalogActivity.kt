@@ -45,7 +45,6 @@ import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
 import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
 import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
-import com.vending.kiosk.app.kiosk.KioskPolicyManager
 import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
 import com.vending.kiosk.integration.backend.models.CatalogResponse as BackendCatalogResponse
 import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest as BackendCreateOrderQrRequest
@@ -90,8 +89,6 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private val authSessionManager by lazy { AuthSessionManager(this) }
     private val vendingBackendGateway by lazy { HttpVendingBackendGateway(authSessionManager) }
-    private val kioskPolicyManager by lazy { KioskPolicyManager(this) }
-
     private var useLegacyCarousel = false
     private val carouselHandler = Handler(Looper.getMainLooper())
     private val carouselIntervalMs = 5_000L

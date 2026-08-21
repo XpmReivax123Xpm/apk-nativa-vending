@@ -42,9 +42,12 @@ import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
+import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
 import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.kiosk.KioskPolicyManager
 import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
+import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest as BackendCreateOrderQrRequest
+import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse as BackendCreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.DispenseStatusRequest as BackendDispenseStatusRequest
 import com.vending.kiosk.integration.backend.models.PaymentMethod as BackendPaymentMethod
 import com.vending.kiosk.integration.backend.models.PaymentStatus as BackendPaymentStatus
@@ -2148,7 +2151,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                         this@KioskCatalogActivity.authHeader = currentHeader
                         var qrResult = createOrderAndGenerateQr(
                             machineId = machineId,
-                            authHeader = currentHeader,
                             paymentMethodId = paymentMethod.id,
                             customerName = DEFAULT_CUSTOMER_NAME,
                             customerPhone = DEFAULT_CUSTOMER_PHONE,
@@ -2161,7 +2163,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                                 this@KioskCatalogActivity.authHeader = refreshedHeader
                                 qrResult = createOrderAndGenerateQr(
                                     machineId = machineId,
-                                    authHeader = refreshedHeader,
                                     paymentMethodId = paymentMethod.id,
                                     customerName = DEFAULT_CUSTOMER_NAME,
                                     customerPhone = DEFAULT_CUSTOMER_PHONE,
@@ -2221,146 +2222,50 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnCancel.isEnabled = !loading
     }
 
-    private fun createOrderAndGenerateQr(
+    private suspend fun createOrderAndGenerateQr(
         machineId: Int,
-        authHeader: String,
         paymentMethodId: Int,
         customerName: String,
         customerPhone: String,
         customerCi: String,
         items: List<PurchaseSelection>
     ): QrGenerationResult {
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/crear-y-generar-qr"
-        var connection: HttpURLConnection? = null
-
         return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 14_000
-                readTimeout = 14_000
-                doOutput = true
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val itemsJson = JSONArray()
-            items.forEach { selection ->
-                itemsJson.put(
-                    JSONObject().apply {
-                        put("tnPlanogramaCelda", selection.item.planogramaCeldaId)
-                        put("tnProducto", selection.item.productoId)
-                        put("tnCantidad", selection.quantity)
+            vendingBackendGateway.createOrderQr(
+                BackendCreateOrderQrRequest(
+                    machineId = machineId,
+                    paymentMethodId = paymentMethodId,
+                    customerName = customerName,
+                    customerPhone = customerPhone,
+                    customerCi = customerCi,
+                    items = items.map { selection ->
+                        BackendCreateOrderQrRequest.Item(
+                            planogramCellId = selection.item.planogramaCeldaId,
+                            productId = selection.item.productoId,
+                            quantity = selection.quantity
+                        )
                     }
                 )
-            }
-
-            val payload = JSONObject().apply {
-                put("tnMaquina", machineId)
-                put("tcNombreCliente", customerName)
-                put("tcTelefonoCliente", customerPhone)
-                put("tcNITCliente", customerCi)
-                put("tnPaymentMethodId", paymentMethodId)
-                put("taItems", itemsJson)
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return QrGenerationResult.Error("Respuesta vacia al generar QR (HTTP $statusCode)")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.opt("error")?.toString()?.toIntOrNull()
-            val backendStatus = json.opt("status")?.toString()?.toIntOrNull()
-
-            if (statusCode !in 200..299) {
-                return QrGenerationResult.Error(
-                    buildBackendErrorMessage(
-                        statusCode = statusCode,
-                        rawBody = rawBody,
-                        fallbackMessage = "Fallo al generar QR"
-                    )
-                )
-            }
-
-            if (backendError != null && backendError != 0) {
-                return QrGenerationResult.Error(
-                    buildBackendErrorMessage(
-                        statusCode = statusCode,
-                        rawBody = rawBody,
-                        fallbackMessage = "Backend reporto error al generar QR"
-                    )
-                )
-            }
-
-            if (backendStatus != null && backendStatus != 1) {
-                return QrGenerationResult.Error(
-                    buildBackendErrorMessage(
-                        statusCode = statusCode,
-                        rawBody = rawBody,
-                        fallbackMessage = "Backend no confirmo estado exitoso al generar QR"
-                    )
-                )
-            }
-
-            val values = json.optJSONObject("values") ?: json
-            val pedidoId = extractIntFrom(
-                values,
-                "taPedido.tnPedido",
-                "pedido.tnPedido",
-                "tnPedido"
-            )
-
-            val qrBase64 = extractStringFrom(
-                values,
-                "taQr.tcQrBase64",
-                "taQr.qrBase64",
-                "qr.tcQrBase64",
-                "qr.qrBase64",
-                "tcQrBase64",
-                "qrBase64"
-            )
-
-            val expiration = extractStringFrom(
-                values,
-                "taQr.ltExpirationDate",
-                "taQr.expirationDate",
-                "qr.ltExpirationDate",
-                "qr.expirationDate",
-                "ltExpirationDate",
-                "expirationDate"
-            )
-
-            if (pedidoId <= 0) {
-                return QrGenerationResult.Error("Respuesta sin tnPedido valido. Body: $rawBody")
-            }
-            if (qrBase64.isBlank()) {
-                return QrGenerationResult.Error("Respuesta sin QR base64. Body: $rawBody")
-            }
-
-            QrGenerationResult.Success(
-                pedidoId = pedidoId,
-                qrBase64 = qrBase64,
-                expiration = expiration,
-                detalles = extractPedidoDetalles(values)
-            )
+            ).toQrGenerationSuccess()
+        } catch (ex: CreateOrderQrGatewayException) {
+            QrGenerationResult.Error(ex.message ?: "Fallo de conexion al generar QR: sin detalle")
         } catch (ex: Exception) {
             QrGenerationResult.Error("Fallo de conexion al generar QR: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
         }
+    }
+
+    private fun BackendCreateOrderQrResponse.toQrGenerationSuccess(): QrGenerationResult.Success {
+        return QrGenerationResult.Success(
+            pedidoId = orderId,
+            qrBase64 = qrBase64,
+            expiration = expiration,
+            detalles = details.map { detail ->
+                PedidoDetalleRef(
+                    tnPedidoDetalle = detail.orderDetailId,
+                    tnPlanogramaCelda = detail.planogramCellId
+                )
+            }
+        )
     }
 
     private suspend fun loadEnabledPaymentMethods(): PaymentMethodsResult {
@@ -2409,105 +2314,6 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun BackendPaymentMethod.toPaymentMethodOption(): PaymentMethodOption {
         return PaymentMethodOption(id = id, label = label)
-    }
-
-    private fun extractIntFrom(source: JSONObject?, vararg paths: String): Int {
-        if (source == null) return 0
-        for (path in paths) {
-            val value = resolvePath(source, path)
-            when (value) {
-                is Number -> return value.toInt()
-                is String -> value.toIntOrNull()?.let { return it }
-            }
-        }
-        return 0
-    }
-
-    private fun extractStringFrom(source: JSONObject?, vararg paths: String): String {
-        if (source == null) return ""
-        for (path in paths) {
-            val value = resolvePath(source, path)
-            val text = value?.toString()?.trim().orEmpty()
-            if (text.isNotBlank()) return text
-        }
-        return ""
-    }
-
-    private fun extractPedidoDetalles(values: JSONObject): List<PedidoDetalleRef> {
-        val arrays = listOf(
-            values.optJSONArray("taPedidoDetalle"),
-            values.optJSONArray("taPedidoDetalles"),
-            values.optJSONObject("taPedido")?.optJSONArray("taPedidoDetalle"),
-            values.optJSONObject("pedido")?.optJSONArray("taPedidoDetalle")
-        )
-
-        val detalles = mutableListOf<PedidoDetalleRef>()
-        arrays.forEach { array ->
-            if (array == null) return@forEach
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                val tnPedidoDetalle = extractIntFrom(
-                    item,
-                    "tnPedidoDetalle",
-                    "tnPedidoDetalleId"
-                )
-                if (tnPedidoDetalle <= 0) continue
-                val tnPlanogramaCelda = extractIntFrom(
-                    item,
-                    "tnPlanogramaCelda",
-                    "tnPlanogramaCeldaId"
-                )
-                detalles += PedidoDetalleRef(
-                    tnPedidoDetalle = tnPedidoDetalle,
-                    tnPlanogramaCelda = tnPlanogramaCelda
-                )
-            }
-        }
-        return detalles.distinctBy { it.tnPedidoDetalle }
-    }
-
-    private fun resolvePath(source: JSONObject, path: String): Any? {
-        val parts = path.split(".")
-        var current: Any? = source
-        for (part in parts) {
-            current = when (current) {
-                is JSONObject -> if (current.has(part) && !current.isNull(part)) current.opt(part) else null
-                else -> null
-            }
-            if (current == null) return null
-        }
-        return current
-    }
-
-    private fun buildBackendErrorMessage(statusCode: Int, rawBody: String, fallbackMessage: String): String {
-        return try {
-            val json = JSONObject(rawBody)
-            val message = json.optString("message", fallbackMessage).ifBlank { fallbackMessage }
-            val errorsObj = json.optJSONObject("errors")
-            if (errorsObj == null || errorsObj.length() == 0) {
-                "$message (HTTP $statusCode)"
-            } else {
-                val details = mutableListOf<String>()
-                val keys = errorsObj.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val value = errorsObj.opt(key)
-                    when (value) {
-                        is JSONArray -> {
-                            val joined = (0 until value.length()).joinToString("; ") { idx ->
-                                value.optString(idx)
-                            }
-                            details += "$key: $joined"
-                        }
-
-                        else -> details += "$key: ${value?.toString().orEmpty()}"
-                    }
-                }
-                "$message\n${details.joinToString("\n")}".trim()
-            }
-        } catch (_: Exception) {
-            if (rawBody.isBlank()) "$fallbackMessage (HTTP $statusCode)" else rawBody
-        }
     }
 
     private fun openQrDialog(

@@ -8,15 +8,25 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
     private val authSessionManager by lazy { AuthSessionManager(this) }
+    private var userSelectedMainMenuAction = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        val startupLoadingView = findViewById<View>(R.id.startupLoadingView)
+        val mainMenuContent = findViewById<View>(R.id.mainMenuContent)
+
+        fun showMainMenu() {
+            startupLoadingView.visibility = View.GONE
+            mainMenuContent.visibility = View.VISIBLE
+        }
 
         val credentials = authSessionManager.getMachineCredentials()
         val autoResumeEnabled = authSessionManager.isKioskAutoResumeEnabled()
@@ -25,11 +35,39 @@ class MainActivity : AppCompatActivity() {
             credentials.machineCode.isNotBlank() &&
             credentials.machinePin.isNotBlank()
 
-        if (autoResumeEnabled && hasMachineData) {
-            lifecycleScope.launch {
+        lifecycleScope.launch {
+            delay(AUTO_RESUME_BOOT_DELAY_MS)
+
+            if (autoResumeEnabled && hasMachineData) {
+                if (userSelectedMainMenuAction) {
+                    Log.d(TAG, "Auto-resume aborted: user selected a main menu action")
+                    showMainMenu()
+                    return@launch
+                }
+
+                val delayedCredentials = authSessionManager.getMachineCredentials()
+                val delayedAutoResumeEnabled = authSessionManager.isKioskAutoResumeEnabled()
+                val delayedHasMachineData = delayedCredentials != null &&
+                    delayedCredentials.machineId > 0 &&
+                    delayedCredentials.machineCode.isNotBlank() &&
+                    delayedCredentials.machinePin.isNotBlank()
+
+                if (!delayedAutoResumeEnabled || !delayedHasMachineData) {
+                    Log.d(TAG, "Auto-resume aborted after boot delay: saved machine data changed")
+                    showMainMenu()
+                    return@launch
+                }
+
                 val refresh = withContext(Dispatchers.IO) {
                     MachineAuthGateway.refreshSessionWithStoredMachineCredentials(authSessionManager)
                 }
+
+                if (userSelectedMainMenuAction) {
+                    Log.d(TAG, "Auto-resume aborted after refresh: user selected a main menu action")
+                    showMainMenu()
+                    return@launch
+                }
+
                 when (refresh) {
                     is MachineLoginResult.Success -> {
                         val refreshedCredentials = authSessionManager.getMachineCredentials()
@@ -37,6 +75,7 @@ class MainActivity : AppCompatActivity() {
                         val targetMachineCode = refreshedCredentials?.machineCode ?: refresh.machineCode
                         if (targetMachineId <= 0 || targetMachineCode.isBlank()) {
                             Log.w(TAG, "Auto-resume aborted after refresh: invalid machine target data")
+                            showMainMenu()
                             return@launch
                         }
                         val machineLocation = authSessionManager.getMachineLocation().orEmpty()
@@ -54,19 +93,21 @@ class MainActivity : AppCompatActivity() {
 
                     is MachineLoginResult.Error -> {
                         Log.w(TAG, "Auto-resume refresh failed: ${refresh.message}. Showing normal menu.")
+                        showMainMenu()
                     }
                 }
+            } else {
+                val reason = when {
+                    !autoResumeEnabled -> "auto-resume disabled"
+                    credentials == null -> "missing machine credentials"
+                    credentials.machineId <= 0 -> "invalid machine_id"
+                    credentials.machineCode.isBlank() -> "missing machine_code"
+                    credentials.machinePin.isBlank() -> "missing machine_pin"
+                    else -> "unknown"
+                }
+                Log.d(TAG, "Auto-resume skipped after startup delay: $reason")
+                showMainMenu()
             }
-        } else {
-            val reason = when {
-                !autoResumeEnabled -> "auto-resume disabled"
-                credentials == null -> "missing machine credentials"
-                credentials.machineId <= 0 -> "invalid machine_id"
-                credentials.machineCode.isBlank() -> "missing machine_code"
-                credentials.machinePin.isBlank() -> "missing machine_pin"
-                else -> "unknown"
-            }
-            Log.d(TAG, "Auto-resume skipped: $reason")
         }
 
         val btnVendingKiosk = findViewById<View>(R.id.btnVendingKiosk)
@@ -75,15 +116,19 @@ class MainActivity : AppCompatActivity() {
         val btnExitApp = findViewById<View>(R.id.btnExitApp)
 
         btnVendingKiosk.setOnClickListener {
+            userSelectedMainMenuAction = true
             startActivity(Intent(this, KioskLoginActivity::class.java))
         }
         btnVendingTester.setOnClickListener {
+            userSelectedMainMenuAction = true
             startActivity(Intent(this, VendingTesterActivity::class.java))
         }
         btnVendingCalibrator.setOnClickListener {
+            userSelectedMainMenuAction = true
             startActivity(Intent(this, VendingCalibratorActivity::class.java))
         }
         btnExitApp.setOnClickListener {
+            userSelectedMainMenuAction = true
             val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_HOME)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -95,5 +140,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        private const val AUTO_RESUME_BOOT_DELAY_MS = 5_000L
     }
 }

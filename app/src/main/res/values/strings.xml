@@ -7,4 +7,5 @@
     <string name="mode_vending_kiosk">Vending Kiosk</string>
     <string name="mode_vending_tester">Vending Tester</string>
     <string name="mode_vending_calibrator">Vending Calibrator</string>
+    <string name="startup_loading_title">Iniciando...</string>
 </resources>

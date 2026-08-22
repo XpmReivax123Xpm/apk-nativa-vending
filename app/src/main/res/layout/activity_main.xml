@@ -5,12 +5,14 @@
     android:background="@drawable/bg_mode_selector_screen">
 
     <LinearLayout
+        android:id="@+id/mainMenuContent"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_margin="14dp"
         android:background="@drawable/bg_mode_frame"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="12dp"
+        android:visibility="gone">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -180,6 +182,29 @@
             android:textAllCaps="false"
             android:textColor="#FFFFFF"
             android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/startupLoadingView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <ProgressBar
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:indeterminate="true" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:fontFamily="sans-serif-black"
+            android:text="@string/startup_loading_title"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp" />
     </LinearLayout>
 </FrameLayout>
 

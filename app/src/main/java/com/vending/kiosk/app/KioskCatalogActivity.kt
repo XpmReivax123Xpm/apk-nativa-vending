@@ -2394,11 +2394,30 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             if (isActive) {
+                progressQr.visibility = View.VISIBLE
+                btnClose.isEnabled = false
+                tvQrStatus.text = "Tiempo de espera agotado. Cancelando pedido..."
+                val cancelResult = withContext(Dispatchers.IO) {
+                    val currentHeader = resolveValidAuthHeader(forceRefresh = false)
+                        ?: return@withContext OrderCancelResult.Error("Sesion de maquina expirada")
+                    this@KioskCatalogActivity.authHeader = currentHeader
+                    cancelOrder(result.pedidoId)
+                }
+
+                if (cancelResult is OrderCancelResult.Error && isUnauthorizedMessage(cancelResult.message)) {
+                    dialog.dismiss()
+                    handleAuthSessionLost()
+                    return@launch
+                }
+
                 progressQr.visibility = View.GONE
-                tvQrStatus.text = "Tiempo de espera agotado"
                 dialog.dismiss()
                 refreshCatalogAndClearCart()
-                Toast.makeText(this@KioskCatalogActivity, "QR vencido, vuelve a intentar", Toast.LENGTH_SHORT).show()
+                val message = when (cancelResult) {
+                    is OrderCancelResult.Success -> cancelResult.message.ifBlank { "QR vencido. Pedido cancelado." }
+                    is OrderCancelResult.Error -> "QR vencido. No se pudo notificar la cancelacion."
+                }
+                Toast.makeText(this@KioskCatalogActivity, message, Toast.LENGTH_SHORT).show()
             }
         }
     }

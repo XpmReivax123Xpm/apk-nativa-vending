@@ -59,6 +59,9 @@ class VendingFlowController(
     private var seenPickupProgress = false
     private var seenDoorOpenedFirstTime = false
     private var seenProductRemovedDoorOpen = false
+    private var pickupWhiteDoorVariantMode = false
+    private var seenPickupWhiteDoorVariant = false
+    private var delayedPickupCompletionScheduled = false
     @Volatile private var expectDriverRx = false
     @Volatile private var expectIoVendRx = false
     @Volatile private var expectIoPickupRx = false
@@ -78,7 +81,6 @@ class VendingFlowController(
     private val manualDoorRetryGeneration = AtomicInteger(0)
     private var ioTimeoutWarningEmitted = false
     private var ioTimeoutProlongedEmitted = false
-    private var ioCancelStartMs = 0L
 
     fun isRunning(): Boolean = running
     fun isWaitingPickup(): Boolean = waitingPickup
@@ -125,6 +127,9 @@ class VendingFlowController(
             seenPickupProgress = false
             seenDoorOpenedFirstTime = false
             seenProductRemovedDoorOpen = false
+            pickupWhiteDoorVariantMode = false
+            seenPickupWhiteDoorVariant = false
+            delayedPickupCompletionScheduled = false
             lastVendIoValue = null
             vendStage = 0
             driverZeroCount = 0
@@ -135,7 +140,6 @@ class VendingFlowController(
             recoveryStartedAtMs = 0L
             ioTimeoutWarningEmitted = false
             ioTimeoutProlongedEmitted = false
-            ioCancelStartMs = 0L
             ui.onLog("VEND iniciado para celda: $selectedCell")
             serial.sendHex(select, serialListener)
             ui.onLog("TX SELECT celda $selectedCell: $select")
@@ -176,9 +180,11 @@ class VendingFlowController(
                         seenPickupProgress = false
                         seenDoorOpenedFirstTime = false
                         seenProductRemovedDoorOpen = false
+                        pickupWhiteDoorVariantMode = false
+                        seenPickupWhiteDoorVariant = false
+                        delayedPickupCompletionScheduled = false
                         ioTimeoutWarningEmitted = false
                         ioTimeoutProlongedEmitted = false
-                        ioCancelStartMs = 0L
                         ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
                         schedulePollIoPickup()
                         return
@@ -238,9 +244,11 @@ class VendingFlowController(
                 seenPickupProgress = false
                 seenDoorOpenedFirstTime = false
                 seenProductRemovedDoorOpen = false
+                pickupWhiteDoorVariantMode = false
+                seenPickupWhiteDoorVariant = false
+                delayedPickupCompletionScheduled = false
                 ioTimeoutWarningEmitted = false
                 ioTimeoutProlongedEmitted = false
-                ioCancelStartMs = 0L
                 ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
                 schedulePollIoPickup()
                 return
@@ -294,13 +302,17 @@ class VendingFlowController(
         }
         if (now - ioStableSinceMs < IO_STABLE_MS) return
 
-        if (value == IO_DOOR_OPEN_FIRST_TIME && !seenDoorOpenedFirstTime) {
-            seenDoorOpenedFirstTime = true
-            ui.onLog("Puerta chica: abierta por primera vez (0002)")
+        if (isPickupWhiteDoorVariant(value)) {
+            seenPickupWhiteDoorVariant = true
         }
-        if (value == IO_PRODUCT_REMOVED_DOOR_OPEN && !seenProductRemovedDoorOpen) {
+
+        if (isPickupDoorOpenFirstTime(value) && !seenDoorOpenedFirstTime) {
+            seenDoorOpenedFirstTime = true
+            ui.onLog("Puerta chica: abierta por primera vez (${formatIoLogValue(value)})")
+        }
+        if (isPickupProductRemovedDoorOpen(value) && !seenProductRemovedDoorOpen) {
             seenProductRemovedDoorOpen = true
-            ui.onLog("Puerta chica: producto retirado, puerta abierta (0012)")
+            ui.onLog("Puerta chica: producto retirado, puerta abierta (${formatIoLogValue(value)})")
         }
 
         if (value == IO_TRANSITION_42) {
@@ -317,34 +329,36 @@ class VendingFlowController(
             }
             ioTimeoutWarningEmitted = false
             ioTimeoutProlongedEmitted = false
-            ioCancelStartMs = 0L
-            if (value == IO_AFTER_FIRST_CLICK) {
-                ui.onLog("Puerta chica: 1er click confirmado (0082)")
-            } else if (value == IO_DOOR_OPEN_FIRST_TIME) {
-                ui.onLog("Puerta chica: recuperacion por apertura inicial (0002)")
-            } else if (value == IO_PRODUCT_REMOVED_DOOR_OPEN) {
-                ui.onLog("Puerta chica: recuperacion por producto retirado (0012)")
-            } else if (value == IO_DOOR_CLOSED_NO_PROD) {
-                ui.onLog("Puerta chica: recuperacion por cerrada sin producto (0092)")
-            } else if (value == IO_SECOND_CLICK) {
-                ui.onLog("Puerta chica: recuperacion directa por fin de retiro (00D2)")
+            if (isPickupFirstClick(value)) {
+                ui.onLog("Puerta chica: 1er click confirmado (${formatIoLogValue(value)})")
+            } else if (isPickupDoorOpenFirstTime(value)) {
+                ui.onLog("Puerta chica: recuperacion por apertura inicial (${formatIoLogValue(value)})")
+            } else if (isPickupProductRemovedDoorOpen(value)) {
+                ui.onLog("Puerta chica: recuperacion por producto retirado (${formatIoLogValue(value)})")
+            } else if (isPickupClosedNoProduct(value)) {
+                ui.onLog("Puerta chica: recuperacion por cerrada sin producto (${formatIoLogValue(value)})")
+            } else if (isPickupSecondClick(value)) {
+                ui.onLog("Puerta chica: recuperacion directa por fin de retiro (${formatIoLogValue(value)})")
             }
         }
-        if (value == IO_DOOR_CLOSED_NO_PROD && !seenClosedNoProduct) {
+        if (isPickupClosedNoProduct(value) && !seenClosedNoProduct) {
             seenClosedNoProduct = true
-            ui.onLog("Puerta chica: cerrada SIN producto (0092)")
+            ui.onLog("Puerta chica: cerrada SIN producto (${formatIoLogValue(value)})")
         }
-        if (value == IO_SECOND_CLICK) {
+        if (isPickupSecondClick(value)) {
             if (ioTimeoutWarningEmitted) {
                 ui.onStep("IO_TIMEOUT_RECOVERED|Puerta habilitada nuevamente")
                 ioTimeoutWarningEmitted = false
                 ioTimeoutProlongedEmitted = false
-                ioCancelStartMs = 0L
             }
             if (!seenClosedNoProduct) {
-                ui.onLog("Puerta chica: D2 recibido sin 92 estable previo (cierre forzado por fin de retiro)")
+                ui.onLog("Puerta chica: ${formatIoValue(value)} recibido sin 92 estable previo (cierre forzado por fin de retiro)")
             }
-            ui.onLog("Puerta chica: 2do click confirmado (00D2) -> FIN")
+            if (pickupWhiteDoorVariantMode && seenPickupWhiteDoorVariant) {
+                scheduleDelayedPickupCompletion(value)
+                return
+            }
+            ui.onLog("Puerta chica: 2do click confirmado (${formatIoLogValue(value)}) -> FIN")
             waitingPickup = false
             h.removeCallbacksAndMessages(null)
             ui.onDone()
@@ -424,8 +438,10 @@ class VendingFlowController(
                 ui.onLog("MANUAL_RETRY_FINISHED ${result.commandName}: ${if (result.ok) "OK" else "ERROR"} ${result.detail}".trim())
                 ui.onStep("MANUAL_RETRY_FINISHED|ok=${result.ok}")
                 if (shouldContinueRetry()) {
+                    pickupWhiteDoorVariantMode = true
+                    seenPickupWhiteDoorVariant = false
+                    delayedPickupCompletionScheduled = false
                     ioStartMs = System.currentTimeMillis() - IO_WAIT_TIMEOUT_MS
-                    ioCancelStartMs = System.currentTimeMillis() - IO_CANCEL_TIMEOUT_MS
                     schedulePollIoPickup()
                 }
             }
@@ -519,9 +535,11 @@ class VendingFlowController(
         seenPickupProgress = false
         seenDoorOpenedFirstTime = false
         seenProductRemovedDoorOpen = false
+        pickupWhiteDoorVariantMode = false
+        seenPickupWhiteDoorVariant = false
+        delayedPickupCompletionScheduled = false
         ioTimeoutWarningEmitted = false
         ioTimeoutProlongedEmitted = false
-        ioCancelStartMs = 0L
         ui.onStep("PLATFORM_RECOVERY_DONE|io=00C2|decision=RESUME_PICKUP")
         ui.onNeedRetrieve("Retire su producto. Esperando cierre sin producto y segundo click.")
         schedulePollIoPickup()
@@ -536,6 +554,27 @@ class VendingFlowController(
 
     private fun formatIoValue(value: Int): String {
         return value.toString(16).uppercase().padStart(2, '0')
+    }
+
+    private fun formatIoLogValue(value: Int): String = "00${formatIoValue(value)}"
+
+    private fun scheduleDelayedPickupCompletion(value: Int) {
+        if (delayedPickupCompletionScheduled) return
+        delayedPickupCompletionScheduled = true
+        ui.onStep("MANUAL_RETRY_FINAL_IO_DELAY|io=${formatIoLogValue(value)}|delayMs=$MANUAL_RETRY_FINAL_DELAY_MS")
+        ui.onLog("Puerta chica: 2do click confirmado (${formatIoLogValue(value)}) tras retry manual -> esperando 6s antes de continuar")
+        h.removeCallbacks(pollIoPickupRunnable)
+        expectIoPickupRx = false
+        h.postDelayed({
+            if (!waitingPickup || !pickupWhiteDoorVariantMode || !delayedPickupCompletionScheduled) return@postDelayed
+            ui.onLog("Puerta chica: espera final post retry manual completada -> FIN")
+            waitingPickup = false
+            pickupWhiteDoorVariantMode = false
+            seenPickupWhiteDoorVariant = false
+            delayedPickupCompletionScheduled = false
+            h.removeCallbacksAndMessages(null)
+            ui.onDone()
+        }, MANUAL_RETRY_FINAL_DELAY_MS)
     }
 
     private fun advanceVendStage(newStage: Int, logMsg: String) {
@@ -561,11 +600,41 @@ class VendingFlowController(
     }
 
     private fun isValidPickupProgressValue(value: Int): Boolean {
-        return value == IO_AFTER_FIRST_CLICK ||
-            value == IO_DOOR_OPEN_FIRST_TIME ||
-            value == IO_PRODUCT_REMOVED_DOOR_OPEN ||
-            value == IO_DOOR_CLOSED_NO_PROD ||
-            value == IO_SECOND_CLICK
+        return isPickupFirstClick(value) ||
+            isPickupDoorOpenFirstTime(value) ||
+            isPickupProductRemovedDoorOpen(value) ||
+            isPickupClosedNoProduct(value) ||
+            isPickupSecondClick(value)
+    }
+
+    private fun isPickupFirstClick(value: Int): Boolean {
+        return value == IO_AFTER_FIRST_CLICK || (pickupWhiteDoorVariantMode && value == IO_AFTER_FIRST_CLICK_WHITE_DOOR_OPEN)
+    }
+
+    private fun isPickupDoorOpenFirstTime(value: Int): Boolean {
+        return value == IO_DOOR_OPEN_FIRST_TIME || (pickupWhiteDoorVariantMode && value == IO_DOOR_OPEN_FIRST_TIME_WHITE_DOOR_OPEN)
+    }
+
+    private fun isPickupProductRemovedDoorOpen(value: Int): Boolean {
+        return value == IO_PRODUCT_REMOVED_DOOR_OPEN || (pickupWhiteDoorVariantMode && value == IO_PRODUCT_REMOVED_DOOR_OPEN_WHITE_DOOR_OPEN)
+    }
+
+    private fun isPickupClosedNoProduct(value: Int): Boolean {
+        return value == IO_DOOR_CLOSED_NO_PROD || (pickupWhiteDoorVariantMode && value == IO_DOOR_CLOSED_NO_PROD_WHITE_DOOR_OPEN)
+    }
+
+    private fun isPickupSecondClick(value: Int): Boolean {
+        return value == IO_SECOND_CLICK || (pickupWhiteDoorVariantMode && value == IO_SECOND_CLICK_WHITE_DOOR_OPEN)
+    }
+
+    private fun isPickupWhiteDoorVariant(value: Int): Boolean {
+        return pickupWhiteDoorVariantMode && (
+            value == IO_AFTER_FIRST_CLICK_WHITE_DOOR_OPEN ||
+                value == IO_DOOR_OPEN_FIRST_TIME_WHITE_DOOR_OPEN ||
+                value == IO_PRODUCT_REMOVED_DOOR_OPEN_WHITE_DOOR_OPEN ||
+                value == IO_DOOR_CLOSED_NO_PROD_WHITE_DOOR_OPEN ||
+                value == IO_SECOND_CLICK_WHITE_DOOR_OPEN
+            )
     }
 
     private val pollDriverRunnable = object : Runnable {
@@ -607,11 +676,8 @@ class VendingFlowController(
             val now = System.currentTimeMillis()
             val elapsed = now - ioStartMs
             if (!seenPickupProgress && elapsed > IO_WAIT_TIMEOUT_MS) {
-                if (!ioTimeoutWarningEmitted) {
+                if (!ioTimeoutProlongedEmitted) {
                     ioTimeoutWarningEmitted = true
-                    ioCancelStartMs = now
-                    ui.onError("IO_TIMEOUT|Timeout: puerta atorada")
-                } else if (!ioTimeoutProlongedEmitted && now - ioCancelStartMs > IO_CANCEL_TIMEOUT_MS) {
                     ioTimeoutProlongedEmitted = true
                     ui.onStep("IO_TIMEOUT_PROLONGED|Apertura de puerta tardando mas de lo esperado")
                 }
@@ -652,23 +718,28 @@ class VendingFlowController(
         private const val POLL_IO_VEND_MS = 1_200L
         private const val POLL_IO_PICKUP_MS = 420L
         private const val IO_WAIT_TIMEOUT_MS = 10_000L
-        private const val IO_CANCEL_TIMEOUT_MS = 120_000L
         private const val PLATFORM_DOWN_FAST_DONE_MS = 3_000L
         private const val PLATFORM_DOWN_CRUSHED_TIMEOUT_MS = 12_000L
         private const val PLATFORM_RECOVERY_TIMEOUT_MS = 120_000L
         private const val IO_STABLE_MS = 600L
         private const val VEND_START_DELAY_MS = 350L
         private const val POLL_IO_RECOVERY_MS = 450L
+        private const val MANUAL_RETRY_FINAL_DELAY_MS = 6_000L
 
         private const val IO_DOOR_OPEN_FIRST_TIME = 2 // este es el 02
+        private const val IO_DOOR_OPEN_FIRST_TIME_WHITE_DOOR_OPEN = 10 // este es el 0A
         private const val IO_PRODUCT_REMOVED_DOOR_OPEN = 18 // este es el 12
+        private const val IO_PRODUCT_REMOVED_DOOR_OPEN_WHITE_DOOR_OPEN = 26 // este es el 1A
         private const val IO_AFTER_FIRST_CLICK = 130 // este es el 82
+        private const val IO_AFTER_FIRST_CLICK_WHITE_DOOR_OPEN = 138 // este es el 8A
         private const val IO_DOOR_CLOSED_NO_PROD = 146 // este es el 92
+        private const val IO_DOOR_CLOSED_NO_PROD_WHITE_DOOR_OPEN = 154 // este es el 9A
         private const val IO_PLATFORM_UP = 216
         private const val IO_PLATFORM_DOWN = 200
         private const val IO_WHITE_DOOR_OPENING = 210
         private const val IO_WHITE_DOOR_CLOSING = 194  // este es el C2
         private const val IO_SECOND_CLICK = 210 // este es el D2
+        private const val IO_SECOND_CLICK_WHITE_DOOR_OPEN = 218 // este es el DA
         private const val IO_TRANSITION_42 = 66 // este es el 42
         private const val IO_TRANSITION_52 = 82 // este es el 52
     }

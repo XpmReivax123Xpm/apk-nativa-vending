@@ -46,6 +46,7 @@ import com.vending.kiosk.app.ui.catalog.CartBarView
 import com.vending.kiosk.app.ui.catalog.CartDialogLine
 import com.vending.kiosk.app.ui.catalog.CartDialogView
 import com.vending.kiosk.app.ui.catalog.ProductDialogView
+import com.vending.kiosk.app.ui.dispense.DispenseDialogView
 import com.vending.kiosk.app.ui.payment.CheckoutDialogView
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogOption
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogView
@@ -141,13 +142,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var qrPollingJob: Job? = null
 
     private var dispenseDialog: AlertDialog? = null
-    private var tvDispenseStatus: TextView? = null
-    private var tvDispenseTitle: TextView? = null
-    private var tvDispenseProgress: TextView? = null
-    private var tvDispenseProductName: TextView? = null
-    private var ivDispenseProduct: ImageView? = null
-    private var tvDispenseTimer: TextView? = null
-    private var btnDispenseClose: Button? = null
+    private var dispenseDialogView: DispenseDialogView? = null
     private var dispenseSuccessCloseTimer: CountDownTimer? = null
     private var dispenseSuccessDialog: AlertDialog? = null
     private var dispenseErrorDialog: AlertDialog? = null
@@ -228,7 +223,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             interactionMonitor.appendBitacora(msg)
             if (dispensingInProgress && msg.startsWith("TX:")) {
                 runOnUiThread {
-                    tvDispenseStatus?.text = "Espera un momento, por favor..."
+                    dispenseDialogView?.renderStatus("Espera un momento, por favor...")
                 }
             }
         }
@@ -252,9 +247,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                     )
                     val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
                     showRetrieveDialogForCurrentItem()
-                    tvDispenseStatus?.post {
-                        tvDispenseStatus?.text = "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
-                    }
+                    dispenseDialogView?.postRenderStatus(
+                        "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
+                    )
                 }
             }
         }
@@ -2233,31 +2228,28 @@ class KioskCatalogActivity : AppCompatActivity() {
             return
         }
 
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_progress, null)
-        tvDispenseTitle = view.findViewById(R.id.tvDispenseTitle)
-        tvDispenseProgress = view.findViewById(R.id.tvDispenseProgress)
-        tvDispenseProductName = view.findViewById(R.id.tvDispenseProductName)
-        ivDispenseProduct = view.findViewById(R.id.ivDispenseProduct)
-        tvDispenseStatus = view.findViewById(R.id.tvDispenseStatus)
-        tvDispenseTimer = view.findViewById(R.id.tvDispenseTimer)
-        btnDispenseClose = view.findViewById(R.id.btnDispenseClose)
+        lateinit var dialog: AlertDialog
+        val dispenseView = DispenseDialogView(
+            context = this,
+            loadProductImage = ::loadProductImage,
+            onCloseRequested = {
+                dispenseSuccessCloseTimer?.cancel()
+                dispenseSuccessCloseTimer = null
+                dismissRetrieveDialog()
+                dialog.dismiss()
+            }
+        )
 
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
+        dialog = AlertDialog.Builder(this)
+            .setView(dispenseView.root)
             .setCancelable(false)
             .create()
-
-        btnDispenseClose?.setOnClickListener {
-            dispenseSuccessCloseTimer?.cancel()
-            dispenseSuccessCloseTimer = null
-            dismissRetrieveDialog()
-            dialog.dismiss()
-        }
 
         onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dispenseDialog = dialog
+        dispenseDialogView = dispenseView
         dialog.setOnDismissListener {
             dispenseSuccessCloseTimer?.cancel()
             dispenseSuccessCloseTimer = null
@@ -2281,12 +2273,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         )
         interactionMonitor.appendBoth("Dispensacion iniciada para ${dispensingQueue.size} item(s)")
 
-        tvDispenseTitle?.text = "DISPENSANDO..."
-        tvDispenseStatus?.text = "Espere un momento, por favor..."
-        tvDispenseProgress?.text = "1 de ${dispensingQueue.size}"
-        tvDispenseProductName?.text = dispensingQueue.firstOrNull()?.item?.producto.orEmpty()
-        tvDispenseTimer?.visibility = View.GONE
-        btnDispenseClose?.visibility = View.GONE
+        dispenseView.renderTitle("DISPENSANDO...")
+        dispenseView.renderStatus("Espere un momento, por favor...")
+        dispenseView.renderProgress("1 de ${dispensingQueue.size}")
+        dispenseView.renderProductName(dispensingQueue.firstOrNull()?.item?.producto.orEmpty())
+        dispenseView.renderTimer(visible = false)
+        dispenseView.renderCloseButton(text = "Cerrar", visible = false)
 
         startNextDispenseItem()
     }
@@ -2322,12 +2314,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         val currentCell = currentItem.cell
         val currentNumber = dispensingCursor + 1
         val total = dispensingQueue.size
-        tvDispenseProgress?.text = "$currentNumber de $total"
-        tvDispenseProductName?.text = currentItem.item.producto
-        ivDispenseProduct?.let { imageView ->
-            loadProductImage(currentItem.item.imagenUrl, imageView)
-        }
-        tvDispenseStatus?.text = "Espera un momento, por favor..."
+        dispenseDialogView?.renderProgress("$currentNumber de $total")
+        dispenseDialogView?.renderProduct(currentItem.item.producto, currentItem.item.imagenUrl)
+        dispenseDialogView?.renderStatus("Espera un momento, por favor...")
         interactionMonitor.appendBoth(
             "Inicio dispensacion celda ${currentItem.item.codigoCelda} (fisica $currentCell) | producto=${currentItem.item.producto} | item ${currentNumber} de $total"
         )

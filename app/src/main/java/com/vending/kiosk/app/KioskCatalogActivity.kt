@@ -49,6 +49,7 @@ import com.vending.kiosk.app.ui.catalog.ProductDialogView
 import com.vending.kiosk.app.ui.payment.CheckoutDialogView
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogOption
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogView
+import com.vending.kiosk.app.ui.payment.QrPaymentDialogView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
 import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
@@ -1966,42 +1967,20 @@ class KioskCatalogActivity : AppCompatActivity() {
         fromCart: Boolean,
         paymentMethodLabel: String
     ) {
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_qr_payment, null)
-        val ivQr = view.findViewById<ImageView>(R.id.ivPaymentQr)
-        val tvExpiration = view.findViewById<TextView>(R.id.tvQrExpiration)
-        val tvQrStatus = view.findViewById<TextView>(R.id.tvQrStatus)
-        val progressQr = view.findViewById<ProgressBar>(R.id.progressQrPolling)
-        val btnClose = view.findViewById<Button>(R.id.btnCloseQrDialog)
-
         val bitmap = decodeQrBase64(result.qrBase64)
         if (bitmap == null) {
             Toast.makeText(this, "No se pudo convertir el QR", Toast.LENGTH_LONG).show()
             return
         }
 
-        val minSide = resources.displayMetrics.widthPixels.coerceAtMost(resources.displayMetrics.heightPixels)
-        val targetPx = (minSide * 0.72f).toInt().coerceIn(dp(260), dp(520))
-        ivQr.layoutParams = ivQr.layoutParams.apply {
-            width = targetPx
-            height = targetPx
-        }
-        ivQr.scaleType = ImageView.ScaleType.FIT_CENTER
-        ivQr.setImageBitmap(bitmap)
-        tvExpiration.text = if (result.expiration.isBlank()) "Expira: -" else "Expira: ${result.expiration}"
-        tvQrStatus.text = "Esperando pago..."
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
-            .setCancelable(false)
-            .create()
-
-        btnClose.visibility = View.VISIBLE
-        btnClose.isEnabled = true
-        btnClose.text = "Cancelar"
+        lateinit var dialog: AlertDialog
+        lateinit var tvQrStatus: TextView
+        lateinit var progressQr: ProgressBar
+        lateinit var btnClose: Button
         var cancelInProgress = false
 
-        btnClose.setOnClickListener {
-            if (cancelInProgress) return@setOnClickListener
+        fun onCancelRequested() {
+            if (cancelInProgress) return
             qrPollingJob?.cancel()
             val confirmView = LayoutInflater.from(this).inflate(R.layout.dialog_cancel_order_confirm, null)
             val btnNo = confirmView.findViewById<Button>(R.id.btnCancelOrderNo)
@@ -2066,74 +2045,30 @@ class KioskCatalogActivity : AppCompatActivity() {
             confirmDialog.show()
             confirmDialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         }
+        val qrDialogView = QrPaymentDialogView(
+            context = this,
+            bitmap = bitmap,
+            expiration = result.expiration,
+            onCancelRequested = { onCancelRequested() }
+        )
+        tvQrStatus = qrDialogView.statusText
+        progressQr = qrDialogView.progress
+        btnClose = qrDialogView.mainButton
+        dialog = AlertDialog.Builder(this)
+            .setView(qrDialogView.root)
+            .setCancelable(false)
+            .create()
 
         onModalShown()
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        makeDialogDraggable(dialog, view)
+        qrDialogView.makeDialogDraggable(dialog)
         dialog.setOnDismissListener {
             qrPollingJob?.cancel()
             onModalDismissed()
         }
 
         startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
-    }
-
-    private fun makeDialogDraggable(dialog: AlertDialog, dragView: View) {
-        val window = dialog.window ?: return
-        val displayMetrics = resources.displayMetrics
-        var downRawX = 0f
-        var downRawY = 0f
-        var startX = 0
-        var startY = 0
-        var dragging = false
-        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
-
-        dragView.post {
-            val maxY = (displayMetrics.heightPixels - dragView.height).coerceAtLeast(0)
-            window.attributes = window.attributes.apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = ((displayMetrics.widthPixels - dragView.width) / 2).coerceAtLeast(0)
-                y = maxY
-            }
-        }
-
-        dragView.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    val attrs = window.attributes
-                    downRawX = event.rawX
-                    downRawY = event.rawY
-                    startX = attrs.x
-                    startY = attrs.y
-                    dragging = false
-                    true
-                }
-
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - downRawX
-                    val dy = event.rawY - downRawY
-                    if (!dragging && kotlin.math.abs(dx) < touchSlop && kotlin.math.abs(dy) < touchSlop) {
-                        return@setOnTouchListener true
-                    }
-                    dragging = true
-                    val maxX = (displayMetrics.widthPixels - dragView.width).coerceAtLeast(0)
-                    val maxY = (displayMetrics.heightPixels - dragView.height).coerceAtLeast(0)
-                    window.attributes = window.attributes.apply {
-                        x = (startX + dx.toInt()).coerceIn(0, maxX)
-                        y = (startY + dy.toInt()).coerceIn(0, maxY)
-                    }
-                    true
-                }
-
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    dragging = false
-                    true
-                }
-
-                else -> false
-            }
-        }
     }
 
     private fun startQrPaymentPolling(

@@ -42,6 +42,7 @@ import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.ui.catalog.CatalogCarouselView
+import com.vending.kiosk.app.ui.catalog.CartBarView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
 import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
@@ -75,8 +76,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var tvTitle: TextView
     private lateinit var tvSubtitle: TextView
     private lateinit var tvStatus: TextView
-    private lateinit var cartFabContainer: View
-    private lateinit var tvCartBadge: TextView
+    private lateinit var cartBarView: CartBarView
     private lateinit var promoCarousel: View
     private lateinit var screenRootView: View
     private var tvPromoTitle: TextView? = null
@@ -315,8 +315,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvTitle = findViewById(R.id.tvCatalogTitle)
         tvSubtitle = findViewById(R.id.tvCatalogSubtitle)
         tvStatus = findViewById(R.id.tvCatalogStatus)
-        cartFabContainer = findViewById(R.id.cartFabContainer)
-        tvCartBadge = findViewById(R.id.tvCartBadge)
+        cartBarView = CartBarView(
+            cartBar = findViewById(R.id.cartFabContainer),
+            badge = findViewById(R.id.tvCartBadge)
+        )
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         idleVideoOverlay = findViewById(R.id.idleVideoOverlay)
         idleVideoView = findViewById(R.id.idleVideoView)
@@ -476,7 +478,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun setupCartBadge() {
         updateCartBadge()
-        cartFabContainer.setOnClickListener { showCartDialog() }
+        cartBarView.setOnCartClick { showCartDialog() }
     }
 
     private val interactionMonitor by lazy { CustomerInteractionMonitor(this) }
@@ -3333,8 +3335,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun updateCartBadge() {
         val qty = cartItems.values.sumOf { it.quantity }
-        tvCartBadge.text = qty.toString()
-        tvCartBadge.visibility = if (qty > 0) View.VISIBLE else View.GONE
+        cartBarView.render(
+            badgeText = qty.toString(),
+            isBadgeVisible = qty > 0
+        )
     }
 
     private fun isCellSellable(item: CeldaUi): Boolean {

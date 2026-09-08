@@ -150,13 +150,11 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var ioProlongedWaitDialog: AlertDialog? = null
     private var platformStuckDialog: AlertDialog? = null
     private var platformRecoveringDialog: AlertDialog? = null
-    private var tvDispenseSuccessTimer: TextView? = null
-    private var btnDispenseSuccessClose: Button? = null
+    private var dispenseSuccessContent: DispenseDialogView.SuccessContent? = null
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
     private var dispenseSuccessTimerRunnable: Runnable? = null
     private var retrieveDialog: AlertDialog? = null
-    private var tvRetrieveTitle: TextView? = null
-    private var tvRetrieveMessage: TextView? = null
+    private var retrieveContent: DispenseDialogView.RetrieveContent? = null
     private var monitorViewerDialog: AlertDialog? = null
     private var monitorViewerRunnable: Runnable? = null
     private var idleVideoOverlay: View? = null
@@ -2705,16 +2703,14 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun showDispenseSuccessDialog() {
         if (dispenseSuccessDialog?.isShowing == true) return
 
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_success, null)
-        tvDispenseSuccessTimer = view.findViewById(R.id.tvDispenseSuccessTimer)
-        btnDispenseSuccessClose = view.findViewById(R.id.btnDispenseSuccessClose)
+        val successContent = DispenseDialogView.createSuccessContent(this)
 
         val dialog = AlertDialog.Builder(this)
-            .setView(view)
+            .setView(successContent.root)
             .setCancelable(false)
             .create()
 
-        btnDispenseSuccessClose?.setOnClickListener {
+        successContent.setOnSuccessCloseRequested {
             stopDispenseSuccessCountdown()
             dialog.dismiss()
         }
@@ -2723,10 +2719,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dispenseSuccessDialog = dialog
+        dispenseSuccessContent = successContent
         dialog.setOnDismissListener {
             stopDispenseSuccessCountdown()
-            tvDispenseSuccessTimer = null
-            btnDispenseSuccessClose = null
+            dispenseSuccessContent = null
             dispenseSuccessDialog = null
             onModalDismissed()
         }
@@ -2738,8 +2734,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         stopDispenseSuccessCountdown()
         dispenseSuccessDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseSuccessDialog = null
-        tvDispenseSuccessTimer = null
-        btnDispenseSuccessClose = null
+        dispenseSuccessContent = null
     }
 
     private fun startDispenseSuccessCountdown(dialog: AlertDialog) {
@@ -2747,7 +2742,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         var secondsLeft = (DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS / 1000L).toInt().coerceAtLeast(0)
 
         fun scheduleNextTick() {
-            tvDispenseSuccessTimer?.text = "${secondsLeft}s"
+            dispenseSuccessContent?.renderTimer("${secondsLeft}s")
             if (secondsLeft <= 0) {
                 dialog.takeIf { it.isShowing }?.dismiss()
                 return
@@ -2774,22 +2769,19 @@ class KioskCatalogActivity : AppCompatActivity() {
         val currentProduct = dispensingQueue.getOrNull(dispensingCursor)?.item?.producto
             ?.takeIf { it.isNotBlank() }
             ?: "producto"
+        val title = "Producto listo! $currentNumber de $total"
+        val message = "Por favor, retira tu $currentProduct"
 
         if (retrieveDialog?.isShowing == true) {
-            tvRetrieveTitle?.text = "Producto listo! $currentNumber de $total"
-            tvRetrieveMessage?.text = "Por favor, retira tu $currentProduct"
+            retrieveContent?.render(title, message)
             return
         }
 
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_retrieve, null)
-        tvRetrieveTitle = view.findViewById(R.id.tvRetrieveTitle)
-        tvRetrieveMessage = view.findViewById(R.id.tvRetrieveMessage)
-
-        tvRetrieveTitle?.text = "Producto listo! $currentNumber de $total"
-        tvRetrieveMessage?.text = "Por favor, retira tu $currentProduct"
+        val content = DispenseDialogView.createRetrieveContent(this)
+        content.render(title, message)
 
         val dialog = AlertDialog.Builder(this)
-            .setView(view)
+            .setView(content.root)
             .setCancelable(false)
             .create()
 
@@ -2797,9 +2789,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         retrieveDialog = dialog
+        retrieveContent = content
         dialog.setOnDismissListener {
-            tvRetrieveTitle = null
-            tvRetrieveMessage = null
+            retrieveContent = null
             retrieveDialog = null
             onModalDismissed()
         }
@@ -2808,8 +2800,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun dismissRetrieveDialog() {
         retrieveDialog?.takeIf { it.isShowing }?.dismiss()
         retrieveDialog = null
-        tvRetrieveTitle = null
-        tvRetrieveMessage = null
+        retrieveContent = null
     }
 
     private fun showMonitoringViewerDialog(

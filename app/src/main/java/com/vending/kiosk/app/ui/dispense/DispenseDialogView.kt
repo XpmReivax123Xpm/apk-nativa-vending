@@ -60,4 +60,43 @@ class DispenseDialogView(
         closeButton.text = text
         closeButton.visibility = if (visible) View.VISIBLE else View.GONE
     }
+
+    class RetrieveContent(
+        val root: View
+    ) {
+        private val title = root.findViewById<TextView>(R.id.tvRetrieveTitle)
+        private val message = root.findViewById<TextView>(R.id.tvRetrieveMessage)
+
+        fun render(titleText: CharSequence, messageText: CharSequence) {
+            title.text = titleText
+            message.text = messageText
+        }
+    }
+
+    class SuccessContent(
+        val root: View
+    ) {
+        private val timer = root.findViewById<TextView>(R.id.tvDispenseSuccessTimer)
+        private val closeButton = root.findViewById<Button>(R.id.btnDispenseSuccessClose)
+
+        fun renderTimer(text: CharSequence) {
+            timer.text = text
+        }
+
+        fun setOnSuccessCloseRequested(onSuccessCloseRequested: () -> Unit) {
+            closeButton.setOnClickListener { onSuccessCloseRequested() }
+        }
+    }
+
+    companion object {
+        fun createRetrieveContent(context: Context): RetrieveContent {
+            val root = LayoutInflater.from(context).inflate(R.layout.dialog_dispense_retrieve, null)
+            return RetrieveContent(root)
+        }
+
+        fun createSuccessContent(context: Context): SuccessContent {
+            val root = LayoutInflater.from(context).inflate(R.layout.dialog_dispense_success, null)
+            return SuccessContent(root)
+        }
+    }
 }

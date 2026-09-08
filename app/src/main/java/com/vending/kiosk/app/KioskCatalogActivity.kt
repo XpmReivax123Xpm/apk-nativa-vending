@@ -42,6 +42,8 @@ import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.ui.catalog.CatalogCarouselView
+import com.vending.kiosk.app.ui.catalog.CatalogGridItem
+import com.vending.kiosk.app.ui.catalog.CatalogGridView
 import com.vending.kiosk.app.ui.catalog.CartBarView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
@@ -77,6 +79,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var tvSubtitle: TextView
     private lateinit var tvStatus: TextView
     private lateinit var cartBarView: CartBarView
+    private lateinit var catalogGridView: CatalogGridView<CeldaUi>
     private lateinit var promoCarousel: View
     private lateinit var screenRootView: View
     private var tvPromoTitle: TextView? = null
@@ -323,6 +326,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         idleVideoOverlay = findViewById(R.id.idleVideoOverlay)
         idleVideoView = findViewById(R.id.idleVideoView)
         contentContainer = findViewById(R.id.llCatalogContainer)
+        catalogGridView = CatalogGridView(
+            contentContainer = contentContainer,
+            loadProductImage = ::loadProductImage,
+            onProductTapped = ::onCatalogProductTapped
+        )
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
         btnKioskViewLogs = findViewById(R.id.btnKioskViewLogs)
         btnKioskViewBitacora = findViewById(R.id.btnKioskViewBitacora)
@@ -1166,94 +1174,27 @@ class KioskCatalogActivity : AppCompatActivity() {
                 return
             }
 
-            val columns = 3
-            val rows = 5
-            val itemsPerPage = columns * rows
-            val pageWidth = resources.displayMetrics.widthPixels - dp(24)
-
-            visibles.chunked(itemsPerPage).forEachIndexed { pageIndex, pageItems ->
-                val page = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(
-                        pageWidth,
-                        LinearLayout.LayoutParams.MATCH_PARENT
-                    ).also {
-                        if (pageIndex > 0) it.leftMargin = dp(10)
-                    }
-                }
-
-                for (rowIndex in 0 until rows) {
-                    val row = LinearLayout(this).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            0,
-                            1f
-                        ).also { it.bottomMargin = if (rowIndex == rows - 1) 0 else dp(8) }
-                    }
-
-                    for (columnIndex in 0 until columns) {
-                        val cellIndex = rowIndex * columns + columnIndex
-                        if (cellIndex < pageItems.size) {
-                            val item = pageItems[cellIndex]
-                            val card = layoutInflater.inflate(R.layout.item_catalog_cell, row, false)
-                            card.findViewById<TextView>(R.id.tvCellCode).text = item.codigoCelda
-                            card.findViewById<TextView>(R.id.tvCellProduct).text = item.producto
-                            card.findViewById<TextView>(R.id.tvCellPrice).text =
-                                if (item.precio > 0.0) "Bs ${formatPrice(item.precio)}" else "Sin precio"
-                            val ivProduct = card.findViewById<ImageView>(R.id.ivCellProductImage)
-                            loadProductImage(item.imagenUrl, ivProduct)
-
-                            val available = isCellSellable(item)
-                            card.findViewById<TextView>(R.id.tvCellState).apply {
-                                if (available) {
-                                    visibility = View.GONE
-                                } else {
-                                    visibility = View.VISIBLE
-                                    text = "No disponible"
-                                    setBackgroundResource(R.drawable.bg_catalog_unavailable_badge)
-                                    setTextColor(Color.parseColor("#F28E1B"))
-                                }
-                            }
-
-                            card.alpha = if (available) 1f else 0.78f
-                            card.setOnClickListener {
-                                if (!available) {
-                                    Toast.makeText(this, "Celda no disponible", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    if (cartItems.isEmpty()) {
-                                        showProductDialog(item)
-                                    } else {
-                                        showProductWithCartDialog(item)
-                                    }
-                                }
-                            }
-
-                            val margin = dp(4)
-                            card.layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
-                                if (columnIndex == 0) {
-                                    setMargins(0, 0, margin, 0)
-                                } else if (columnIndex == columns - 1) {
-                                    setMargins(margin, 0, 0, 0)
-                                } else {
-                                    setMargins(margin, 0, margin, 0)
-                                }
-                            }
-                            row.addView(card)
-                        } else {
-                            val spacer = View(this).apply {
-                                layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
-                            }
-                            row.addView(spacer)
-                        }
-                    }
-                    page.addView(row)
-                }
-                contentContainer.addView(page)
-            }
+            catalogGridView.render(visibles.map { item ->
+                CatalogGridItem(
+                    source = item,
+                    cellCode = item.codigoCelda,
+                    productName = item.producto,
+                    priceText = if (item.precio > 0.0) "Bs ${formatPrice(item.precio)}" else "Sin precio",
+                    imageUrl = item.imagenUrl,
+                    isAvailable = isCellSellable(item)
+                )
+            })
         }.onFailure { error ->
             tvStatus.visibility = View.VISIBLE
             tvStatus.text = "Error de render: ${error.message ?: "sin detalle"}"
+        }
+    }
+
+    private fun onCatalogProductTapped(item: CeldaUi) {
+        if (cartItems.isEmpty()) {
+            showProductDialog(item)
+        } else {
+            showProductWithCartDialog(item)
         }
     }
 

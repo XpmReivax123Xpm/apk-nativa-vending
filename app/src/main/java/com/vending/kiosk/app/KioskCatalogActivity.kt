@@ -46,6 +46,7 @@ import com.vending.kiosk.app.ui.catalog.CartBarView
 import com.vending.kiosk.app.ui.catalog.CartDialogLine
 import com.vending.kiosk.app.ui.catalog.CartDialogView
 import com.vending.kiosk.app.ui.catalog.ProductDialogView
+import com.vending.kiosk.app.ui.payment.CheckoutDialogView
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogOption
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
@@ -1743,45 +1744,27 @@ class KioskCatalogActivity : AppCompatActivity() {
     ) {
         if (selections.isEmpty()) return
 
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_checkout_qr_quick, null)
-        val tvSummary = view.findViewById<TextView>(R.id.tvCheckoutSummary)
-        val tvMethod = view.findViewById<TextView>(R.id.tvCheckoutMethod)
-        val tvError = view.findViewById<TextView>(R.id.tvCheckoutError)
-        val tvTimer = view.findViewById<TextView>(R.id.tvCheckoutDialogTimer)
-        val progress = view.findViewById<ProgressBar>(R.id.progressCheckout)
-        val btnCancel = view.findViewById<Button>(R.id.btnCheckoutCancel)
-        val btnGenerate = view.findViewById<Button>(R.id.btnCheckoutGenerate)
-
         val lines = selections.joinToString("\n") {
             "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
         }
         val total = selections.sumOf { it.item.precio * it.quantity }
 
-        tvSummary.text = "$lines\n\nTotal: Bs ${formatPrice(total)}"
-        tvMethod.text = "Metodo de pago: ${paymentMethod.label}"
-
         val dialog = AlertDialog.Builder(this)
-            .setView(view)
             .create()
         dialog.setCanceledOnTouchOutside(false)
 
-        // Fuerza visual para OEMs que sobreescriben estilos en dialogos.
-        tvTimer.setBackgroundColor(Color.TRANSPARENT)
-        tvTimer.setTextColor(Color.WHITE)
-        tvTimer.textSize = 20f
-        tvTimer.setShadowLayer(2f, 0f, 1f, Color.parseColor("#80000000"))
-
+        lateinit var checkoutDialogView: CheckoutDialogView
         var autoCloseTimer: CountDownTimer? = null
         fun resetAutoCloseTimer() {
             autoCloseTimer?.cancel()
             autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
                 override fun onTick(millisUntilFinished: Long) {
                     val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
-                    tvTimer.text = "${seconds}s"
+                    checkoutDialogView.renderTimer("${seconds}s")
                 }
 
                 override fun onFinish() {
-                    tvTimer.text = "0s"
+                    checkoutDialogView.renderTimer("0s")
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
@@ -1790,95 +1773,88 @@ class KioskCatalogActivity : AppCompatActivity() {
             }.start()
         }
 
-        view.setOnTouchListener { _, _ ->
-            resetAutoCloseTimer()
-            false
-        }
-
-        btnCancel.setOnClickListener {
-            resetAutoCloseTimer()
-            dialog.dismiss()
-        }
-        btnGenerate.setOnClickListener {
-            resetAutoCloseTimer()
-            setCheckoutLoading(
-                loading = true,
-                progress = progress,
-                btnGenerate = btnGenerate,
-                btnCancel = btnCancel
-            )
-            tvError.visibility = View.GONE
-            val generatingDialog = AlertDialog.Builder(this@KioskCatalogActivity)
-                .setView(LayoutInflater.from(this@KioskCatalogActivity).inflate(R.layout.dialog_generating_qr, null))
-                .setCancelable(false)
-                .create().apply {
-                    setCanceledOnTouchOutside(false)
-                    window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                    setOnDismissListener {
-                        onModalDismissed()
+        checkoutDialogView = CheckoutDialogView(
+            context = this,
+            onCancelRequested = {
+                resetAutoCloseTimer()
+                dialog.dismiss()
+            },
+            onGenerateQrRequested = {
+                resetAutoCloseTimer()
+                checkoutDialogView.setLoading(true)
+                checkoutDialogView.hideError()
+                val generatingDialog = AlertDialog.Builder(this@KioskCatalogActivity)
+                    .setView(checkoutDialogView.createGeneratingQrContent())
+                    .setCancelable(false)
+                    .create().apply {
+                        setCanceledOnTouchOutside(false)
+                        window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                        setOnDismissListener {
+                            onModalDismissed()
+                        }
+                        onModalShown()
+                        show()
                     }
-                    onModalShown()
-                    show()
-                }
 
-            lifecycleScope.launch {
-                val result = withContext(Dispatchers.IO) {
-                    val currentHeader = resolveValidAuthHeader(forceRefresh = false)
-                    if (currentHeader.isNullOrBlank()) {
-                        QrGenerationResult.Error("Sesion de maquina expirada")
-                    } else {
-                        this@KioskCatalogActivity.authHeader = currentHeader
-                        var qrResult = createOrderAndGenerateQr(
-                            machineId = machineId,
-                            paymentMethodId = paymentMethod.id,
-                            customerName = DEFAULT_CUSTOMER_NAME,
-                            customerPhone = DEFAULT_CUSTOMER_PHONE,
-                            customerCi = DEFAULT_CUSTOMER_CI_NIT,
-                            items = selections
-                        )
-                        if (qrResult is QrGenerationResult.Error && isUnauthorizedMessage(qrResult.message)) {
-                            val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
-                            if (!refreshedHeader.isNullOrBlank()) {
-                                this@KioskCatalogActivity.authHeader = refreshedHeader
-                                qrResult = createOrderAndGenerateQr(
-                                    machineId = machineId,
-                                    paymentMethodId = paymentMethod.id,
-                                    customerName = DEFAULT_CUSTOMER_NAME,
-                                    customerPhone = DEFAULT_CUSTOMER_PHONE,
-                                    customerCi = DEFAULT_CUSTOMER_CI_NIT,
-                                    items = selections
-                                )
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        val currentHeader = resolveValidAuthHeader(forceRefresh = false)
+                        if (currentHeader.isNullOrBlank()) {
+                            QrGenerationResult.Error("Sesion de maquina expirada")
+                        } else {
+                            this@KioskCatalogActivity.authHeader = currentHeader
+                            var qrResult = createOrderAndGenerateQr(
+                                machineId = machineId,
+                                paymentMethodId = paymentMethod.id,
+                                customerName = DEFAULT_CUSTOMER_NAME,
+                                customerPhone = DEFAULT_CUSTOMER_PHONE,
+                                customerCi = DEFAULT_CUSTOMER_CI_NIT,
+                                items = selections
+                            )
+                            if (qrResult is QrGenerationResult.Error && isUnauthorizedMessage(qrResult.message)) {
+                                val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
+                                if (!refreshedHeader.isNullOrBlank()) {
+                                    this@KioskCatalogActivity.authHeader = refreshedHeader
+                                    qrResult = createOrderAndGenerateQr(
+                                        machineId = machineId,
+                                        paymentMethodId = paymentMethod.id,
+                                        customerName = DEFAULT_CUSTOMER_NAME,
+                                        customerPhone = DEFAULT_CUSTOMER_PHONE,
+                                        customerCi = DEFAULT_CUSTOMER_CI_NIT,
+                                        items = selections
+                                    )
+                                }
+                            }
+                            qrResult
+                        }
+                    }
+                    generatingDialog.dismiss()
+
+                    checkoutDialogView.setLoading(false)
+
+                    when (result) {
+                        is QrGenerationResult.Success -> {
+                            dialog.dismiss()
+                            openQrDialog(result, selections, fromCart, paymentMethod.label)
+                        }
+
+                        is QrGenerationResult.Error -> {
+                            if (isUnauthorizedMessage(result.message)) {
+                                handleAuthSessionLost()
+                            } else {
+                                checkoutDialogView.renderError(result.message)
                             }
                         }
-                        qrResult
                     }
                 }
-                generatingDialog.dismiss()
-
-                setCheckoutLoading(
-                    loading = false,
-                    progress = progress,
-                    btnGenerate = btnGenerate,
-                    btnCancel = btnCancel
-                )
-
-                when (result) {
-                    is QrGenerationResult.Success -> {
-                        dialog.dismiss()
-                        openQrDialog(result, selections, fromCart, paymentMethod.label)
-                    }
-
-                    is QrGenerationResult.Error -> {
-                        if (isUnauthorizedMessage(result.message)) {
-                            handleAuthSessionLost()
-                            return@launch
-                        }
-                        tvError.visibility = View.VISIBLE
-                        tvError.text = result.message
-                    }
-                }
-            }
-        }
+            },
+            onUserInteraction = { resetAutoCloseTimer() }
+        )
+        checkoutDialogView.renderCheckout(
+            summaryText = "$lines\n\nTotal: Bs ${formatPrice(total)}",
+            methodText = "Metodo de pago: ${paymentMethod.label}"
+        )
+        dialog.setView(checkoutDialogView.root)
 
         onModalShown()
         dialog.show()
@@ -1888,17 +1864,6 @@ class KioskCatalogActivity : AppCompatActivity() {
             autoCloseTimer?.cancel()
             onModalDismissed()
         }
-    }
-
-    private fun setCheckoutLoading(
-        loading: Boolean,
-        progress: ProgressBar,
-        btnGenerate: Button,
-        btnCancel: Button
-    ) {
-        progress.visibility = if (loading) View.VISIBLE else View.GONE
-        btnGenerate.isEnabled = !loading
-        btnCancel.isEnabled = !loading
     }
 
     private suspend fun createOrderAndGenerateQr(

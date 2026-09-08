@@ -41,6 +41,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
+import com.vending.kiosk.app.ui.catalog.CatalogCarouselView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
 import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
@@ -93,7 +94,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private val carouselHandler = Handler(Looper.getMainLooper())
     private val carouselIntervalMs = 5_000L
     private var carouselIndex = 0
-    private var promoAdaptiveHeightApplied = false
+    private lateinit var catalogCarouselView: CatalogCarouselView
     private val legacySlides = listOf(
         LegacySlide(R.drawable.bg_catalog_promo_1, "Promociones", "Espacio para ofertas y anuncios"),
         LegacySlide(R.drawable.bg_catalog_promo_2, "Nuevos productos", "Carrusel preparado para imagenes"),
@@ -325,6 +326,28 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnKioskViewBitacora = findViewById(R.id.btnKioskViewBitacora)
         screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
         useLegacyCarousel = promoCarousel !is ViewFlipper
+        catalogCarouselView = CatalogCarouselView(
+            promoCarousel = promoCarousel,
+            legacyCarousel = object : CatalogCarouselView.LegacyCarousel {
+                override val isEnabled: Boolean
+                    get() = useLegacyCarousel
+
+                override var currentIndex: Int
+                    get() = carouselIndex
+                    set(value) {
+                        carouselIndex = value
+                    }
+
+                override fun getSlideCount(): Int = getLegacySlideCount()
+
+                override fun showSlide(index: Int) {
+                    showLegacySlide(index)
+                }
+            },
+            carouselHandler = carouselHandler,
+            carouselTicker = carouselTicker,
+            carouselIntervalMs = carouselIntervalMs
+        )
 
         if (!useLegacyCarousel) {
             (promoCarousel as? ViewFlipper)?.apply {
@@ -339,7 +362,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         setupBackToMainButton()
         setupMonitoringButtons()
         setupIdleVideoOverlay()
-        applyCarouselHeight()
+        catalogCarouselView.applyCarouselHeight()
         setupCarouselTouchControls()
 
         machineId = intent.getIntExtra(EXTRA_MACHINE_ID, 0)
@@ -1085,7 +1108,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun renderPromotionalCarousel(promotions: List<PromoSlideUi>) {
-        promoAdaptiveHeightApplied = false
+        catalogCarouselView.resetAdaptiveHeight()
         if (useLegacyCarousel) {
             if (promotions.isNotEmpty()) {
                 carouselIndex = 0
@@ -1101,7 +1124,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         flipper.removeAllViews()
 
         if (promotions.isEmpty()) {
-            inflateDefaultViewFlipperSlides(flipper)
+            catalogCarouselView.inflateDefaultViewFlipperSlides(flipper)
         } else {
             promotions.forEach { promo ->
                 val slide = FrameLayout(this).apply {
@@ -1128,41 +1151,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         flipper.displayedChild = 0
         if (flipper.childCount > 1) {
             flipper.startFlipping()
-        }
-    }
-
-    private fun inflateDefaultViewFlipperSlides(flipper: ViewFlipper) {
-        val defaults = listOf(
-            Triple(R.drawable.bg_catalog_promo_1, "Promo del dia", "Espacio para ofertas y anuncios"),
-            Triple(R.drawable.bg_catalog_promo_2, "Nuevos productos", "Carrusel preparado para imagenes"),
-            Triple(R.drawable.bg_catalog_promo_3, "Avisos", "Descuentos, mantenimiento y novedades")
-        )
-        defaults.forEach { (backgroundRes, title, subtitle) ->
-            val slide = LinearLayout(this).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                setBackgroundResource(backgroundRes)
-                gravity = android.view.Gravity.BOTTOM or android.view.Gravity.START
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(18), dp(18), dp(18), dp(18))
-            }
-            val titleView = TextView(this).apply {
-                text = title
-                setTextColor(Color.parseColor("#0965AF"))
-                textSize = 28f
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-            }
-            val subtitleView = TextView(this).apply {
-                text = subtitle
-                setTextColor(Color.parseColor("#0965AF"))
-                textSize = 18f
-                setPadding(0, dp(4), 0, 0)
-            }
-            slide.addView(titleView)
-            slide.addView(subtitleView)
-            flipper.addView(slide)
         }
     }
 
@@ -3242,7 +3230,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 imageCache.put(imageUrl, bitmap)
                 imageView.setImageBitmap(bitmap)
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-                applyAdaptiveCarouselHeight(bitmap)
+                catalogCarouselView.applyAdaptiveCarouselHeight(bitmap)
             }
             return
         }
@@ -3257,28 +3245,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
             }
         }
-    }
-
-    private fun applyAdaptiveCarouselHeight(bitmap: android.graphics.Bitmap) {
-        if (promoAdaptiveHeightApplied) return
-        if (bitmap.width <= 0 || bitmap.height <= 0) return
-
-        val containerWidth = promoCarousel.width.takeIf { it > 0 }
-            ?: (resources.displayMetrics.widthPixels - dp(24))
-        if (containerWidth <= 0) return
-
-        val desiredHeight = (containerWidth * (bitmap.height.toFloat() / bitmap.width.toFloat())).toInt()
-        val screenHeight = resources.displayMetrics.heightPixels
-        val minHeight = dp(220)
-        val maxHeight = (screenHeight * 0.52f).toInt().coerceAtLeast(dp(320))
-        val targetHeight = desiredHeight.coerceIn(minHeight, maxHeight)
-
-        val params = promoCarousel.layoutParams ?: return
-        if (params.height != targetHeight) {
-            params.height = targetHeight
-            promoCarousel.layoutParams = params
-        }
-        promoAdaptiveHeightApplied = true
     }
 
     private fun downloadBitmap(rawUrl: String, targetSizePx: Int): android.graphics.Bitmap? {
@@ -3398,26 +3364,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         return (value * resources.displayMetrics.density).toInt()
     }
 
-    private fun applyCarouselHeight() {
-        val screenHeight = resources.displayMetrics.heightPixels
-        val screenWidth = resources.displayMetrics.widthPixels
-        val isLandscape = screenWidth > screenHeight
-        val factor = if (isLandscape) 0.22f else 0.38f
-        val desired = (screenHeight * factor).toInt()
-        val minHeight = if (isLandscape) dp(150) else dp(180)
-        val maxHeight = if (isLandscape) dp(320) else dp(1000)
-        val target = desired.coerceIn(minHeight, maxHeight)
-        promoCarousel.layoutParams = promoCarousel.layoutParams.apply {
-            height = target
-        }
-    }
-
     private fun setupCarouselTouchControls() {
         var downX = 0f
         promoCarousel.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    pauseAutoCarousel()
+                    catalogCarouselView.pauseAutoCarousel()
                     downX = event.x
                     true
                 }
@@ -3427,81 +3379,27 @@ class KioskCatalogActivity : AppCompatActivity() {
                     val threshold = dp(36).toFloat()
                     val handled = when {
                         deltaX < -threshold -> {
-                            showNextPromoSlide()
+                            catalogCarouselView.showNextPromoSlide()
                             true
                         }
 
                         deltaX > threshold -> {
-                            showPreviousPromoSlide()
+                            catalogCarouselView.showPreviousPromoSlide()
                             true
                         }
 
                         else -> true
                     }
-                    resumeAutoCarousel()
+                    catalogCarouselView.resumeAutoCarousel()
                     handled
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
-                    resumeAutoCarousel()
+                    catalogCarouselView.resumeAutoCarousel()
                     true
                 }
 
                 else -> true
-            }
-        }
-    }
-
-    private fun showNextPromoSlide() {
-        if (useLegacyCarousel) {
-            val slideCount = getLegacySlideCount()
-            if (slideCount <= 1) return
-            carouselIndex = (carouselIndex + 1) % slideCount
-            showLegacySlide(carouselIndex)
-            carouselHandler.removeCallbacks(carouselTicker)
-            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
-            return
-        }
-
-        (promoCarousel as? ViewFlipper)?.let { flipper ->
-            flipper.setInAnimation(this, R.anim.carousel_in_right)
-            flipper.setOutAnimation(this, R.anim.carousel_out_left)
-            flipper.showNext()
-        }
-    }
-
-    private fun showPreviousPromoSlide() {
-        if (useLegacyCarousel) {
-            val slideCount = getLegacySlideCount()
-            if (slideCount <= 1) return
-            carouselIndex = if (carouselIndex - 1 < 0) slideCount - 1 else carouselIndex - 1
-            showLegacySlide(carouselIndex)
-            carouselHandler.removeCallbacks(carouselTicker)
-            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
-            return
-        }
-
-        (promoCarousel as? ViewFlipper)?.let { flipper ->
-            flipper.setInAnimation(this, R.anim.carousel_in_left)
-            flipper.setOutAnimation(this, R.anim.carousel_out_right)
-            flipper.showPrevious()
-        }
-    }
-
-    private fun pauseAutoCarousel() {
-        carouselHandler.removeCallbacks(carouselTicker)
-        (promoCarousel as? ViewFlipper)?.stopFlipping()
-    }
-
-    private fun resumeAutoCarousel() {
-        if (useLegacyCarousel) {
-            if (getLegacySlideCount() > 1) {
-                carouselHandler.removeCallbacks(carouselTicker)
-                carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
-            }
-        } else {
-            (promoCarousel as? ViewFlipper)?.let { flipper ->
-                if (flipper.childCount > 1) flipper.startFlipping()
             }
         }
     }

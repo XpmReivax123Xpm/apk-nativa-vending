@@ -45,6 +45,7 @@ import com.vending.kiosk.app.ui.catalog.CatalogCarouselView
 import com.vending.kiosk.app.ui.catalog.CatalogGridItem
 import com.vending.kiosk.app.ui.catalog.CatalogGridView
 import com.vending.kiosk.app.ui.catalog.CartBarView
+import com.vending.kiosk.app.ui.catalog.ProductDialogView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
 import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
@@ -1199,112 +1200,91 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showProductDialog(item: CeldaUi) {
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_product_detail, null)
-        val tvCode = view.findViewById<TextView>(R.id.tvDialogProductCode)
-        val tvName = view.findViewById<TextView>(R.id.tvDialogProductName)
-        val tvPrice = view.findViewById<TextView>(R.id.tvDialogProductPrice)
-        val tvStock = view.findViewById<TextView>(R.id.tvDialogProductStock)
-        val tvTotal = view.findViewById<TextView>(R.id.tvDialogProductTotal)
-        val tvQty = view.findViewById<TextView>(R.id.tvDialogQty)
-        val btnMinus = view.findViewById<ImageButton>(R.id.btnQtyMinus)
-        val btnPlus = view.findViewById<ImageButton>(R.id.btnQtyPlus)
-        val btnAddCart = view.findViewById<Button>(R.id.btnAddCart)
-        val btnBuyNow = view.findViewById<Button>(R.id.btnBuyNow)
-        val btnClose = view.findViewById<TextView>(R.id.btnProductDialogClose)
-        val tvTimer = view.findViewById<TextView>(R.id.tvProductDialogTimer)
-        val ivPreview = view.findViewById<ImageView>(R.id.ivProductPreview)
-
-        // Fuerza visual en OEMs que pisan estilos de layout.
-        tvTimer.setBackgroundColor(Color.TRANSPARENT)
-        tvTimer.setTextColor(Color.WHITE)
-        btnClose.text = "X"
-        btnClose.setTextColor(Color.WHITE)
-
-        tvCode.text = "Casilla ${item.codigoCelda}"
-        tvName.text = item.producto
-        tvName.isSelected = true
-        tvPrice.text = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}"
-        tvStock.text = "Stock disponible: ${item.stockDisponible}"
         val detailImage = item.imagenUrlSecundaria.ifBlank { item.imagenUrl }
-        loadProductImage(detailImage, ivPreview)
-
         var qty = 1
-        tvQty.text = qty.toString()
-        tvTotal.text = "Bs ${formatPrice(item.precio * qty)}"
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
-            .create()
-        dialog.setCanceledOnTouchOutside(false)
         var openFusionAfterDismiss = false
-
         var autoCloseTimer: CountDownTimer? = null
+
+        lateinit var productDialogView: ProductDialogView
+        var dialog: AlertDialog? = null
+
+        fun renderQuantityAndTotal() {
+            productDialogView.renderQuantityAndTotal(
+                quantityText = qty.toString(),
+                totalText = "Bs ${formatPrice(item.precio * qty)}"
+            )
+        }
+
         fun resetAutoCloseTimer() {
             autoCloseTimer?.cancel()
             autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
                 override fun onTick(millisUntilFinished: Long) {
                     val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
-                    tvTimer.text = "${seconds}s"
+                    productDialogView.renderTimer("${seconds}s")
                 }
 
                 override fun onFinish() {
-                    tvTimer.text = "0s"
-                    if (dialog.isShowing) {
-                        dialog.dismiss()
+                    productDialogView.renderTimer("0s")
+                    if (dialog?.isShowing == true) {
+                        dialog?.dismiss()
                     }
                     refreshCatalogAndClearCart()
                 }
             }.start()
         }
 
-        view.setOnTouchListener { _, _ ->
-            resetAutoCloseTimer()
-            false
-        }
+        productDialogView = ProductDialogView(
+            context = this,
+            loadProductImage = ::loadProductImage,
+            onDecreaseRequested = {
+                if (qty > 1) {
+                    qty--
+                    renderQuantityAndTotal()
+                }
+            },
+            onIncreaseRequested = {
+                if (qty < item.stockDisponible) {
+                    qty++
+                    renderQuantityAndTotal()
+                } else {
+                    Toast.makeText(this, "No puedes superar el stock", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onAddToCartRequested = {
+                addToCart(item, qty)
+                openFusionAfterDismiss = true
+                dialog?.dismiss()
+            },
+            onBuyNowRequested = {
+                dialog?.dismiss()
+                openPaymentMethodDialog(
+                    selections = listOf(PurchaseSelection(item, qty)),
+                    fromCart = false
+                )
+            },
+            onCloseRequested = { dialog?.dismiss() },
+            onUserInteraction = { resetAutoCloseTimer() }
+        )
+        productDialogView.renderProduct(
+            codeText = "Casilla ${item.codigoCelda}",
+            nameText = item.producto,
+            priceText = "Precio unitario: ${if (item.precio > 0) "Bs ${formatPrice(item.precio)}" else "Sin precio"}",
+            stockText = "Stock disponible: ${item.stockDisponible}",
+            imageUrl = detailImage
+        )
+        renderQuantityAndTotal()
 
-        btnMinus.setOnClickListener {
-            resetAutoCloseTimer()
-            if (qty > 1) {
-                qty--
-                tvQty.text = qty.toString()
-                tvTotal.text = "Bs ${formatPrice(item.precio * qty)}"
-            }
-        }
-
-        btnPlus.setOnClickListener {
-            resetAutoCloseTimer()
-            if (qty < item.stockDisponible) {
-                qty++
-                tvQty.text = qty.toString()
-                tvTotal.text = "Bs ${formatPrice(item.precio * qty)}"
-            } else {
-                Toast.makeText(this, "No puedes superar el stock", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        btnClose.setOnClickListener { dialog.dismiss() }
-
-        btnAddCart.setOnClickListener {
-            resetAutoCloseTimer()
-            addToCart(item, qty)
-            openFusionAfterDismiss = true
-            dialog.dismiss()
-        }
-
-        btnBuyNow.setOnClickListener {
-            resetAutoCloseTimer()
-            dialog.dismiss()
-            openPaymentMethodDialog(
-                selections = listOf(PurchaseSelection(item, qty)),
-                fromCart = false
-            )
-        }
+        val productDialog = AlertDialog.Builder(this)
+            .setView(productDialogView.root)
+            .create()
+        dialog = productDialog
+        productDialog.setCanceledOnTouchOutside(false)
 
         onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        productDialog.show()
+        productDialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         resetAutoCloseTimer()
-        dialog.setOnDismissListener {
+        productDialog.setOnDismissListener {
             autoCloseTimer?.cancel()
             onModalDismissed()
             if (openFusionAfterDismiss) {

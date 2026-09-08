@@ -45,6 +45,8 @@ import com.vending.kiosk.app.ui.catalog.CatalogCarouselView
 import com.vending.kiosk.app.ui.catalog.CatalogGridItem
 import com.vending.kiosk.app.ui.catalog.CatalogGridView
 import com.vending.kiosk.app.ui.catalog.CartBarView
+import com.vending.kiosk.app.ui.catalog.CartDialogLine
+import com.vending.kiosk.app.ui.catalog.CartDialogView
 import com.vending.kiosk.app.ui.catalog.ProductDialogView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
@@ -1509,90 +1511,69 @@ class KioskCatalogActivity : AppCompatActivity() {
             Toast.makeText(this, "Carrito vacio", Toast.LENGTH_SHORT).show()
             return
         }
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_cart, null)
-        val itemsContainer = view.findViewById<LinearLayout>(R.id.llCartItemsContainer)
-        val tvTotal = view.findViewById<TextView>(R.id.tvCartDialogTotal)
-        val tvTimer = view.findViewById<TextView>(R.id.tvCartDialogTimer)
-        val btnClear = view.findViewById<Button>(R.id.btnCartClear)
-        val btnClose = view.findViewById<Button>(R.id.btnCartClose)
-        val btnBuy = view.findViewById<Button>(R.id.btnCartBuy)
-
-        // Fuerza visual para OEMs que pisan estilos en dialogos.
-        tvTimer.setBackgroundColor(Color.TRANSPARENT)
-        tvTimer.setTextColor(Color.WHITE)
-        tvTimer.textSize = 20f
-        tvTimer.setShadowLayer(2f, 0f, 1f, Color.parseColor("#80000000"))
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
-            .setCancelable(true)
-            .create()
-
+        var dialog: AlertDialog? = null
         var autoCloseTimer: CountDownTimer? = null
+        lateinit var cartDialogView: CartDialogView
         fun resetAutoCloseTimer() {
             autoCloseTimer?.cancel()
             autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
                 override fun onTick(millisUntilFinished: Long) {
                     val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
-                    tvTimer.text = "${seconds}s"
+                    cartDialogView.renderTimer("${seconds}s")
                 }
 
                 override fun onFinish() {
-                    tvTimer.text = "0s"
-                    if (dialog.isShowing) {
-                        dialog.dismiss()
+                    cartDialogView.renderTimer("0s")
+                    if (dialog?.isShowing == true) {
+                        dialog?.dismiss()
                     }
                     refreshCatalogAndClearCart()
                 }
             }.start()
         }
 
-        view.setOnTouchListener { _, _ ->
-            resetAutoCloseTimer()
-            false
-        }
-
         fun bindCartUi() {
             if (cartItems.isEmpty()) {
-                dialog.dismiss()
+                dialog?.dismiss()
                 Toast.makeText(this, "Carrito vacio", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            itemsContainer.removeAllViews()
             val lines = cartItems.values.toList()
-            lines.forEachIndexed { index, line ->
-                val itemView = LayoutInflater.from(this).inflate(R.layout.item_cart_line, itemsContainer, false)
-                val tvName = itemView.findViewById<TextView>(R.id.tvCartItemName)
-                val tvPrice = itemView.findViewById<TextView>(R.id.tvCartItemPrice)
-                val tvSubtotal = itemView.findViewById<TextView>(R.id.tvCartItemSubtotal)
-                val tvQty = itemView.findViewById<TextView>(R.id.tvCartQty)
-                val btnMinus = itemView.findViewById<ImageButton>(R.id.btnCartQtyMinus)
-                val btnPlus = itemView.findViewById<ImageButton>(R.id.btnCartQtyPlus)
-                val btnRemove = itemView.findViewById<ImageButton>(R.id.btnCartRemove)
-                val ivPreview = itemView.findViewById<ImageView>(R.id.ivCartItemPreview)
-                val divider = itemView.findViewById<View>(R.id.vCartItemDivider)
+            val total = cartItems.values.sumOf { it.item.precio * it.quantity }
+            cartDialogView.render(
+                lines = lines.map { line ->
+                    CartDialogLine(
+                        cellId = line.item.planogramaCeldaId,
+                        nameText = "${line.item.codigoCelda} - ${line.item.producto}",
+                        unitPriceText = "Unitario: ${if (line.item.precio > 0) "Bs ${formatPrice(line.item.precio)}" else "Sin precio"}",
+                        subtotalText = "${formatPrice(line.item.precio * line.quantity)} Bs",
+                        quantityText = line.quantity.toString(),
+                        imageUrl = line.item.imagenUrl
+                    )
+                },
+                totalText = "Total: Bs ${formatPrice(total)}"
+            )
+        }
 
-                tvName.text = "${line.item.codigoCelda} - ${line.item.producto}"
-                tvPrice.text = "Unitario: ${if (line.item.precio > 0) "Bs ${formatPrice(line.item.precio)}" else "Sin precio"}"
-                tvSubtotal.text = "${formatPrice(line.item.precio * line.quantity)} Bs"
-                tvQty.text = line.quantity.toString()
-                loadProductImage(line.item.imagenUrl, ivPreview)
-                divider.visibility = if (index == lines.lastIndex) View.GONE else View.VISIBLE
-
-                btnMinus.setOnClickListener {
-                    resetAutoCloseTimer()
+        cartDialogView = CartDialogView(
+            context = this,
+            loadProductImage = ::loadProductImage,
+            onLineDecreaseRequested = { cellId ->
+                val line = cartItems[cellId]
+                if (line != null) {
                     if (line.quantity > 1) {
                         line.quantity--
                     } else {
-                        cartItems.remove(line.item.planogramaCeldaId)
+                        cartItems.remove(cellId)
                     }
                     updateCartBadge()
                     bindCartUi()
                 }
-
-                btnPlus.setOnClickListener {
-                    resetAutoCloseTimer()
+            },
+            onLineIncreaseRequested = { cellId ->
+                val line = cartItems[cellId]
+                if (line != null) {
                     if (line.quantity < line.item.stockDisponible) {
                         line.quantity++
                         updateCartBadge()
@@ -1601,50 +1582,43 @@ class KioskCatalogActivity : AppCompatActivity() {
                         Toast.makeText(this, "No puedes superar el stock", Toast.LENGTH_SHORT).show()
                     }
                 }
-
-                btnRemove.setOnClickListener {
-                    resetAutoCloseTimer()
-                    cartItems.remove(line.item.planogramaCeldaId)
-                    updateCartBadge()
-                    bindCartUi()
-                }
-
-                itemsContainer.addView(itemView)
-            }
-
-            val total = cartItems.values.sumOf { it.item.precio * it.quantity }
-            tvTotal.text = "Total: Bs ${formatPrice(total)}"
-        }
-
-        btnClear.setOnClickListener {
-            resetAutoCloseTimer()
-            cartItems.clear()
-            updateCartBadge()
-            bindCartUi()
-        }
-        btnClose.setOnClickListener {
-            resetAutoCloseTimer()
-            dialog.dismiss()
-        }
-        btnBuy.setOnClickListener {
-            resetAutoCloseTimer()
-            val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
-            dialog.dismiss()
-            openPaymentMethodDialog(
-                selections = selections,
-                fromCart = true
-            )
-        }
+            },
+            onLineRemoveRequested = { cellId ->
+                cartItems.remove(cellId)
+                updateCartBadge()
+                bindCartUi()
+            },
+            onClearRequested = {
+                cartItems.clear()
+                updateCartBadge()
+                bindCartUi()
+            },
+            onBuyRequested = {
+                val selections = cartItems.values.map { PurchaseSelection(it.item, it.quantity) }
+                dialog?.dismiss()
+                openPaymentMethodDialog(
+                    selections = selections,
+                    fromCart = true
+                )
+            },
+            onCloseRequested = { dialog?.dismiss() },
+            onUserInteraction = { resetAutoCloseTimer() }
+        )
+        val cartDialog = AlertDialog.Builder(this)
+            .setView(cartDialogView.root)
+            .setCancelable(true)
+            .create()
+        dialog = cartDialog
 
         onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dialog.window?.setLayout(
+        cartDialog.show()
+        cartDialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        cartDialog.window?.setLayout(
             (resources.displayMetrics.widthPixels * 0.94f).toInt(),
             WindowManager.LayoutParams.WRAP_CONTENT
         )
         resetAutoCloseTimer()
-        dialog.setOnDismissListener {
+        cartDialog.setOnDismissListener {
             autoCloseTimer?.cancel()
             onModalDismissed()
         }

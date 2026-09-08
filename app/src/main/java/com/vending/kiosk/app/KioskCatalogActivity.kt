@@ -30,8 +30,6 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
@@ -48,6 +46,8 @@ import com.vending.kiosk.app.ui.catalog.CartBarView
 import com.vending.kiosk.app.ui.catalog.CartDialogLine
 import com.vending.kiosk.app.ui.catalog.CartDialogView
 import com.vending.kiosk.app.ui.catalog.ProductDialogView
+import com.vending.kiosk.app.ui.payment.PaymentMethodDialogOption
+import com.vending.kiosk.app.ui.payment.PaymentMethodDialogView
 import com.vending.kiosk.app.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.backend.CatalogGatewayException
 import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
@@ -1626,36 +1626,22 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun openPaymentMethodDialog(selections: List<PurchaseSelection>, fromCart: Boolean) {
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_payment_method, null)
-        val rgMethods = view.findViewById<RadioGroup>(R.id.rgPaymentMethods)
-        val tvError = view.findViewById<TextView>(R.id.tvPaymentMethodError)
-        val tvTimer = view.findViewById<TextView>(R.id.tvPaymentMethodTimer)
-        val btnCancel = view.findViewById<Button>(R.id.btnPaymentMethodCancel)
-        val btnContinue = view.findViewById<Button>(R.id.btnPaymentMethodContinue)
-        val methodsByViewId = mutableMapOf<Int, PaymentMethodOption>()
-
-        // Fuerza visual para OEMs que pisan estilos en dialogos.
-        tvTimer.setBackgroundColor(Color.TRANSPARENT)
-        tvTimer.setTextColor(Color.WHITE)
-        tvTimer.textSize = 20f
-        tvTimer.setShadowLayer(2f, 0f, 1f, Color.parseColor("#80000000"))
-
         val dialog = AlertDialog.Builder(this)
-            .setView(view)
             .setCancelable(true)
             .create()
 
+        var paymentMethodDialogView: PaymentMethodDialogView? = null
         var autoCloseTimer: CountDownTimer? = null
         fun resetAutoCloseTimer() {
             autoCloseTimer?.cancel()
             autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
                 override fun onTick(millisUntilFinished: Long) {
                     val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
-                    tvTimer.text = "${seconds}s"
+                    paymentMethodDialogView?.renderTimer("${seconds}s")
                 }
 
                 override fun onFinish() {
-                    tvTimer.text = "0s"
+                    paymentMethodDialogView?.renderTimer("0s")
                     if (dialog.isShowing) {
                         dialog.dismiss()
                     }
@@ -1664,63 +1650,43 @@ class KioskCatalogActivity : AppCompatActivity() {
             }.start()
         }
 
-        view.setOnTouchListener { _, _ ->
-            resetAutoCloseTimer()
-            false
-        }
-
-        rgMethods.setOnCheckedChangeListener { _, _ ->
-            tvError.visibility = View.GONE
-            resetAutoCloseTimer()
-        }
-
-        btnCancel.setOnClickListener {
-            resetAutoCloseTimer()
-            dialog.dismiss()
-        }
-        btnContinue.setOnClickListener {
-            resetAutoCloseTimer()
-            val checked = rgMethods.checkedRadioButtonId
-            if (checked == View.NO_ID) {
-                tvError.visibility = View.VISIBLE
-                tvError.text = "Selecciona un metodo de pago"
-                return@setOnClickListener
-            }
-
-            val method = methodsByViewId[checked]
-            if (method == null) {
-                tvError.visibility = View.VISIBLE
-                tvError.text = "Metodo de pago invalido"
-                return@setOnClickListener
-            }
-            dialog.dismiss()
-            openCheckoutDialog(selections, fromCart, method)
-        }
+        var displayedPaymentMethods: List<PaymentMethodOption> = emptyList()
+        paymentMethodDialogView = PaymentMethodDialogView(
+            context = this,
+            onMethodSelected = {
+                paymentMethodDialogView?.hideError()
+                resetAutoCloseTimer()
+            },
+            onContinueRequested = { selectedMethodId ->
+                resetAutoCloseTimer()
+                val method = displayedPaymentMethods.firstOrNull { it.id == selectedMethodId }
+                if (selectedMethodId == null) {
+                    paymentMethodDialogView?.renderError(
+                        "Selecciona un metodo de pago",
+                        Color.parseColor("#B3261E")
+                    )
+                } else if (method == null) {
+                    paymentMethodDialogView?.renderError(
+                        "Metodo de pago invalido",
+                        Color.parseColor("#B3261E")
+                    )
+                } else {
+                    dialog.dismiss()
+                    openCheckoutDialog(selections, fromCart, method)
+                }
+            },
+            onCancelRequested = { dialog.dismiss() },
+            onUserInteraction = { resetAutoCloseTimer() }
+        )
+        val paymentMethodView = requireNotNull(paymentMethodDialogView)
+        dialog.setView(paymentMethodView.root)
 
         fun renderPaymentMethods(methods: List<PaymentMethodOption>) {
-            rgMethods.removeAllViews()
-            methodsByViewId.clear()
-            methods.forEachIndexed { index, method ->
-                val radio = RadioButton(this).apply {
-                    id = View.generateViewId()
-                    layoutParams = RadioGroup.LayoutParams(
-                        RadioGroup.LayoutParams.MATCH_PARENT,
-                        RadioGroup.LayoutParams.WRAP_CONTENT
-                    )
-                    buttonTintList = ColorStateList.valueOf(Color.parseColor("#F28E1B"))
-                    text = method.label
-                    textSize = 16f
-                    setTextColor(Color.parseColor("#20344D"))
-                    setPadding(0, dp(8), 0, dp(8))
-                    setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_qr_method, 0, 0, 0)
-                    compoundDrawablePadding = dp(10)
-                }
-                rgMethods.addView(radio)
-                methodsByViewId[radio.id] = method
-                if (index == 0) {
-                    rgMethods.check(radio.id)
-                }
-            }
+            displayedPaymentMethods = methods
+            paymentMethodView.renderMethods(
+                methods.map { PaymentMethodDialogOption(it.id, it.label) },
+                methods.firstOrNull()?.id
+            )
         }
 
         onModalShown()
@@ -1730,13 +1696,14 @@ class KioskCatalogActivity : AppCompatActivity() {
         val hadCachedMethods = cachedPaymentMethods.isNotEmpty()
         if (hadCachedMethods) {
             renderPaymentMethods(cachedPaymentMethods)
-            btnContinue.isEnabled = true
-            tvError.visibility = View.GONE
+            paymentMethodView.setContinueEnabled(true)
+            paymentMethodView.hideError()
         } else {
-            btnContinue.isEnabled = false
-            tvError.visibility = View.VISIBLE
-            tvError.setTextColor(Color.parseColor("#0965AF"))
-            tvError.text = "Cargando metodos de pago..."
+            paymentMethodView.setContinueEnabled(false)
+            paymentMethodView.renderError(
+                "Cargando metodos de pago...",
+                Color.parseColor("#0965AF")
+            )
         }
         lifecycleScope.launch {
             when (val result = withContext(Dispatchers.IO) { loadEnabledPaymentMethods() }) {
@@ -1744,16 +1711,17 @@ class KioskCatalogActivity : AppCompatActivity() {
                     cachedPaymentMethods = result.methods
                     cachedPaymentMethodsAtMs = System.currentTimeMillis()
                     renderPaymentMethods(result.methods)
-                    btnContinue.isEnabled = true
-                    tvError.visibility = View.GONE
+                    paymentMethodView.setContinueEnabled(true)
+                    paymentMethodView.hideError()
                 }
 
                 is PaymentMethodsResult.Error -> {
                     if (!hadCachedMethods) {
-                        btnContinue.isEnabled = false
-                        tvError.visibility = View.VISIBLE
-                        tvError.setTextColor(Color.parseColor("#B3261E"))
-                        tvError.text = result.message
+                        paymentMethodView.setContinueEnabled(false)
+                        paymentMethodView.renderError(
+                            result.message,
+                            Color.parseColor("#B3261E")
+                        )
                     }
                     if (result.unauthorized) {
                         dialog.dismiss()

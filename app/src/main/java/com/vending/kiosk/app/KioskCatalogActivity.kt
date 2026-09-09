@@ -6,8 +6,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
-import android.media.MediaPlayer
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.CountDownTimer
@@ -32,7 +30,6 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.VideoView
 import android.widget.ViewFlipper
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -47,6 +44,7 @@ import com.vending.kiosk.app.ui.catalog.CartDialogLine
 import com.vending.kiosk.app.ui.catalog.CartDialogView
 import com.vending.kiosk.app.ui.catalog.ProductDialogView
 import com.vending.kiosk.app.ui.dispense.DispenseDialogView
+import com.vending.kiosk.app.ui.idle.IdleVideoOverlayView
 import com.vending.kiosk.app.ui.payment.CheckoutDialogView
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogOption
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogView
@@ -157,10 +155,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var retrieveContent: DispenseDialogView.RetrieveContent? = null
     private var monitorViewerDialog: AlertDialog? = null
     private var monitorViewerRunnable: Runnable? = null
-    private var idleVideoOverlay: View? = null
-    private var idleVideoView: VideoView? = null
-    private var idleVideoVisible = false
-    private var idleVideoIndex = 0
+    private var idleVideoOverlayView: IdleVideoOverlayView? = null
     private var kioskLocked = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
@@ -176,7 +171,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
         if (machineId <= 0 || authHeader.isBlank()) return@Runnable
         refreshCatalogAndClearCart()
-        showIdleVideoOverlay()
+        idleVideoOverlayView?.show()
         Toast.makeText(
             this,
             "Inactividad detectada. Mostrando video de espera.",
@@ -321,8 +316,6 @@ class KioskCatalogActivity : AppCompatActivity() {
             badge = findViewById(R.id.tvCartBadge)
         )
         promoCarousel = findViewById(R.id.vfPromoCarousel)
-        idleVideoOverlay = findViewById(R.id.idleVideoOverlay)
-        idleVideoView = findViewById(R.id.idleVideoView)
         contentContainer = findViewById(R.id.llCatalogContainer)
         catalogGridView = CatalogGridView(
             contentContainer = contentContainer,
@@ -369,7 +362,17 @@ class KioskCatalogActivity : AppCompatActivity() {
         setupCartBadge()
         setupBackToMainButton()
         setupMonitoringButtons()
-        setupIdleVideoOverlay()
+        idleVideoOverlayView = IdleVideoOverlayView(
+            root = screenRootView,
+            onOverlayTouched = {
+                idleVideoOverlayView?.hide()
+                scheduleInactivityRefresh()
+            },
+            onPlaybackError = {
+                idleVideoOverlayView?.hide()
+                scheduleInactivityRefresh()
+            }
+        )
         catalogCarouselView.applyCarouselHeight()
         setupCarouselTouchControls()
 
@@ -431,8 +434,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispenseDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseDialog = null
         dismissRetrieveDialog()
-        hideIdleVideoOverlay()
-        idleVideoView?.stopPlayback()
+        idleVideoOverlayView?.hide()
+        idleVideoOverlayView?.stopPlayback()
         monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
         monitorViewerDialog = null
         monitorViewerRunnable?.let { inactivityHandler.removeCallbacks(it) }
@@ -922,62 +925,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onUserInteraction() {
         super.onUserInteraction()
-        if (idleVideoVisible) {
-            hideIdleVideoOverlay()
+        if (idleVideoOverlayView?.isVisible == true) {
+            idleVideoOverlayView?.hide()
         }
         scheduleInactivityRefresh()
-    }
-
-    private fun setupIdleVideoOverlay() {
-        idleVideoOverlay?.visibility = View.GONE
-        idleVideoOverlay?.setOnClickListener {
-            hideIdleVideoOverlay()
-            scheduleInactivityRefresh()
-        }
-    }
-
-    private fun showIdleVideoOverlay() {
-        val overlay = idleVideoOverlay ?: return
-        val video = idleVideoView ?: return
-        if (idleVideoVisible) return
-        idleVideoVisible = true
-        idleVideoIndex = 0
-        overlay.visibility = View.VISIBLE
-
-        video.setOnPreparedListener { mp: MediaPlayer ->
-            video.start()
-        }
-        video.setOnCompletionListener {
-            playNextIdleVideo()
-        }
-        video.setOnErrorListener { _, _, _ ->
-            hideIdleVideoOverlay()
-            scheduleInactivityRefresh()
-            true
-        }
-        playIdleVideoAt(idleVideoIndex)
-    }
-
-    private fun hideIdleVideoOverlay() {
-        if (!idleVideoVisible) return
-        idleVideoVisible = false
-        idleVideoIndex = 0
-        idleVideoView?.pause()
-        idleVideoOverlay?.visibility = View.GONE
-    }
-
-    private fun playNextIdleVideo() {
-        if (!idleVideoVisible) return
-        idleVideoIndex = (idleVideoIndex + 1) % IDLE_VIDEO_RES_IDS.size
-        playIdleVideoAt(idleVideoIndex)
-    }
-
-    private fun playIdleVideoAt(index: Int) {
-        val video = idleVideoView ?: return
-        val videoResId = IDLE_VIDEO_RES_IDS.getOrNull(index) ?: return
-        val uri = Uri.parse("android.resource://$packageName/$videoResId")
-        video.setVideoURI(uri)
-        video.start()
     }
 
     private fun scheduleInactivityRefresh() {
@@ -3245,11 +3196,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
         private const val IDLE_IO_POLL_MS = 750L
-        private val IDLE_VIDEO_RES_IDS = intArrayOf(
-            R.raw.video_de_vengan,
-            R.raw.presentacion_pago_facil,
-            R.raw.sra_nelly_labor_aqui
-        )
     }
 }
 

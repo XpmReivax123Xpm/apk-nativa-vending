@@ -2,29 +2,30 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_kiosk_catalog_screen_hot">
+    android:background="#FFFFFF">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="#FFFFFF"
         android:orientation="vertical">
 
+        <!-- Header -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="52dp"
             android:background="#FFFFFF"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingLeft="12dp"
-            android:paddingTop="8dp"
-            android:paddingRight="12dp"
-            android:paddingBottom="8dp">
+            android:paddingLeft="18dp"
+            android:paddingRight="18dp">
 
             <TextView
                 android:id="@+id/tvCatalogTitle"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:gravity="start|center_vertical"
                 android:text="MQ-2103"
                 android:textColor="#0965AF"
                 android:textSize="20sp"
@@ -32,26 +33,35 @@
 
             <TextView
                 android:id="@+id/tvCatalogSubtitle"
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="end|center_vertical"
                 android:text="Madrejon"
                 android:textColor="#F28E1B"
-                android:textSize="16sp" />
+                android:textSize="16sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
+        <!-- Contenido principal -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:background="#FFFFFF"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingLeft="12dp"
+            android:paddingTop="8dp"
+            android:paddingRight="12dp"
+            android:paddingBottom="8dp">
 
+            <!-- Carrusel -->
             <ViewFlipper
                 android:id="@+id/vfPromoCarousel"
                 android:layout_width="match_parent"
                 android:layout_height="220dp"
-                android:layout_marginTop="10dp"
                 android:autoStart="true"
+                android:background="#FFFFFF"
                 android:flipInterval="3200"
                 android:inAnimation="@android:anim/fade_in"
                 android:outAnimation="@android:anim/fade_out">
@@ -67,7 +77,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Promo del dia"
+                        android:text="Promo del día"
                         android:textColor="#0965AF"
                         android:textSize="28sp"
                         android:textStyle="bold" />
@@ -101,7 +111,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="Carrusel preparado para imagenes"
+                        android:text="Carrusel preparado para imágenes"
                         android:textColor="#0965AF"
                         android:textSize="18sp" />
                 </LinearLayout>
@@ -136,17 +146,19 @@
                 android:id="@+id/tvCatalogStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/bg_catalog_status"
                 android:padding="10dp"
-                android:text="Cargando catalogo..."
+                android:text="Cargando catálogo..."
                 android:textColor="#0965AF"
                 android:textSize="16sp" />
 
+            <!-- Categorías + carrito actual -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
+                android:layout_marginTop="8dp"
+                android:background="#FFFFFF"
                 android:clipChildren="false"
                 android:clipToPadding="false"
                 android:gravity="center_vertical"
@@ -156,6 +168,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:background="#FFFFFF"
                     android:overScrollMode="never"
                     android:scrollbars="none">
 
@@ -277,8 +290,8 @@
                         android:layout_width="18dp"
                         android:layout_height="18dp"
                         android:layout_gravity="top|end"
-                        android:layout_marginEnd="-2dp"
                         android:layout_marginTop="-7dp"
+                        android:layout_marginEnd="-2dp"
                         android:background="@drawable/bg_cart_count_badge"
                         android:gravity="center"
                         android:text="0"
@@ -288,11 +301,13 @@
                 </FrameLayout>
             </LinearLayout>
 
+            <!-- Grilla actual: por ahora la dejamos igual para no mezclar XML + Kotlin -->
             <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_marginTop="10dp"
                 android:layout_weight="1"
+                android:background="#FFFFFF"
                 android:fillViewport="true"
                 android:overScrollMode="never"
                 android:scrollbars="none">
@@ -301,11 +316,13 @@
                     android:id="@+id/llCatalogContainer"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
+                    android:background="#FFFFFF"
                     android:orientation="horizontal" />
             </HorizontalScrollView>
 
         </LinearLayout>
 
+        <!-- Footer técnico oculto -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="45dp"
@@ -319,7 +336,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="34dp"
                 android:backgroundTint="#0965AF"
-                android:text="Atras"
+                android:text="Atrás"
                 android:textAllCaps="false"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"
@@ -343,7 +360,7 @@
                 android:layout_height="34dp"
                 android:layout_marginStart="8dp"
                 android:backgroundTint="#1F7A8C"
-                android:text="Ver bitacora"
+                android:text="Ver bitácora"
                 android:textAllCaps="false"
                 android:textColor="#FFFFFF"
                 android:textStyle="bold"

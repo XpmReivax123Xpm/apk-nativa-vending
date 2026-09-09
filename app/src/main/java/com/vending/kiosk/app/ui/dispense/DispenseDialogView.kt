@@ -88,6 +88,71 @@ class DispenseDialogView(
         }
     }
 
+    class IoTimeoutContent(
+        val root: View
+    ) {
+        private val message = root.findViewById<TextView>(R.id.tvIoTimeoutMessage)
+
+        fun renderMessage(text: CharSequence) {
+            message.text = text
+        }
+    }
+
+    class IoProlongedWaitContent(
+        val root: View,
+        onManualRetryRequested: () -> Unit
+    ) {
+        private val status = root.findViewById<TextView>(R.id.tvManualRetryStatus)
+        private val retryButton = root.findViewById<Button>(R.id.btnManualDoorRetry)
+        private val retryProgress = root.findViewById<View>(R.id.progressManualDoorRetry)
+
+        init {
+            retryButton.setOnClickListener { onManualRetryRequested() }
+        }
+
+        fun renderAvailable() {
+            retryButton.isEnabled = true
+            retryButton.text = "Reintento manual"
+            retryProgress.visibility = View.GONE
+            status.text = ""
+        }
+
+        fun renderRetrying() {
+            retryButton.isEnabled = false
+            retryButton.text = "Reintentando..."
+            retryProgress.visibility = View.VISIBLE
+            status.text = "Reintentando... Por favor espere."
+        }
+
+        fun renderAlreadyRetrying() {
+            status.text = "Ya estamos reintentando. Por favor espere."
+        }
+
+        fun renderUnableToStart() {
+            status.text = "No se pudo iniciar el reintento manual."
+        }
+    }
+
+    class PlatformStuckContent(
+        val root: View,
+        onPlatformRecoveryRequested: () -> Unit
+    ) {
+        private val message = root.findViewById<TextView>(R.id.tvPlatformStuckMessage)
+        private val fixButton = root.findViewById<Button>(R.id.btnFixPlatformStuck)
+
+        init {
+            fixButton.setOnClickListener { onPlatformRecoveryRequested() }
+        }
+
+        fun renderMessage(text: CharSequence) {
+            message.text = text
+        }
+    }
+
+    class PlatformRecoveringContent(
+        val root: View
+    )
+
     companion object {
         fun createRetrieveContent(context: Context): RetrieveContent {
             val root = LayoutInflater.from(context).inflate(R.layout.dialog_dispense_retrieve, null)
@@ -97,6 +162,32 @@ class DispenseDialogView(
         fun createSuccessContent(context: Context): SuccessContent {
             val root = LayoutInflater.from(context).inflate(R.layout.dialog_dispense_success, null)
             return SuccessContent(root)
+        }
+
+        fun createIoTimeoutContent(context: Context): IoTimeoutContent {
+            val root = LayoutInflater.from(context).inflate(R.layout.dialog_dispense_io_timeout, null)
+            return IoTimeoutContent(root)
+        }
+
+        fun createIoProlongedWaitContent(
+            context: Context,
+            onManualRetryRequested: () -> Unit
+        ): IoProlongedWaitContent {
+            val root = LayoutInflater.from(context).inflate(R.layout.dialog_dispense_io_prolonged_wait, null)
+            return IoProlongedWaitContent(root, onManualRetryRequested)
+        }
+
+        fun createPlatformStuckContent(
+            context: Context,
+            onPlatformRecoveryRequested: () -> Unit
+        ): PlatformStuckContent {
+            val root = LayoutInflater.from(context).inflate(R.layout.dialog_platform_stuck, null)
+            return PlatformStuckContent(root, onPlatformRecoveryRequested)
+        }
+
+        fun createPlatformRecoveringContent(context: Context): PlatformRecoveringContent {
+            val root = LayoutInflater.from(context).inflate(R.layout.dialog_platform_recovering, null)
+            return PlatformRecoveringContent(root)
         }
     }
 }

@@ -2565,12 +2565,11 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun showDispenseIoTimeoutDialog(message: String) {
         if (ioTimeoutDialog?.isShowing == true) return
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_io_timeout, null)
-        val tvMessage = view.findViewById<TextView>(R.id.tvIoTimeoutMessage)
-        tvMessage.text = message.ifBlank { "La puerta no responde aun. Seguimos esperando confirmacion de apertura." }
+        val content = DispenseDialogView.createIoTimeoutContent(this)
+        content.renderMessage(message.ifBlank { "La puerta no responde aun. Seguimos esperando confirmacion de apertura." })
 
         val dialog = AlertDialog.Builder(this)
-            .setView(view)
+            .setView(content.root)
             .setCancelable(false)
             .create()
 
@@ -2593,32 +2592,26 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun showDispenseIoProlongedWaitDialog() {
         if (ioProlongedWaitDialog?.isShowing == true) return
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_dispense_io_prolonged_wait, null)
-        val status = view.findViewById<TextView>(R.id.tvManualRetryStatus)
-        val retryButton = view.findViewById<Button>(R.id.btnManualDoorRetry)
-        val retryProgress = view.findViewById<ProgressBar>(R.id.progressManualDoorRetry)
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
-            .setCancelable(false)
-            .create()
-
-        retryButton.setOnClickListener {
+        lateinit var content: DispenseDialogView.IoProlongedWaitContent
+        content = DispenseDialogView.createIoProlongedWaitContent(this) {
             val wasAlreadyRetrying = vendFlow.isManualDoorRetryRunning()
             val started = runCatching { vendFlow.requestManualDoorRetrySequence() }.getOrDefault(false)
-            if (!started) {
-                status.text = if (wasAlreadyRetrying || vendFlow.isManualDoorRetryRunning()) {
-                    "Ya estamos reintentando. Por favor espere."
+            if (started) {
+                content.renderRetrying()
+            } else {
+                if (wasAlreadyRetrying || vendFlow.isManualDoorRetryRunning()) {
+                    content.renderAlreadyRetrying()
                 } else {
-                    "No se pudo iniciar el reintento manual."
+                    content.renderUnableToStart()
                 }
-                return@setOnClickListener
             }
-            retryButton.isEnabled = false
-            retryButton.text = "Reintentando..."
-            retryProgress.visibility = View.VISIBLE
-            status.text = "Reintentando... Por favor espere."
         }
+        content.renderAvailable()
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(content.root)
+            .setCancelable(false)
+            .create()
 
         onModalShown()
         dialog.show()
@@ -2639,25 +2632,22 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun showPlatformStuckDialog(message: String) {
         if (platformStuckDialog?.isShowing == true) return
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_platform_stuck, null)
-        val tvMessage = view.findViewById<TextView>(R.id.tvPlatformStuckMessage)
-        val btnFix = view.findViewById<Button>(R.id.btnFixPlatformStuck)
-        tvMessage.text = message.ifBlank { "Se detecto plataforma atorada. Presiona el boton para volver a base." }
+        lateinit var dialog: AlertDialog
+        val content = DispenseDialogView.createPlatformStuckContent(this) {
+            val started = runCatching { vendFlow.requestPlatformRecoveryToBase() }.getOrDefault(false)
+            if (started) {
+                dialog.dismiss()
+                showPlatformRecoveringDialog()
+            } else {
+                Toast.makeText(this, "No hay recuperacion pendiente.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        content.renderMessage(message.ifBlank { "Se detecto plataforma atorada. Presiona el boton para volver a base." })
 
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
+        dialog = AlertDialog.Builder(this)
+            .setView(content.root)
             .setCancelable(false)
             .create()
-
-        btnFix.setOnClickListener {
-            val started = runCatching { vendFlow.requestPlatformRecoveryToBase() }.getOrDefault(false)
-            if (!started) {
-                Toast.makeText(this, "No hay recuperacion pendiente.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            dialog.dismiss()
-            showPlatformRecoveringDialog()
-        }
 
         onModalShown()
         dialog.show()
@@ -2678,10 +2668,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun showPlatformRecoveringDialog() {
         if (platformRecoveringDialog?.isShowing == true) return
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_platform_recovering, null)
+        val content = DispenseDialogView.createPlatformRecoveringContent(this)
 
         val dialog = AlertDialog.Builder(this)
-            .setView(view)
+            .setView(content.root)
             .setCancelable(false)
             .create()
 

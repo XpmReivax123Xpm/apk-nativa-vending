@@ -301,15 +301,46 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <!-- Grilla de productos -->
+            <!-- Product catalog pagination -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="10dp"
+                android:layout_weight="1"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btnCatalogPrev"
+                    android:layout_width="36dp"
+                    android:layout_height="match_parent"
+                    android:clickable="true"
+                    android:contentDescription="Previous catalog page"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="&lt;"
+                    android:textColor="#0965AF"
+                    android:textSize="32sp" />
+
                 <LinearLayout
                     android:id="@+id/llCatalogContainer"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_marginTop="10dp"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:background="#FFFFFF"
                     android:orientation="vertical" />
+
+                <TextView
+                    android:id="@+id/btnCatalogNext"
+                    android:layout_width="36dp"
+                    android:layout_height="match_parent"
+                    android:clickable="true"
+                    android:contentDescription="Next catalog page"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:text="&gt;"
+                    android:textColor="#0965AF"
+                    android:textSize="32sp" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Footer técnico oculto -->

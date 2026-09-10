@@ -89,6 +89,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var tvPromoTitle: TextView? = null
     private var tvPromoSubtitle: TextView? = null
     private lateinit var contentContainer: LinearLayout
+    private lateinit var btnCatalogPrev: TextView
+    private lateinit var btnCatalogNext: TextView
     private var btnKioskBackToMain: Button? = null
     private var btnKioskViewLogs: Button? = null
     private var btnKioskViewBitacora: Button? = null
@@ -113,6 +115,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var machineCode: String = ""
     private var authHeader: String = ""
     private var catalogItems: List<CeldaUi> = emptyList()
+    private var catalogGridItems: List<CatalogGridItem<CeldaUi>> = emptyList()
+    private var currentCatalogPage = 0
+    private var catalogPageCount = 0
     private val cartItems = linkedMapOf<Int, CartLine>()
     private val imageCache by lazy {
         object : LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
@@ -317,11 +322,16 @@ class KioskCatalogActivity : AppCompatActivity() {
         )
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         contentContainer = findViewById(R.id.llCatalogContainer)
+        btnCatalogPrev = findViewById(R.id.btnCatalogPrev)
+        btnCatalogNext = findViewById(R.id.btnCatalogNext)
         catalogGridView = CatalogGridView(
             contentContainer = contentContainer,
             loadProductImage = ::loadProductImage,
-            onProductTapped = ::onCatalogProductTapped
+            onProductTapped = ::onCatalogProductTapped,
+            onSwipePreviousPage = ::showPreviousCatalogPage,
+            onSwipeNextPage = ::showNextCatalogPage
         )
+        setupCatalogPagination()
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
         btnKioskViewLogs = findViewById(R.id.btnKioskViewLogs)
         btnKioskViewBitacora = findViewById(R.id.btnKioskViewBitacora)
@@ -799,6 +809,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun loadCatalog(machineId: Int, authHeader: String) {
         tvStatus.visibility = View.VISIBLE
         tvStatus.text = "Cargando catalogo..."
+        resetCatalogPagination()
         contentContainer.removeAllViews()
 
         lifecycleScope.launch {
@@ -1123,7 +1134,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 return
             }
 
-            catalogGridView.render(visibles.map { item ->
+            catalogGridItems = visibles.map { item ->
                 CatalogGridItem(
                     source = item,
                     cellCode = item.codigoCelda,
@@ -1132,11 +1143,60 @@ class KioskCatalogActivity : AppCompatActivity() {
                     imageUrl = item.imagenUrl,
                     isAvailable = isCellSellable(item)
                 )
-            })
+            }
+            catalogPageCount = (catalogGridItems.size + CatalogGridView.ITEMS_PER_PAGE - 1) /
+                CatalogGridView.ITEMS_PER_PAGE
+            currentCatalogPage = currentCatalogPage.coerceIn(0, catalogPageCount - 1)
+            renderCurrentCatalogPage()
         }.onFailure { error ->
             tvStatus.visibility = View.VISIBLE
             tvStatus.text = "Error de render: ${error.message ?: "sin detalle"}"
         }
+    }
+
+    private fun setupCatalogPagination() {
+        btnCatalogPrev.setOnClickListener { showPreviousCatalogPage() }
+        btnCatalogNext.setOnClickListener { showNextCatalogPage() }
+        updateCatalogPaginationControls()
+    }
+
+    private fun resetCatalogPagination() {
+        catalogGridItems = emptyList()
+        currentCatalogPage = 0
+        catalogPageCount = 0
+        updateCatalogPaginationControls()
+    }
+
+    private fun showPreviousCatalogPage() {
+        if (currentCatalogPage <= 0) return
+        currentCatalogPage--
+        renderCurrentCatalogPage()
+    }
+
+    private fun showNextCatalogPage() {
+        if (currentCatalogPage >= catalogPageCount - 1) return
+        currentCatalogPage++
+        renderCurrentCatalogPage()
+    }
+
+    private fun renderCurrentCatalogPage() {
+        val startIndex = currentCatalogPage * CatalogGridView.ITEMS_PER_PAGE
+        catalogGridView.render(
+            catalogGridItems.subList(
+                startIndex,
+                (startIndex + CatalogGridView.ITEMS_PER_PAGE).coerceAtMost(catalogGridItems.size)
+            )
+        )
+        updateCatalogPaginationControls()
+    }
+
+    private fun updateCatalogPaginationControls() {
+        val hasPreviousPage = currentCatalogPage > 0
+        val hasNextPage = currentCatalogPage < catalogPageCount - 1
+        btnCatalogPrev.isEnabled = hasPreviousPage
+        btnCatalogPrev.alpha = if (hasPreviousPage) 1f else 0.35f
+        btnCatalogNext.isEnabled = hasNextPage
+        btnCatalogNext.alpha = if (hasNextPage) 1f else 0.35f
     }
 
     private fun onCatalogProductTapped(item: CeldaUi) {

@@ -1,7 +1,5 @@
 ﻿package com.vending.kiosk.app
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -22,11 +20,11 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -91,7 +89,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var screenRootView: View
     private var tvPromoTitle: TextView? = null
     private var tvPromoSubtitle: TextView? = null
-    private lateinit var contentContainer: FrameLayout
+    private lateinit var catalogProductPager: HorizontalScrollView
+    private lateinit var catalogPagesStrip: LinearLayout
     private lateinit var btnCatalogPrev: TextView
     private lateinit var btnCatalogNext: TextView
     private var btnKioskBackToMain: Button? = null
@@ -121,10 +120,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var catalogGridItems: List<CatalogGridItem<CeldaUi>> = emptyList()
     private var currentCatalogPage = 0
     private var catalogPageCount = 0
-    private var isCatalogPageAnimating = false
-    private var catalogGestureClaimed = false
-    private var catalogTouchDownX = 0f
-    private var catalogTouchDownY = 0f
+    private var catalogViewportGeneration = 0L
+    private var catalogSettleRunnable: Runnable? = null
+    private var programmaticCatalogTargetScrollX: Int? = null
     private val cartItems = linkedMapOf<Int, CartLine>()
     private val imageCache by lazy {
         object : LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
@@ -328,14 +326,14 @@ class KioskCatalogActivity : AppCompatActivity() {
             badge = findViewById(R.id.tvCartBadge)
         )
         promoCarousel = findViewById(R.id.vfPromoCarousel)
-        contentContainer = findViewById(R.id.llCatalogContainer)
+        catalogProductPager = findViewById(R.id.catalogProductPager)
+        catalogPagesStrip = findViewById(R.id.catalogPagesStrip)
         btnCatalogPrev = findViewById(R.id.btnCatalogPrev)
         btnCatalogNext = findViewById(R.id.btnCatalogNext)
         catalogGridView = CatalogGridView(
-            contentHost = contentContainer,
+            pagesStrip = catalogPagesStrip,
             loadProductImage = ::loadProductImage,
-            onProductTapped = ::onCatalogProductTapped,
-            onPageTouch = ::handleCatalogPageTouch
+            onProductTapped = ::onCatalogProductTapped
         )
         setupCatalogPagination()
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
@@ -815,7 +813,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvStatus.visibility = View.VISIBLE
         tvStatus.text = "Cargando catalogo..."
         resetCatalogPagination()
-        contentContainer.removeAllViews()
+        catalogPagesStrip.removeAllViews()
 
         lifecycleScope.launch {
             val initialHeader = withContext(Dispatchers.IO) {
@@ -1134,7 +1132,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             if (visibles.isEmpty()) {
                 tvStatus.visibility = View.VISIBLE
                 tvStatus.text = "Sin productos disponibles para venta"
-                contentContainer.removeAllViews()
+                catalogPagesStrip.removeAllViews()
                 return
             }
 
@@ -1150,8 +1148,8 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
             catalogPageCount = (catalogGridItems.size + CatalogGridView.ITEMS_PER_PAGE - 1) /
                 CatalogGridView.ITEMS_PER_PAGE
-            currentCatalogPage = currentCatalogPage.coerceIn(0, catalogPageCount - 1)
-            renderCurrentCatalogPage()
+            currentCatalogPage = 0
+            renderCatalogPages()
         }.onFailure { error ->
             tvStatus.visibility = View.VISIBLE
             tvStatus.text = "Error de render: ${error.message ?: "sin detalle"}"
@@ -1161,11 +1159,34 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun setupCatalogPagination() {
         btnCatalogPrev.setOnClickListener { showPreviousCatalogPage() }
         btnCatalogNext.setOnClickListener { showNextCatalogPage() }
+        catalogProductPager.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    programmaticCatalogTargetScrollX = null
+                    cancelCatalogPageSettle()
+                }
+
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> scheduleCatalogPageSettle()
+            }
+            false
+        }
+        catalogProductPager.setOnScrollChangeListener { _, scrollX, _, _, _ ->
+            val programmaticTarget = programmaticCatalogTargetScrollX
+            if (programmaticTarget != null) {
+                if (scrollX != programmaticTarget) return@setOnScrollChangeListener
+                programmaticCatalogTargetScrollX = null
+            }
+            scheduleCatalogPageSettle()
+        }
         updateCatalogPaginationControls()
     }
 
     private fun resetCatalogPagination() {
-        resetCatalogPageAnimation()
+        catalogViewportGeneration += 1
+        cancelCatalogPageSettle()
+        programmaticCatalogTargetScrollX = null
+        catalogProductPager.scrollTo(0, 0)
         catalogGridItems = emptyList()
         currentCatalogPage = 0
         catalogPageCount = 0
@@ -1181,115 +1202,56 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun navigateToCatalogPage(targetPage: Int) {
-        if (!canNavigateCatalogPages() || targetPage !in 0 until catalogPageCount) return
-        isCatalogPageAnimating = true
-        contentContainer.post { startCatalogPushTransition(targetPage) }
-    }
-
-    private fun resetCatalogPageAnimation() {
-        contentContainer.getChildAt(0)?.animate()?.setListener(null)?.cancel()
-        catalogGestureClaimed = false
-        isCatalogPageAnimating = false
-    }
-
-    private fun startCatalogPushTransition(targetPage: Int) {
-        val pageWidth = contentContainer.width
-        if (pageWidth <= 0 || targetPage !in 0 until catalogPageCount) {
-            isCatalogPageAnimating = false
-            return
-        }
-
-        val isNextPage = targetPage > currentCatalogPage
-        val firstPage = if (isNextPage) currentCatalogPage else targetPage
-        val secondPage = if (isNextPage) targetPage else currentCatalogPage
-        val strip = catalogGridView.stagePages(
-            firstItems = catalogItemsForPage(firstPage),
-            secondItems = catalogItemsForPage(secondPage),
-            pageWidth = pageWidth
-        )
-
-        contentContainer.getChildAt(0)?.let(contentContainer::removeView)
-        contentContainer.addView(strip)
-        strip.translationX = if (isNextPage) 0f else -pageWidth.toFloat()
-        strip.animate()
-            .translationX(if (isNextPage) -pageWidth.toFloat() else 0f)
-            .setDuration(CATALOG_PAGE_PUSH_DURATION_MS)
-            .setListener(object : AnimatorListenerAdapter() {
-                private var wasCancelled = false
-
-                override fun onAnimationCancel(animation: Animator) {
-                    wasCancelled = true
-                }
-
-                override fun onAnimationEnd(animation: Animator) {
-                    contentContainer.post {
-                        if (!wasCancelled) currentCatalogPage = targetPage
-                        renderCurrentCatalogPage()
-                        isCatalogPageAnimating = false
-                    }
-                }
-            })
-            .start()
-    }
-
-    private fun renderCurrentCatalogPage() {
-        catalogGridView.render(catalogItemsForPage(currentCatalogPage))
+        if (targetPage !in 0 until catalogPageCount) return
+        val pageWidth = catalogProductPager.width
+        if (pageWidth <= 0) return
+        currentCatalogPage = targetPage
+        val targetScrollX = targetPage * pageWidth
+        programmaticCatalogTargetScrollX = targetScrollX
+        cancelCatalogPageSettle()
+        catalogProductPager.smoothScrollTo(targetScrollX, 0)
         updateCatalogPaginationControls()
     }
 
-    private fun catalogItemsForPage(page: Int): List<CatalogGridItem<CeldaUi>> {
-        val startIndex = page * CatalogGridView.ITEMS_PER_PAGE
-        return catalogGridItems.subList(
-            startIndex,
-            (startIndex + CatalogGridView.ITEMS_PER_PAGE).coerceAtMost(catalogGridItems.size)
-        )
+    private fun renderCatalogPages() {
+        val renderGeneration = ++catalogViewportGeneration
+        cancelCatalogPageSettle()
+        catalogProductPager.post {
+            if (renderGeneration != catalogViewportGeneration) return@post
+            val pageWidth = catalogProductPager.width
+            if (pageWidth <= 0) return@post
+            catalogGridView.render(catalogGridItems, pageWidth)
+            catalogProductPager.scrollTo(0, 0)
+            currentCatalogPage = 0
+            updateCatalogPaginationControls()
+        }
     }
 
-    private fun canNavigateCatalogPages(): Boolean =
-        !isCatalogPageAnimating
-
-    private fun handleCatalogPageTouch(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                if (!canNavigateCatalogPages()) return false
-                catalogTouchDownX = event.rawX
-                catalogTouchDownY = event.rawY
-                catalogGestureClaimed = false
-                return false
-            }
-
-            MotionEvent.ACTION_MOVE -> {
-                if (isCatalogPageAnimating) return false
-                val deltaX = event.rawX - catalogTouchDownX
-                val deltaY = event.rawY - catalogTouchDownY
-                if (!catalogGestureClaimed) {
-                    val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
-                    if (kotlin.math.abs(deltaX) <= touchSlop || kotlin.math.abs(deltaX) <= kotlin.math.abs(deltaY)) {
-                        return false
-                    }
-                    catalogGestureClaimed = true
-                }
-                return true
-            }
-
-            MotionEvent.ACTION_UP -> {
-                if (!catalogGestureClaimed) {
-                    return false
-                }
-                val deltaX = event.rawX - catalogTouchDownX
-                catalogGestureClaimed = false
-                contentContainer.post {
-                    if (deltaX > 0f) showPreviousCatalogPage() else showNextCatalogPage()
-                }
-                return true
-            }
-
-            MotionEvent.ACTION_CANCEL -> {
-                catalogGestureClaimed = false
-                return true
-            }
+    private fun scheduleCatalogPageSettle() {
+        if (catalogPageCount <= 0 || catalogProductPager.width <= 0) return
+        cancelCatalogPageSettle()
+        val settleGeneration = catalogViewportGeneration
+        val runnable = Runnable {
+            if (settleGeneration != catalogViewportGeneration) return@Runnable
+            settleCatalogPage()
         }
-        return false
+        catalogSettleRunnable = runnable
+        catalogProductPager.postDelayed(runnable, CATALOG_PAGE_SETTLE_DELAY_MS)
+    }
+
+    private fun cancelCatalogPageSettle() {
+        catalogSettleRunnable?.let(catalogProductPager::removeCallbacks)
+        catalogSettleRunnable = null
+    }
+
+    private fun settleCatalogPage() {
+        val pageWidth = catalogProductPager.width
+        if (pageWidth <= 0 || catalogPageCount <= 0) return
+        val targetPage = ((catalogProductPager.scrollX + pageWidth / 2) / pageWidth)
+            .coerceIn(0, catalogPageCount - 1)
+        currentCatalogPage = targetPage
+        catalogProductPager.smoothScrollTo(targetPage * pageWidth, 0)
+        updateCatalogPaginationControls()
     }
 
     private fun updateCatalogPaginationControls() {
@@ -3357,7 +3319,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
         private const val IDLE_IO_POLL_MS = 750L
-        private const val CATALOG_PAGE_PUSH_DURATION_MS = 120L
+        private const val CATALOG_PAGE_SETTLE_DELAY_MS = 120L
     }
 }
 

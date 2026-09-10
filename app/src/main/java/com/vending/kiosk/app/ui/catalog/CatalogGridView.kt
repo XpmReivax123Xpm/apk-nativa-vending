@@ -2,10 +2,8 @@ package com.vending.kiosk.app.ui.catalog
 
 import android.graphics.Color
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -21,34 +19,14 @@ data class CatalogGridItem<T>(
 )
 
 class CatalogGridView<T>(
-    private val contentHost: FrameLayout,
+    private val pagesStrip: LinearLayout,
     private val loadProductImage: (String, ImageView) -> Unit,
-    private val onProductTapped: (T) -> Unit,
-    private val onPageTouch: (MotionEvent) -> Boolean
+    private val onProductTapped: (T) -> Unit
 ) {
-    fun render(items: List<CatalogGridItem<T>>) {
-        contentHost.removeAllViews()
-        contentHost.addView(createPage(items))
-    }
-
-    fun stagePages(
-        firstItems: List<CatalogGridItem<T>>,
-        secondItems: List<CatalogGridItem<T>>,
-        pageWidth: Int
-    ): View {
-        return LinearLayout(contentHost.context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = FrameLayout.LayoutParams(
-                pageWidth * 2,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-            addView(createPage(firstItems).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    pageWidth,
-                    LinearLayout.LayoutParams.MATCH_PARENT
-                )
-            })
-            addView(createPage(secondItems).apply {
+    fun render(items: List<CatalogGridItem<T>>, pageWidth: Int) {
+        pagesStrip.removeAllViews()
+        items.chunked(ITEMS_PER_PAGE).forEach { pageItems ->
+            pagesStrip.addView(createPage(pageItems).apply {
                 layoutParams = LinearLayout.LayoutParams(
                     pageWidth,
                     LinearLayout.LayoutParams.MATCH_PARENT
@@ -58,39 +36,30 @@ class CatalogGridView<T>(
     }
 
     fun createPage(items: List<CatalogGridItem<T>>): View {
-        val page = LinearLayout(contentHost.context).apply {
+        val page = LinearLayout(pagesStrip.context).apply {
             orientation = LinearLayout.VERTICAL
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-            setOnTouchListener(pageTouchListener)
         }
-        val layoutInflater = LayoutInflater.from(contentHost.context)
+        val layoutInflater = LayoutInflater.from(pagesStrip.context)
         val visibleItems = items.take(ITEMS_PER_PAGE)
 
-        for (rowIndex in 0 until ROWS) {
-            val row = LinearLayout(contentHost.context).apply {
+        for (rowIndex in 0 until GRID_ROWS) {
+            val row = LinearLayout(pagesStrip.context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     0,
                     1f
                 ).also {
-                    it.bottomMargin = if (rowIndex == ROWS - 1) 0 else dp(8)
+                    it.bottomMargin = if (rowIndex == GRID_ROWS - 1) 0 else dp(8)
                 }
-                setOnTouchListener(pageTouchListener)
             }
 
-            for (columnIndex in 0 until COLUMNS) {
-                val cellIndex = rowIndex * COLUMNS + columnIndex
+            for (columnIndex in 0 until GRID_COLUMNS) {
+                val cellIndex = rowIndex * GRID_COLUMNS + columnIndex
                 val cell = if (cellIndex < visibleItems.size) {
                     createCard(layoutInflater, row, visibleItems[cellIndex])
                 } else {
-                    View(contentHost.context).apply {
-                        isClickable = true
-                        setOnTouchListener(pageTouchListener)
-                    }
+                    View(pagesStrip.context)
                 }
                 cell.layoutParams = LinearLayout.LayoutParams(
                     0,
@@ -129,25 +98,15 @@ class CatalogGridView<T>(
             }
             alpha = if (item.isAvailable) 1f else 0.78f
             setOnClickListener { onProductTapped(item.source) }
-            applyPageTouchListener(this)
-        }
-    }
-
-    private val pageTouchListener = View.OnTouchListener { _, event -> onPageTouch(event) }
-
-    private fun applyPageTouchListener(view: View) {
-        view.setOnTouchListener(pageTouchListener)
-        if (view is ViewGroup) {
-            for (index in 0 until view.childCount) applyPageTouchListener(view.getChildAt(index))
         }
     }
 
     private fun dp(value: Int): Int =
-        (value * contentHost.resources.displayMetrics.density).toInt()
+        (value * pagesStrip.resources.displayMetrics.density).toInt()
 
     companion object {
-        const val COLUMNS = 2
-        const val ROWS = 3
-        const val ITEMS_PER_PAGE = COLUMNS * ROWS
+        const val GRID_COLUMNS = 3
+        const val GRID_ROWS = 3
+        const val ITEMS_PER_PAGE = GRID_COLUMNS * GRID_ROWS
     }
 }

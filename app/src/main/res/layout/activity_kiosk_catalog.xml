@@ -289,46 +289,58 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <LinearLayout
+            <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_marginTop="10dp"
-                android:layout_weight="1"
-                android:orientation="horizontal">
+                android:layout_weight="1">
+
+                <HorizontalScrollView
+                    android:id="@+id/catalogProductPager"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#FFFFFF"
+                    android:clipChildren="true"
+                    android:clipToPadding="true"
+                    android:fillViewport="false"
+                    android:overScrollMode="never"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/catalogPagesStrip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal" />
+                </HorizontalScrollView>
 
                 <TextView
                     android:id="@+id/btnCatalogPrev"
                     android:layout_width="44dp"
-                    android:layout_height="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_gravity="start|center_vertical"
+                    android:layout_marginStart="4dp"
                     android:clickable="true"
                     android:contentDescription="Previous catalog page"
                     android:focusable="true"
                     android:gravity="center"
-                    android:text="&lt;"
-                    android:textColor="#0965AF"
-                    android:textSize="36sp" />
-
-                <FrameLayout
-                    android:id="@+id/llCatalogContainer"
-                    android:layout_width="0dp"
-                    android:layout_height="match_parent"
-                    android:layout_weight="1"
-                    android:background="#FFFFFF"
-                    android:clipChildren="true"
-                    android:clipToPadding="true" />
+                    android:text="◀"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="26sp" />
 
                 <TextView
                     android:id="@+id/btnCatalogNext"
                     android:layout_width="44dp"
-                    android:layout_height="match_parent"
+                    android:layout_height="44dp"
+                    android:layout_gravity="end|center_vertical"
+                    android:layout_marginEnd="4dp"
                     android:clickable="true"
                     android:contentDescription="Next catalog page"
                     android:focusable="true"
                     android:gravity="center"
-                    android:text="&gt;"
-                    android:textColor="#0965AF"
-                    android:textSize="36sp" />
-            </LinearLayout>
+                    android:text="▶"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="26sp" />
+            </FrameLayout>
         </LinearLayout>
 
         <LinearLayout

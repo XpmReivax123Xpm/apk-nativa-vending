@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="catalog_cart_surface">#FFFFFF</color>
+    <color name="catalog_cart_border">#DCE3EC</color>
+    <color name="catalog_cart_icon">#0965AF</color>
+    <color name="catalog_cart_badge">#E85D04</color>
+    <color name="catalog_cart_badge_text">#FFFFFF</color>
+    <color name="catalog_cart_divider">#E2E8F0</color>
+    <color name="catalog_cart_label">#64748B</color>
+    <color name="catalog_cart_total">#0F172A</color>
+    <color name="catalog_cart_pay">#198754</color>
+    <color name="catalog_cart_pay_text">#FFFFFF</color>
+</resources>

@@ -144,151 +144,6 @@
                 android:textColor="#0965AF"
                 android:textSize="16sp" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <HorizontalScrollView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:overScrollMode="never"
-                    android:scrollbars="none">
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:background="@drawable/bg_catalog_category_chip_active"
-                            android:gravity="center"
-                            android:paddingLeft="14dp"
-                            android:paddingRight="14dp"
-                            android:text="Todos"
-                            android:textColor="#FFFFFF"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:layout_marginStart="8dp"
-                            android:background="@drawable/bg_catalog_category_chip"
-                            android:gravity="center"
-                            android:paddingLeft="14dp"
-                            android:paddingRight="14dp"
-                            android:text="Sacks"
-                            android:textColor="#0D3B66"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:layout_marginStart="8dp"
-                            android:background="@drawable/bg_catalog_category_chip"
-                            android:gravity="center"
-                            android:paddingLeft="14dp"
-                            android:paddingRight="14dp"
-                            android:text="Bebidas"
-                            android:textColor="#0D3B66"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:layout_marginStart="8dp"
-                            android:background="@drawable/bg_catalog_category_chip"
-                            android:gravity="center"
-                            android:paddingLeft="14dp"
-                            android:paddingRight="14dp"
-                            android:text="Energizantes"
-                            android:textColor="#0D3B66"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="34dp"
-                            android:layout_marginStart="8dp"
-                            android:background="@drawable/bg_catalog_category_chip"
-                            android:gravity="center"
-                            android:paddingLeft="14dp"
-                            android:paddingRight="14dp"
-                            android:text="Saludable"
-                            android:textColor="#0D3B66"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-                    </LinearLayout>
-                </HorizontalScrollView>
-
-                <FrameLayout
-                    android:id="@+id/cartFabContainer"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:background="@drawable/bg_cart_badge"
-                    android:clickable="true"
-                    android:clipChildren="false"
-                    android:clipToPadding="false"
-                    android:focusable="true"
-                    android:gravity="center_vertical"
-                    android:paddingLeft="10dp"
-                    android:paddingTop="6dp"
-                    android:paddingRight="10dp"
-                    android:paddingBottom="6dp">
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="14dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/tvCartLabel"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginEnd="6dp"
-                            android:text="Comprar"
-                            android:textColor="#FFFFFF"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <ImageView
-                            android:id="@+id/ivCartBadge"
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
-                            android:src="@drawable/ic_cart_fab"
-                            android:tint="#FFFFFF" />
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/tvCartBadge"
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_gravity="top|end"
-                        android:layout_marginEnd="-2dp"
-                        android:layout_marginTop="-7dp"
-                        android:background="@drawable/bg_cart_count_badge"
-                        android:gravity="center"
-                        android:text="0"
-                        android:textColor="#FFFFFF"
-                        android:textSize="9sp"
-                        android:textStyle="bold" />
-                </FrameLayout>
-            </LinearLayout>
-
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
@@ -340,6 +195,105 @@
                     android:text="▶"
                     android:textColor="#CCFFFFFF"
                     android:textSize="26sp" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/cartFabContainer"
+                android:layout_width="match_parent"
+                android:layout_height="@dimen/catalog_cart_bar_height"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_cart_badge"
+                android:clickable="true"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:focusable="true">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:paddingLeft="14dp"
+                    android:paddingRight="10dp">
+
+                    <FrameLayout
+                        android:layout_width="@dimen/catalog_cart_icon_frame_size"
+                        android:layout_height="@dimen/catalog_cart_icon_frame_size"
+                        android:clipChildren="false"
+                        android:clipToPadding="false">
+
+                        <ImageView
+                            android:id="@+id/ivCartBadge"
+                            android:layout_width="@dimen/catalog_cart_icon_size"
+                            android:layout_height="@dimen/catalog_cart_icon_size"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_cart_fab" />
+
+                        <TextView
+                            android:id="@+id/tvCartBadge"
+                            android:layout_width="@dimen/catalog_cart_count_badge_size"
+                            android:layout_height="@dimen/catalog_cart_count_badge_size"
+                            android:layout_gravity="top|end"
+                            android:layout_marginTop="1dp"
+                            android:background="@drawable/bg_cart_count_badge"
+                            android:gravity="center"
+                            android:text="0"
+                            android:textColor="@color/catalog_cart_badge_text"
+                            android:textSize="@dimen/catalog_cart_count_text_size"
+                            android:textStyle="bold" />
+                    </FrameLayout>
+
+                    <View
+                        android:layout_width="1dp"
+                        android:layout_height="@dimen/catalog_cart_divider_height"
+                        android:layout_marginLeft="10dp"
+                        android:layout_marginRight="12dp"
+                        android:background="@color/catalog_cart_divider" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Total:"
+                        android:textColor="@color/catalog_cart_label"
+                        android:textSize="@dimen/catalog_cart_total_label_text_size" />
+
+                    <TextView
+                        android:id="@+id/tvCartTotal"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="6dp"
+                        android:layout_weight="1"
+                        android:text="Bs 0.00"
+                        android:textColor="@color/catalog_cart_total"
+                        android:textSize="@dimen/catalog_cart_total_text_size"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="@dimen/catalog_cart_pay_affordance_height"
+                        android:background="@drawable/bg_cart_pay_affordance"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingLeft="@dimen/catalog_cart_pay_padding_start"
+                        android:paddingRight="@dimen/catalog_cart_pay_padding_end">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Pagar"
+                            android:textColor="@color/catalog_cart_pay_text"
+                            android:textSize="@dimen/catalog_cart_pay_text_size"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="6dp"
+                            android:text="›"
+                            android:textColor="@color/catalog_cart_pay_text"
+                            android:textSize="@dimen/catalog_cart_pay_arrow_text_size" />
+                    </LinearLayout>
+                </LinearLayout>
             </FrameLayout>
         </LinearLayout>
 

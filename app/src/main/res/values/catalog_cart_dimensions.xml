@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="catalog_cart_bar_height">80dp</dimen>
+    <dimen name="catalog_cart_icon_frame_size">60dp</dimen>
+    <dimen name="catalog_cart_icon_size">40dp</dimen>
+    <dimen name="catalog_cart_count_badge_size">22dp</dimen>
+    <dimen name="catalog_cart_count_text_size">10sp</dimen>
+    <dimen name="catalog_cart_divider_height">40dp</dimen>
+    <dimen name="catalog_cart_total_label_text_size">16sp</dimen>
+    <dimen name="catalog_cart_total_text_size">22sp</dimen>
+    <dimen name="catalog_cart_pay_affordance_height">60dp</dimen>
+    <dimen name="catalog_cart_pay_padding_start">20dp</dimen>
+    <dimen name="catalog_cart_pay_padding_end">16dp</dimen>
+    <dimen name="catalog_cart_pay_text_size">20sp</dimen>
+    <dimen name="catalog_cart_pay_arrow_text_size">30sp</dimen>
+</resources>

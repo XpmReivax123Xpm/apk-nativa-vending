@@ -323,7 +323,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvCatalogStatus)
         cartBarView = CartBarView(
             cartBar = findViewById(R.id.cartFabContainer),
-            badge = findViewById(R.id.tvCartBadge)
+            badge = findViewById(R.id.tvCartBadge),
+            total = findViewById(R.id.tvCartTotal)
         )
         promoCarousel = findViewById(R.id.vfPromoCarousel)
         catalogProductPager = findViewById(R.id.catalogProductPager)
@@ -1486,7 +1487,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             val totalUnits = cartItems.values.sumOf { it.quantity }
-            val totalAmount = cartItems.values.sumOf { it.item.precio * it.quantity }
+            val totalAmount = cartTotalAmount()
             tvUnits.text = "Total unidades: $totalUnits"
             tvTotal.text = "Total a pagar: Bs ${formatPrice(totalAmount)}"
         }
@@ -1610,7 +1611,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
 
             val lines = cartItems.values.toList()
-            val total = cartItems.values.sumOf { it.item.precio * it.quantity }
+            val total = cartTotalAmount()
             cartDialogView.render(
                 lines = lines.map { line ->
                     CartDialogLine(
@@ -3144,9 +3145,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         val qty = cartItems.values.sumOf { it.quantity }
         cartBarView.render(
             badgeText = qty.toString(),
+            totalText = "Bs ${formatPrice(cartTotalAmount())}",
             isBadgeVisible = qty > 0
         )
     }
+
+    private fun cartTotalAmount(): Double = cartItems.values.sumOf { it.item.precio * it.quantity }
 
     private fun isCellSellable(item: CeldaUi): Boolean {
         return item.vendible && item.stockDisponible > 0 && item.planogramaCeldaId > 0 && item.productoId > 0

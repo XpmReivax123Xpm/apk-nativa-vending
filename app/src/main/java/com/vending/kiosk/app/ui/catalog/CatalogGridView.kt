@@ -106,7 +106,7 @@ class CatalogGridView<T>(
 
     companion object {
         const val GRID_COLUMNS = 3
-        const val GRID_ROWS = 3
+        const val GRID_ROWS = 4
         const val ITEMS_PER_PAGE = GRID_COLUMNS * GRID_ROWS
     }
 }

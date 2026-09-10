@@ -2,11 +2,12 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_kiosk_catalog_screen_hot">
+    android:background="#FFFFFF">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:background="#FFFFFF"
         android:orientation="vertical">
 
         <LinearLayout
@@ -288,22 +289,14 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <HorizontalScrollView
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="10dp"
-                android:layout_weight="1"
-                android:fillViewport="true"
-                android:overScrollMode="never"
-                android:scrollbars="none">
-
                 <LinearLayout
                     android:id="@+id/llCatalogContainer"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
-                    android:orientation="horizontal" />
-            </HorizontalScrollView>
-
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_weight="1"
+                    android:background="#FFFFFF"
+                    android:orientation="vertical" />
         </LinearLayout>
 
         <LinearLayout

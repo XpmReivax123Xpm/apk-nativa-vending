@@ -301,25 +301,15 @@
                 </FrameLayout>
             </LinearLayout>
 
-            <!-- Grilla actual: por ahora la dejamos igual para no mezclar XML + Kotlin -->
-            <HorizontalScrollView
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="10dp"
-                android:layout_weight="1"
-                android:background="#FFFFFF"
-                android:fillViewport="true"
-                android:overScrollMode="never"
-                android:scrollbars="none">
-
+            <!-- Grilla de productos -->
                 <LinearLayout
                     android:id="@+id/llCatalogContainer"
-                    android:layout_width="wrap_content"
-                    android:layout_height="match_parent"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_weight="1"
                     android:background="#FFFFFF"
-                    android:orientation="horizontal" />
-            </HorizontalScrollView>
-
+                    android:orientation="vertical" />
         </LinearLayout>
 
         <!-- Footer técnico oculto -->

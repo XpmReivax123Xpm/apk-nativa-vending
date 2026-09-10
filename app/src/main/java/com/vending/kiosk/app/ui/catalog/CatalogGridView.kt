@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -20,65 +21,56 @@ data class CatalogGridItem<T>(
 )
 
 class CatalogGridView<T>(
-    private val contentContainer: LinearLayout,
+    private val contentHost: FrameLayout,
     private val loadProductImage: (String, ImageView) -> Unit,
     private val onProductTapped: (T) -> Unit,
-    private val onSwipePreviousPage: () -> Unit,
-    private val onSwipeNextPage: () -> Unit
+    private val onPageTouch: (MotionEvent) -> Boolean
 ) {
-    private var touchDownX = 0f
-    private var touchDownY = 0f
-    private var swipeHandled = false
+    fun render(items: List<CatalogGridItem<T>>) {
+        contentHost.removeAllViews()
+        contentHost.addView(createPage(items))
+    }
 
-    private val catalogTouchListener = View.OnTouchListener { _, event ->
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                touchDownX = event.x
-                touchDownY = event.y
-                swipeHandled = false
-                false
-            }
-
-            MotionEvent.ACTION_UP -> {
-                val horizontalDistance = event.x - touchDownX
-                val verticalDistance = event.y - touchDownY
-                val isHorizontalSwipe = !swipeHandled &&
-                    kotlin.math.abs(horizontalDistance) >= SWIPE_THRESHOLD_DP * contentContainer.resources.displayMetrics.density &&
-                    kotlin.math.abs(horizontalDistance) > kotlin.math.abs(verticalDistance)
-
-                if (isHorizontalSwipe) {
-                    swipeHandled = true
-                    contentContainer.post {
-                        if (horizontalDistance > 0) {
-                            onSwipePreviousPage()
-                        } else {
-                            onSwipeNextPage()
-                        }
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-
-            MotionEvent.ACTION_CANCEL -> {
-                swipeHandled = false
-                false
-            }
-
-            else -> false
+    fun stagePages(
+        firstItems: List<CatalogGridItem<T>>,
+        secondItems: List<CatalogGridItem<T>>,
+        pageWidth: Int
+    ): View {
+        return LinearLayout(contentHost.context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = FrameLayout.LayoutParams(
+                pageWidth * 2,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            addView(createPage(firstItems).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    pageWidth,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                )
+            })
+            addView(createPage(secondItems).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    pageWidth,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                )
+            })
         }
     }
 
-    fun render(items: List<CatalogGridItem<T>>) {
-        contentContainer.removeAllViews()
-        contentContainer.setOnTouchListener(catalogTouchListener)
-
-        val layoutInflater = LayoutInflater.from(contentContainer.context)
+    fun createPage(items: List<CatalogGridItem<T>>): View {
+        val page = LinearLayout(contentHost.context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            setOnTouchListener(pageTouchListener)
+        }
+        val layoutInflater = LayoutInflater.from(contentHost.context)
         val visibleItems = items.take(ITEMS_PER_PAGE)
 
         for (rowIndex in 0 until ROWS) {
-            val row = LinearLayout(contentContainer.context).apply {
+            val row = LinearLayout(contentHost.context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -87,98 +79,75 @@ class CatalogGridView<T>(
                 ).also {
                     it.bottomMargin = if (rowIndex == ROWS - 1) 0 else dp(8)
                 }
-                setOnTouchListener(catalogTouchListener)
+                setOnTouchListener(pageTouchListener)
             }
 
             for (columnIndex in 0 until COLUMNS) {
                 val cellIndex = rowIndex * COLUMNS + columnIndex
-
-                if (cellIndex < visibleItems.size) {
-                    val item = visibleItems[cellIndex]
-                    val card = layoutInflater.inflate(R.layout.item_catalog_cell, row, false)
-
-                    card.findViewById<TextView>(R.id.tvCellCode).text = item.cellCode
-                    card.findViewById<TextView>(R.id.tvCellProduct).text = item.productName
-                    card.findViewById<TextView>(R.id.tvCellPrice).text = item.priceText
-
-                    loadProductImage(
-                        item.imageUrl,
-                        card.findViewById(R.id.ivCellProductImage)
-                    )
-
-                    card.findViewById<TextView>(R.id.tvCellState).apply {
-                        if (item.isAvailable) {
-                            visibility = View.GONE
-                        } else {
-                            visibility = View.VISIBLE
-                            text = "No disponible"
-                            setBackgroundResource(R.drawable.bg_catalog_unavailable_badge)
-                            setTextColor(Color.parseColor("#F28E1B"))
-                        }
-                    }
-
-                    card.alpha = if (item.isAvailable) 1f else 0.78f
-                    card.setOnClickListener { onProductTapped(item.source) }
-                    applyCatalogTouchListener(card)
-
-                    card.layoutParams = LinearLayout.LayoutParams(
-                        0,
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        1f
-                    ).apply {
-                        val horizontalMargin = dp(5)
-
-                        if (columnIndex == 0) {
-                            setMargins(0, 0, horizontalMargin, 0)
-                        } else {
-                            setMargins(horizontalMargin, 0, 0, 0)
-                        }
-                    }
-
-                    row.addView(card)
+                val cell = if (cellIndex < visibleItems.size) {
+                    createCard(layoutInflater, row, visibleItems[cellIndex])
                 } else {
-                    val spacer = View(contentContainer.context).apply {
-                        setOnTouchListener(catalogTouchListener)
-                        layoutParams = LinearLayout.LayoutParams(
-                            0,
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            1f
-                        ).apply {
-                            val horizontalMargin = dp(5)
-
-                            if (columnIndex == 0) {
-                                setMargins(0, 0, horizontalMargin, 0)
-                            } else {
-                                setMargins(horizontalMargin, 0, 0, 0)
-                            }
-                        }
+                    View(contentHost.context).apply {
+                        isClickable = true
+                        setOnTouchListener(pageTouchListener)
                     }
+                }
+                cell.layoutParams = LinearLayout.LayoutParams(
+                    0,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    1f
+                ).apply {
+                    val horizontalMargin = dp(5)
+                    if (columnIndex == 0) setMargins(0, 0, horizontalMargin, 0)
+                    else setMargins(horizontalMargin, 0, 0, 0)
+                }
+                row.addView(cell)
+            }
+            page.addView(row)
+        }
+        return page
+    }
 
-                    row.addView(spacer)
+    private fun createCard(
+        layoutInflater: LayoutInflater,
+        row: ViewGroup,
+        item: CatalogGridItem<T>
+    ): View {
+        return layoutInflater.inflate(R.layout.item_catalog_cell, row, false).apply {
+            findViewById<TextView>(R.id.tvCellCode).text = item.cellCode
+            findViewById<TextView>(R.id.tvCellProduct).text = item.productName
+            findViewById<TextView>(R.id.tvCellPrice).text = item.priceText
+            loadProductImage(item.imageUrl, findViewById(R.id.ivCellProductImage))
+            findViewById<TextView>(R.id.tvCellState).apply {
+                if (item.isAvailable) visibility = View.GONE
+                else {
+                    visibility = View.VISIBLE
+                    text = "No disponible"
+                    setBackgroundResource(R.drawable.bg_catalog_unavailable_badge)
+                    setTextColor(Color.parseColor("#F28E1B"))
                 }
             }
-
-            contentContainer.addView(row)
+            alpha = if (item.isAvailable) 1f else 0.78f
+            setOnClickListener { onProductTapped(item.source) }
+            applyPageTouchListener(this)
         }
     }
 
-    private fun dp(value: Int): Int {
-        return (value * contentContainer.resources.displayMetrics.density).toInt()
-    }
+    private val pageTouchListener = View.OnTouchListener { _, event -> onPageTouch(event) }
 
-    private fun applyCatalogTouchListener(view: View) {
-        view.setOnTouchListener(catalogTouchListener)
+    private fun applyPageTouchListener(view: View) {
+        view.setOnTouchListener(pageTouchListener)
         if (view is ViewGroup) {
-            for (index in 0 until view.childCount) {
-                applyCatalogTouchListener(view.getChildAt(index))
-            }
+            for (index in 0 until view.childCount) applyPageTouchListener(view.getChildAt(index))
         }
     }
+
+    private fun dp(value: Int): Int =
+        (value * contentHost.resources.displayMetrics.density).toInt()
 
     companion object {
         const val COLUMNS = 2
         const val ROWS = 3
         const val ITEMS_PER_PAGE = COLUMNS * ROWS
-        private const val SWIPE_THRESHOLD_DP = 48
     }
 }

@@ -1,5 +1,7 @@
 ﻿package com.vending.kiosk.app
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.BitmapFactory
@@ -20,6 +22,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
@@ -88,7 +91,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var screenRootView: View
     private var tvPromoTitle: TextView? = null
     private var tvPromoSubtitle: TextView? = null
-    private lateinit var contentContainer: LinearLayout
+    private lateinit var contentContainer: FrameLayout
     private lateinit var btnCatalogPrev: TextView
     private lateinit var btnCatalogNext: TextView
     private var btnKioskBackToMain: Button? = null
@@ -118,6 +121,10 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var catalogGridItems: List<CatalogGridItem<CeldaUi>> = emptyList()
     private var currentCatalogPage = 0
     private var catalogPageCount = 0
+    private var isCatalogPageAnimating = false
+    private var catalogGestureClaimed = false
+    private var catalogTouchDownX = 0f
+    private var catalogTouchDownY = 0f
     private val cartItems = linkedMapOf<Int, CartLine>()
     private val imageCache by lazy {
         object : LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
@@ -325,11 +332,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnCatalogPrev = findViewById(R.id.btnCatalogPrev)
         btnCatalogNext = findViewById(R.id.btnCatalogNext)
         catalogGridView = CatalogGridView(
-            contentContainer = contentContainer,
+            contentHost = contentContainer,
             loadProductImage = ::loadProductImage,
             onProductTapped = ::onCatalogProductTapped,
-            onSwipePreviousPage = ::showPreviousCatalogPage,
-            onSwipeNextPage = ::showNextCatalogPage
+            onPageTouch = ::handleCatalogPageTouch
         )
         setupCatalogPagination()
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
@@ -1161,6 +1167,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun resetCatalogPagination() {
+        resetCatalogPageAnimation()
         catalogGridItems = emptyList()
         currentCatalogPage = 0
         catalogPageCount = 0
@@ -1168,26 +1175,123 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showPreviousCatalogPage() {
-        if (currentCatalogPage <= 0) return
-        currentCatalogPage--
-        renderCurrentCatalogPage()
+        navigateToCatalogPage(currentCatalogPage - 1)
     }
 
     private fun showNextCatalogPage() {
-        if (currentCatalogPage >= catalogPageCount - 1) return
-        currentCatalogPage++
-        renderCurrentCatalogPage()
+        navigateToCatalogPage(currentCatalogPage + 1)
+    }
+
+    private fun navigateToCatalogPage(targetPage: Int) {
+        if (!canNavigateCatalogPages() || targetPage !in 0 until catalogPageCount) return
+        isCatalogPageAnimating = true
+        contentContainer.post { startCatalogPushTransition(targetPage) }
+    }
+
+    private fun resetCatalogPageAnimation() {
+        contentContainer.getChildAt(0)?.animate()?.setListener(null)?.cancel()
+        catalogGestureClaimed = false
+        isCatalogPageAnimating = false
+    }
+
+    private fun startCatalogPushTransition(targetPage: Int) {
+        val pageWidth = contentContainer.width
+        if (pageWidth <= 0 || targetPage !in 0 until catalogPageCount) {
+            isCatalogPageAnimating = false
+            return
+        }
+
+        val isNextPage = targetPage > currentCatalogPage
+        val firstPage = if (isNextPage) currentCatalogPage else targetPage
+        val secondPage = if (isNextPage) targetPage else currentCatalogPage
+        val strip = catalogGridView.stagePages(
+            firstItems = catalogItemsForPage(firstPage),
+            secondItems = catalogItemsForPage(secondPage),
+            pageWidth = pageWidth
+        )
+
+        contentContainer.getChildAt(0)?.let(contentContainer::removeView)
+        contentContainer.addView(strip)
+        strip.translationX = if (isNextPage) 0f else -pageWidth.toFloat()
+        strip.animate()
+            .translationX(if (isNextPage) -pageWidth.toFloat() else 0f)
+            .setDuration(CATALOG_PAGE_PUSH_DURATION_MS)
+            .setListener(object : AnimatorListenerAdapter() {
+                private var wasCancelled = false
+
+                override fun onAnimationCancel(animation: Animator) {
+                    wasCancelled = true
+                }
+
+                override fun onAnimationEnd(animation: Animator) {
+                    contentContainer.post {
+                        if (!wasCancelled) currentCatalogPage = targetPage
+                        renderCurrentCatalogPage()
+                        isCatalogPageAnimating = false
+                    }
+                }
+            })
+            .start()
     }
 
     private fun renderCurrentCatalogPage() {
-        val startIndex = currentCatalogPage * CatalogGridView.ITEMS_PER_PAGE
-        catalogGridView.render(
-            catalogGridItems.subList(
-                startIndex,
-                (startIndex + CatalogGridView.ITEMS_PER_PAGE).coerceAtMost(catalogGridItems.size)
-            )
-        )
+        catalogGridView.render(catalogItemsForPage(currentCatalogPage))
         updateCatalogPaginationControls()
+    }
+
+    private fun catalogItemsForPage(page: Int): List<CatalogGridItem<CeldaUi>> {
+        val startIndex = page * CatalogGridView.ITEMS_PER_PAGE
+        return catalogGridItems.subList(
+            startIndex,
+            (startIndex + CatalogGridView.ITEMS_PER_PAGE).coerceAtMost(catalogGridItems.size)
+        )
+    }
+
+    private fun canNavigateCatalogPages(): Boolean =
+        !isCatalogPageAnimating
+
+    private fun handleCatalogPageTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                if (!canNavigateCatalogPages()) return false
+                catalogTouchDownX = event.rawX
+                catalogTouchDownY = event.rawY
+                catalogGestureClaimed = false
+                return false
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (isCatalogPageAnimating) return false
+                val deltaX = event.rawX - catalogTouchDownX
+                val deltaY = event.rawY - catalogTouchDownY
+                if (!catalogGestureClaimed) {
+                    val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+                    if (kotlin.math.abs(deltaX) <= touchSlop || kotlin.math.abs(deltaX) <= kotlin.math.abs(deltaY)) {
+                        return false
+                    }
+                    catalogGestureClaimed = true
+                }
+                return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                if (!catalogGestureClaimed) {
+                    return false
+                }
+                val deltaX = event.rawX - catalogTouchDownX
+                catalogGestureClaimed = false
+                contentContainer.post {
+                    if (deltaX > 0f) showPreviousCatalogPage() else showNextCatalogPage()
+                }
+                return true
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                catalogGestureClaimed = false
+                return true
+            }
+        }
+        return false
     }
 
     private fun updateCatalogPaginationControls() {
@@ -3256,6 +3360,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
         private const val IDLE_IO_POLL_MS = 750L
+        private const val CATALOG_PAGE_PUSH_DURATION_MS = 120L
     }
 }
 

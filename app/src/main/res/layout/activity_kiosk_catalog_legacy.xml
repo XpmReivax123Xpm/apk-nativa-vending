@@ -311,7 +311,7 @@
 
                 <TextView
                     android:id="@+id/btnCatalogPrev"
-                    android:layout_width="36dp"
+                    android:layout_width="44dp"
                     android:layout_height="match_parent"
                     android:clickable="true"
                     android:contentDescription="Previous catalog page"
@@ -319,19 +319,20 @@
                     android:gravity="center"
                     android:text="&lt;"
                     android:textColor="#0965AF"
-                    android:textSize="32sp" />
+                    android:textSize="80sp" />
 
-                <LinearLayout
+                <FrameLayout
                     android:id="@+id/llCatalogContainer"
                     android:layout_width="0dp"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:background="#FFFFFF"
-                    android:orientation="vertical" />
+                    android:clipChildren="true"
+                    android:clipToPadding="true" />
 
                 <TextView
                     android:id="@+id/btnCatalogNext"
-                    android:layout_width="36dp"
+                    android:layout_width="44dp"
                     android:layout_height="match_parent"
                     android:clickable="true"
                     android:contentDescription="Next catalog page"
@@ -339,7 +340,7 @@
                     android:gravity="center"
                     android:text="&gt;"
                     android:textColor="#0965AF"
-                    android:textSize="32sp" />
+                    android:textSize="80sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -356,6 +357,7 @@
                 android:id="@+id/btnKioskBackToMain"
                 android:layout_width="wrap_content"
                 android:layout_height="34dp"
+                android:layout_marginStart="8dp"
                 android:backgroundTint="#0965AF"
                 android:text="Atrás"
                 android:textAllCaps="false"

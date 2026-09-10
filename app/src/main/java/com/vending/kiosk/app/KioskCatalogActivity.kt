@@ -389,7 +389,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 scheduleInactivityRefresh()
             }
         )
-        catalogCarouselView.applyCarouselHeight()
         setupCarouselTouchControls()
 
         machineId = intent.getIntExtra(EXTRA_MACHINE_ID, 0)
@@ -1084,7 +1083,6 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun renderPromotionalCarousel(promotions: List<PromoSlideUi>) {
-        catalogCarouselView.resetAdaptiveHeight()
         if (useLegacyCarousel) {
             if (promotions.isNotEmpty()) {
                 carouselIndex = 0
@@ -3080,7 +3078,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 imageCache.put(imageUrl, bitmap)
                 imageView.setImageBitmap(bitmap)
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-                catalogCarouselView.applyAdaptiveCarouselHeight(bitmap)
             }
             return
         }

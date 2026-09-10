@@ -1,6 +1,5 @@
 package com.vending.kiosk.app.ui.catalog
 
-import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Handler
@@ -25,12 +24,6 @@ class CatalogCarouselView(
 
         fun getSlideCount(): Int
         fun showSlide(index: Int)
-    }
-
-    private var adaptiveHeightApplied = false
-
-    fun resetAdaptiveHeight() {
-        adaptiveHeightApplied = false
     }
 
     fun inflateDefaultViewFlipperSlides(flipper: ViewFlipper) {
@@ -65,42 +58,6 @@ class CatalogCarouselView(
             slide.addView(titleView)
             slide.addView(subtitleView)
             flipper.addView(slide)
-        }
-    }
-
-    fun applyAdaptiveCarouselHeight(bitmap: Bitmap) {
-        if (adaptiveHeightApplied) return
-        if (bitmap.width <= 0 || bitmap.height <= 0) return
-
-        val containerWidth = promoCarousel.width.takeIf { it > 0 }
-            ?: (promoCarousel.resources.displayMetrics.widthPixels - dp(24))
-        if (containerWidth <= 0) return
-
-        val desiredHeight = (containerWidth * (bitmap.height.toFloat() / bitmap.width.toFloat())).toInt()
-        val screenHeight = promoCarousel.resources.displayMetrics.heightPixels
-        val minHeight = dp(220)
-        val maxHeight = (screenHeight * 0.52f).toInt().coerceAtLeast(dp(320))
-        val targetHeight = desiredHeight.coerceIn(minHeight, maxHeight)
-
-        val params = promoCarousel.layoutParams ?: return
-        if (params.height != targetHeight) {
-            params.height = targetHeight
-            promoCarousel.layoutParams = params
-        }
-        adaptiveHeightApplied = true
-    }
-
-    fun applyCarouselHeight() {
-        val screenHeight = promoCarousel.resources.displayMetrics.heightPixels
-        val screenWidth = promoCarousel.resources.displayMetrics.widthPixels
-        val isLandscape = screenWidth > screenHeight
-        val factor = if (isLandscape) 0.22f else 0.38f
-        val desired = (screenHeight * factor).toInt()
-        val minHeight = if (isLandscape) dp(150) else dp(180)
-        val maxHeight = if (isLandscape) dp(320) else dp(1000)
-        val target = desired.coerceIn(minHeight, maxHeight)
-        promoCarousel.layoutParams = promoCarousel.layoutParams.apply {
-            height = target
         }
     }
 
@@ -162,7 +119,6 @@ class CatalogCarouselView(
         }
     }
 
-    private fun dp(value: Int): Int {
-        return (value * promoCarousel.resources.displayMetrics.density).toInt()
-    }
+    private fun dp(value: Int): Int =
+        (value * promoCarousel.resources.displayMetrics.density).toInt()
 }

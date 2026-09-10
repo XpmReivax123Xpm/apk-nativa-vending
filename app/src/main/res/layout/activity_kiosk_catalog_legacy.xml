@@ -59,7 +59,7 @@
             <ViewFlipper
                 android:id="@+id/vfPromoCarousel"
                 android:layout_width="match_parent"
-                android:layout_height="220dp"
+                android:layout_height="@dimen/catalog_carousel_height"
                 android:autoStart="true"
                 android:background="#FFFFFF"
                 android:flipInterval="3200"

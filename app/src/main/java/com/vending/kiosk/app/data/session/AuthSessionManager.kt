@@ -1,4 +1,4 @@
-﻿package com.vending.kiosk.app
+﻿package com.vending.kiosk.app.data.session
 
 import android.content.Context
 

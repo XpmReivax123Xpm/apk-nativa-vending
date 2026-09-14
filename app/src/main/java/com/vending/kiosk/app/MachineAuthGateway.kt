@@ -1,5 +1,6 @@
 ﻿package com.vending.kiosk.app
 
+import com.vending.kiosk.app.data.session.AuthSessionManager
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL

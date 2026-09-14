@@ -38,8 +38,6 @@ android {
 }
 
 dependencies {
-    implementation(project(":domain"))
-    implementation(project(":data"))
     implementation(project(":integration-backend"))
     implementation(project(":integration-serial"))
     implementation(project(":kiosk-device"))

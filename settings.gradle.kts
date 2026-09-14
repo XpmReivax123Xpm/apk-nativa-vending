@@ -18,8 +18,6 @@ rootProject.name = "apk-nativa-vending"
 
 include(
     ":app",
-    ":domain",
-    ":data",
     ":integration-backend",
     ":integration-serial",
     ":kiosk-device",

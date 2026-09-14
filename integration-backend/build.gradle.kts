@@ -7,6 +7,5 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":domain"))
 }
 

@@ -50,10 +50,10 @@ import com.vending.kiosk.app.ui.payment.CheckoutDialogView
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogOption
 import com.vending.kiosk.app.ui.payment.PaymentMethodDialogView
 import com.vending.kiosk.app.ui.payment.QrPaymentDialogView
-import com.vending.kiosk.app.backend.HttpVendingBackendGateway
-import com.vending.kiosk.app.backend.CatalogGatewayException
-import com.vending.kiosk.app.backend.CreateOrderQrGatewayException
-import com.vending.kiosk.app.backend.PaymentMethodsGatewayException
+import com.vending.kiosk.app.data.backend.HttpVendingBackendGateway
+import com.vending.kiosk.app.data.backend.CatalogGatewayException
+import com.vending.kiosk.app.data.backend.CreateOrderQrGatewayException
+import com.vending.kiosk.app.data.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
 import com.vending.kiosk.integration.backend.models.CatalogResponse as BackendCatalogResponse
 import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest as BackendCreateOrderQrRequest

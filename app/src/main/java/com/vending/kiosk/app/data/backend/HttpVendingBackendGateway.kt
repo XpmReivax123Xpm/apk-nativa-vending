@@ -1,4 +1,4 @@
-package com.vending.kiosk.app.backend
+package com.vending.kiosk.app.data.backend
 
 import com.vending.kiosk.app.AuthSessionManager
 import com.vending.kiosk.integration.backend.contracts.VendingBackendGateway

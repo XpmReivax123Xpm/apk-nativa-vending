@@ -1,4 +1,4 @@
-﻿package com.vending.kiosk.app
+﻿package com.vending.kiosk.app.data.backend
 
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import org.json.JSONObject

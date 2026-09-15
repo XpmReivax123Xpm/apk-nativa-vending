@@ -53,6 +53,8 @@ import com.vending.kiosk.app.ui.payment.QrPaymentDialogView
 import com.vending.kiosk.app.data.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.data.backend.CatalogGatewayException
 import com.vending.kiosk.app.data.backend.CreateOrderQrGatewayException
+import com.vending.kiosk.app.data.backend.MachineAuthGateway
+import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult

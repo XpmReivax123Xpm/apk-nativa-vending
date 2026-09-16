@@ -1,6 +1,8 @@
 package com.vending.kiosk.app.data.backend
 
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.domain.catalog.CatalogItem
+import com.vending.kiosk.app.domain.catalog.CatalogUseCase
 import com.vending.kiosk.integration.backend.contracts.VendingBackendGateway
 import com.vending.kiosk.integration.backend.models.CancelOrderResult
 import com.vending.kiosk.integration.backend.models.CatalogResponse
@@ -14,6 +16,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+
+data class CatalogData(
+    val items: List<CatalogItem>,
+    val promotions: List<CatalogPromotion>
+)
+
+data class CatalogPromotion(
+    val id: Int,
+    val url: String
+)
 
 class HttpVendingBackendGateway(
     private val sessionManager: AuthSessionManager
@@ -91,6 +103,43 @@ class HttpVendingBackendGateway(
             connection?.disconnect()
         }
     }
+
+    suspend fun fetchCatalogData(machineId: Long): CatalogData {
+        val catalog = fetchCatalog(machineId)
+
+        return CatalogData(
+            items = catalog.cells.map { cell ->
+                CatalogItem(
+                    planogramCellId = cell.planogramCellId,
+                    productId = cell.productId,
+                    cellCode = cell.cellCode,
+                    name = cell.productName,
+                    unitPrice = cell.price,
+                    availableStock = cell.availableStock,
+                    isVendible = CatalogUseCase.isVendible(
+                        baseVendible = cell.vendible,
+                        availableStock = cell.availableStock,
+                        planogramCellId = cell.planogramCellId,
+                        productId = cell.productId
+                    ),
+                    primaryImageUrl = cell.imageUrl,
+                    secondaryImageUrl = cell.secondaryImageUrl,
+                    imageId = cell.imageId,
+                    secondaryImageId = cell.secondaryImageId,
+                    physicalCell = cell.physicalCell
+                )
+            },
+            promotions = catalog.promotions.map { promotion ->
+                CatalogPromotion(
+                    id = promotion.id,
+                    url = promotion.url
+                )
+            }
+        )
+    }
+
+    suspend fun fetchCatalogItems(machineId: Long): List<CatalogItem> =
+        fetchCatalogData(machineId).items
 
     override suspend fun fetchEnabledPaymentMethods(): List<PaymentMethod> {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()

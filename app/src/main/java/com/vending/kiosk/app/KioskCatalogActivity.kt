@@ -13,7 +13,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Base64
 import android.util.Log
-import android.util.LruCache
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -34,12 +33,22 @@ import android.widget.Toast
 import android.widget.ViewFlipper
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.repeatOnLifecycle
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.ui.catalog.CatalogCarouselView
 import com.vending.kiosk.app.ui.catalog.CatalogGridItem
 import com.vending.kiosk.app.ui.catalog.CatalogGridView
+import com.vending.kiosk.app.ui.catalog.CatalogScreen
+import com.vending.kiosk.app.ui.catalog.CatalogUiState
+import com.vending.kiosk.app.ui.catalog.CatalogViewModel
 import com.vending.kiosk.app.ui.catalog.CartBarView
 import com.vending.kiosk.app.ui.catalog.CartDialogLine
 import com.vending.kiosk.app.ui.catalog.CartDialogView
@@ -56,7 +65,10 @@ import com.vending.kiosk.app.data.backend.CreateOrderQrGatewayException
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.backend.PaymentMethodsGatewayException
+import com.vending.kiosk.app.data.images.CatalogImageCache
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.domain.catalog.CatalogItem
+import androidx.compose.ui.platform.ComposeView
 import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
 import com.vending.kiosk.integration.backend.models.CatalogResponse as BackendCatalogResponse
 import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest as BackendCreateOrderQrRequest
@@ -71,13 +83,11 @@ import com.vending.kiosk.integration.serial.runtime.VendingFlowController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -96,6 +106,11 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var catalogPagesStrip: LinearLayout
     private lateinit var btnCatalogPrev: TextView
     private lateinit var btnCatalogNext: TextView
+    private lateinit var catalogComposeHost: ComposeView
+    private lateinit var catalogViewModel: CatalogViewModel
+    private var catalogComposeState by mutableStateOf(CatalogUiState())
+    private var catalogLoadInProgress = false
+    private var sessionLostHandled = false
     private var btnKioskBackToMain: Button? = null
     private var btnKioskViewLogs: Button? = null
     private var btnKioskViewBitacora: Button? = null
@@ -127,17 +142,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var catalogSettleRunnable: Runnable? = null
     private var programmaticCatalogTargetScrollX: Int? = null
     private val cartItems = linkedMapOf<Int, CartLine>()
-    private val imageCache by lazy {
-        object : LruCache<String, android.graphics.Bitmap>(8 * 1024 * 1024) {
-            override fun sizeOf(key: String, value: android.graphics.Bitmap): Int = value.byteCount
-        }
-    }
-    private val localImageCacheDir by lazy {
-        File(cacheDir, "planograma_images").apply { mkdirs() }
-    }
-    private val localImageCachePrefs by lazy {
-        getSharedPreferences("planograma_image_cache", MODE_PRIVATE)
-    }
+    private val catalogImageCache by lazy { CatalogImageCache(this) }
     private val imageTargetsByUrl = mutableMapOf<String, MutableList<ImageView>>()
 
     private val serial = SerialManager()
@@ -324,6 +329,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         tvTitle = findViewById(R.id.tvCatalogTitle)
         tvSubtitle = findViewById(R.id.tvCatalogSubtitle)
         tvStatus = findViewById(R.id.tvCatalogStatus)
+        catalogComposeHost = findViewById(R.id.catalogComposeHost)
         cartBarView = CartBarView(
             cartBar = findViewById(R.id.cartFabContainer),
             badge = findViewById(R.id.tvCartBadge),
@@ -334,47 +340,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         catalogPagesStrip = findViewById(R.id.catalogPagesStrip)
         btnCatalogPrev = findViewById(R.id.btnCatalogPrev)
         btnCatalogNext = findViewById(R.id.btnCatalogNext)
-        catalogGridView = CatalogGridView(
-            pagesStrip = catalogPagesStrip,
-            loadProductImage = ::loadProductImage,
-            onProductTapped = ::onCatalogProductTapped
-        )
-        setupCatalogPagination()
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
         btnKioskViewLogs = findViewById(R.id.btnKioskViewLogs)
         btnKioskViewBitacora = findViewById(R.id.btnKioskViewBitacora)
         screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
-        useLegacyCarousel = promoCarousel !is ViewFlipper
-        catalogCarouselView = CatalogCarouselView(
-            promoCarousel = promoCarousel,
-            legacyCarousel = object : CatalogCarouselView.LegacyCarousel {
-                override val isEnabled: Boolean
-                    get() = useLegacyCarousel
-
-                override var currentIndex: Int
-                    get() = carouselIndex
-                    set(value) {
-                        carouselIndex = value
-                    }
-
-                override fun getSlideCount(): Int = getLegacySlideCount()
-
-                override fun showSlide(index: Int) {
-                    showLegacySlide(index)
-                }
-            },
-            carouselHandler = carouselHandler,
-            carouselTicker = carouselTicker,
-            carouselIntervalMs = carouselIntervalMs
-        )
-
-        if (!useLegacyCarousel) {
-            (promoCarousel as? ViewFlipper)?.apply {
-                isAutoStart = false
-                stopFlipping()
-                flipInterval = carouselIntervalMs.toInt()
-            }
-        }
+        useLegacyCarousel = false
 
         setupDispenseRuntime()
         setupCartBadge()
@@ -391,7 +361,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 scheduleInactivityRefresh()
             }
         )
-        setupCarouselTouchControls()
 
         machineId = intent.getIntExtra(EXTRA_MACHINE_ID, 0)
         machineCode = intent.getStringExtra(EXTRA_MACHINE_CODE).orEmpty()
@@ -401,13 +370,19 @@ class KioskCatalogActivity : AppCompatActivity() {
             throw IllegalStateException("Maquina invalida")
         }
 
-        tvTitle.text = machineCode
-        tvSubtitle.text = machineLocation
+        moveUnlockGestureTargetAboveComposeHost()
         setupUnlockGestureOnMachineTitle()
         enterKioskMode()
 
         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
-        loadCatalog(machineId, authHeader)
+        catalogViewModel = ViewModelProvider(
+            this,
+            CatalogViewModelFactory(vendingBackendGateway, catalogImageCache, authSessionManager)
+        )[CatalogViewModel::class.java]
+        observeCatalogState()
+        catalogViewModel.configureMachine(machineId, machineCode, machineLocation)
+        catalogLoadInProgress = true
+        catalogViewModel.loadCatalog()
         prefetchPaymentMethodsIfNeeded()
     }
 
@@ -416,12 +391,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         applyImmersiveKioskUi()
         startIdleIoPolling()
         scheduleInactivityRefresh()
-        if (useLegacyCarousel && tvPromoTitle != null && tvPromoSubtitle != null) {
-            carouselHandler.removeCallbacks(carouselTicker)
-            carouselHandler.postDelayed(carouselTicker, carouselIntervalMs)
-        } else {
-            (promoCarousel as? ViewFlipper)?.startFlipping()
-        }
         prefetchPaymentMethodsIfNeeded()
     }
 
@@ -430,7 +399,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         carouselHandler.removeCallbacks(carouselTicker)
         inactivityHandler.removeCallbacksAndMessages(null)
         stopIdleIoPolling()
-        (promoCarousel as? ViewFlipper)?.stopFlipping()
         super.onPause()
     }
 
@@ -620,6 +588,22 @@ class KioskCatalogActivity : AppCompatActivity() {
                 else -> false
             }
         }
+    }
+
+    private fun moveUnlockGestureTargetAboveComposeHost() {
+        val header = tvTitle.parent as? ViewGroup ?: return
+        header.removeView(tvTitle)
+        header.visibility = View.GONE
+        val root = screenRootView as? FrameLayout ?: return
+        root.addView(
+            tvTitle,
+            (root.childCount - 1).coerceAtLeast(0),
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(72)
+            )
+        )
+        tvTitle.alpha = 0f
     }
 
     private fun enterKioskMode() {
@@ -814,62 +798,56 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun loadCatalog(machineId: Int, authHeader: String) {
-        tvStatus.visibility = View.VISIBLE
-        tvStatus.text = "Cargando catalogo..."
-        resetCatalogPagination()
-        catalogPagesStrip.removeAllViews()
+        catalogLoadInProgress = true
+        catalogViewModel.loadCatalog()
+    }
 
+    private fun observeCatalogState() {
+        catalogComposeHost.setContent {
+            CatalogScreen(
+                state = catalogComposeState,
+                onProductClick = { item -> onCatalogProductTapped(item.toCeldaUi()) }
+            )
+        }
         lifecycleScope.launch {
-            val initialHeader = withContext(Dispatchers.IO) {
-                resolveValidAuthHeader(forceRefresh = false)
-            }
-
-            if (initialHeader.isNullOrBlank()) {
-                tvStatus.visibility = View.VISIBLE
-                tvStatus.text = "Sesion de maquina expirada"
-                handleAuthSessionLost()
-                return@launch
-            }
-
-            this@KioskCatalogActivity.authHeader = initialHeader
-            var result = withContext(Dispatchers.IO) { fetchCatalog(machineId) }
-            if (result is CatalogResult.Error && result.unauthorized) {
-                val refreshedHeader = withContext(Dispatchers.IO) {
-                    resolveValidAuthHeader(forceRefresh = true)
-                }
-                if (!refreshedHeader.isNullOrBlank()) {
-                    this@KioskCatalogActivity.authHeader = refreshedHeader
-                    result = withContext(Dispatchers.IO) { fetchCatalog(machineId) }
-                }
-            }
-
-            when (result) {
-                is CatalogResult.Success -> {
-                    catalogItems = result.celdas
-                    promotionalSlides = result.promotions
-                    applyUiBackground(result.backgroundImageUrl)
-                    renderPromotionalCarousel(result.promotions)
-                    if (result.celdas.isEmpty()) {
-                        tvStatus.visibility = View.VISIBLE
-                        tvStatus.text = "Sin productos disponibles (0 celdas recibidas)"
-                    } else {
-                        tvStatus.visibility = View.GONE
-                        syncCartWithCatalog(result.celdas)
-                        renderCatalog(result.celdas)
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                catalogViewModel.uiState.collect { state ->
+                    catalogComposeState = state
+                    if (state.isLoading) {
+                        catalogLoadInProgress = true
                     }
-                }
-
-                is CatalogResult.Error -> {
-                    tvStatus.visibility = View.VISIBLE
-                    tvStatus.text = result.message
-                    Toast.makeText(this@KioskCatalogActivity, result.message, Toast.LENGTH_LONG).show()
-                    if (result.unauthorized) {
-                        handleAuthSessionLost()
+                    if (state.sessionLost) {
+                        if (!sessionLostHandled) {
+                            sessionLostHandled = true
+                            handleAuthSessionLost()
+                        }
+                    } else {
+                        sessionLostHandled = false
+                    }
+                    if (!state.isLoading && catalogLoadInProgress) {
+                        catalogLoadInProgress = false
+                        if (state.error != null || state.sessionLost) return@collect
+                        authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
+                        catalogItems = state.items.map { it.toCeldaUi() }
+                        syncCartWithCatalog(catalogItems)
                     }
                 }
             }
         }
     }
+
+    private fun CatalogItem.toCeldaUi(): CeldaUi = CeldaUi(
+        planogramaCeldaId = planogramCellId,
+        productoId = productId,
+        codigoCelda = cellCode,
+        producto = name,
+        precio = unitPrice,
+        stockDisponible = availableStock,
+        vendible = isVendible,
+        physicalCell = physicalCell,
+        imagenUrl = primaryImageUrl,
+        imagenUrlSecundaria = secondaryImageUrl
+    )
 
     private fun refreshCatalogAndClearCart() {
         if (cartItems.isNotEmpty()) {
@@ -882,13 +860,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private suspend fun fetchCatalog(machineId: Int): CatalogResult {
-        return try {
-            mapCatalogResponse(vendingBackendGateway.fetchCatalog(machineId.toLong()))
-        } catch (ex: CatalogGatewayException) {
-            CatalogResult.Error(ex.message ?: "Fallo de conexion: sin detalle", ex.unauthorized)
-        } catch (ex: Exception) {
-            CatalogResult.Error("Fallo de conexion: ${ex.message ?: "sin detalle"}")
-        }
+        return CatalogResult.Error("Legacy catalog loading is disabled")
     }
 
     private fun mapCatalogResponse(response: BackendCatalogResponse): CatalogResult.Success {
@@ -906,13 +878,13 @@ class KioskCatalogActivity : AppCompatActivity() {
                 stockDisponible = cell.availableStock,
                 vendible = cell.vendible,
                 physicalCell = cell.physicalCell,
-                imagenUrl = resolveImageSourceForCache(
+                imagenUrl = catalogImageCache.resolveImageSourceForCache(
                     slot = "${slotBase}_principal",
                     incomingId = cell.imageId,
                     remoteUrl = cell.imageUrl,
                     targetSizePx = 480
                 ),
-                imagenUrlSecundaria = resolveImageSourceForCache(
+                imagenUrlSecundaria = catalogImageCache.resolveImageSourceForCache(
                     slot = "${slotBase}_secondary",
                     incomingId = cell.secondaryImageId,
                     remoteUrl = cell.secondaryImageUrl,
@@ -922,7 +894,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
         val promotions = response.promotions.map { promo ->
             PromoSlideUi(
-                url = resolveImageSourceForCache(
+                url = catalogImageCache.resolveImageSourceForCache(
                     slot = "promo_${promo.id}",
                     incomingId = promo.id,
                     remoteUrl = promo.url,
@@ -932,7 +904,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 id = promo.id
             )
         }
-        val backgroundImageUrl = resolveImageSourceForCache(
+        val backgroundImageUrl = catalogImageCache.resolveImageSourceForCache(
             slot = "background_main",
             incomingId = response.backgroundImageId,
             remoteUrl = response.backgroundImageUrl,
@@ -978,16 +950,16 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         val tagValue = "ui-bg:$imageUrl"
         screenRootView.tag = tagValue
-        val cached = imageCache.get(imageUrl)
+        val cached = catalogImageCache.getBitmap(imageUrl)
         if (cached != null) {
             screenRootView.background = BitmapDrawable(resources, cached)
             return
         }
 
-        if (isLocalImagePath(imageUrl)) {
-            val bitmap = loadBitmapFromLocalPath(imageUrl, 1440)
+        if (catalogImageCache.isLocalImagePath(imageUrl)) {
+            val bitmap = catalogImageCache.loadBitmapFromLocalPath(imageUrl, 1440)
             if (bitmap != null) {
-                imageCache.put(imageUrl, bitmap)
+                catalogImageCache.putBitmap(imageUrl, bitmap)
                 screenRootView.background = BitmapDrawable(resources, bitmap)
                 return
             }
@@ -996,9 +968,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 1440) }
+            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 1440) }
             if (bitmap != null) {
-                imageCache.put(imageUrl, bitmap)
+                catalogImageCache.putBitmap(imageUrl, bitmap)
             }
             if (screenRootView.tag == tagValue && bitmap != null) {
                 screenRootView.background = BitmapDrawable(resources, bitmap)
@@ -1006,82 +978,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
             }
         }
-    }
-
-    private fun resolveImageSourceForCache(
-        slot: String,
-        incomingId: Int,
-        remoteUrl: String,
-        targetSizePx: Int
-    ): String {
-        val normalizedUrl = remoteUrl.trim()
-        if (normalizedUrl.isBlank()) return ""
-
-        val slotKey = sanitizeCacheSlot(slot)
-        val token = if (incomingId > 0) "id:$incomingId" else "url:${normalizedUrl.lowercase()}"
-        val tokenPrefKey = "slot_${slotKey}_token"
-        val pathPrefKey = "slot_${slotKey}_path"
-        val storedToken = localImageCachePrefs.getString(tokenPrefKey, null)
-        val storedPath = localImageCachePrefs.getString(pathPrefKey, null)
-        val storedFile = storedPath?.let { File(it) }
-
-        if (storedToken == token && storedFile?.exists() == true) {
-            return storedFile.absolutePath
-        }
-
-        if (storedToken != token) {
-            storedFile?.takeIf { it.exists() }?.delete()
-            localImageCacheDir.listFiles()?.forEach { candidate ->
-                if (candidate.name.startsWith("${slotKey}_")) {
-                    candidate.delete()
-                }
-            }
-            localImageCachePrefs.edit().remove(pathPrefKey).apply()
-        }
-
-        val bitmap = downloadBitmap(normalizedUrl, targetSizePx) ?: return normalizedUrl
-        imageCache.put(normalizedUrl, bitmap)
-
-        val targetFile = File(localImageCacheDir, "${slotKey}_${token.hashCode()}.png")
-        if (!writeBitmapToFile(bitmap, targetFile)) return normalizedUrl
-
-        imageCache.put(targetFile.absolutePath, bitmap)
-        localImageCachePrefs.edit()
-            .putString(tokenPrefKey, token)
-            .putString(pathPrefKey, targetFile.absolutePath)
-            .apply()
-
-        return targetFile.absolutePath
-    }
-
-    private fun sanitizeCacheSlot(raw: String): String {
-        return raw.lowercase().replace(Regex("[^a-z0-9_\\-]"), "_")
-    }
-
-    private fun isRemoteUrl(path: String): Boolean {
-        return path.startsWith("https://", ignoreCase = true) || path.startsWith("http://", ignoreCase = true)
-    }
-
-    private fun isLocalImagePath(path: String): Boolean = path.isNotBlank() && !isRemoteUrl(path)
-
-    private fun loadBitmapFromLocalPath(path: String, targetSizePx: Int): android.graphics.Bitmap? {
-        val file = File(path)
-        if (!file.exists()) return null
-        return runCatching {
-            val bytes = file.readBytes()
-            decodeSampledBitmap(bytes, targetSizePx)
-        }.getOrNull()
-    }
-
-    private fun writeBitmapToFile(bitmap: android.graphics.Bitmap, targetFile: File): Boolean {
-        return runCatching {
-            targetFile.parentFile?.mkdirs()
-            FileOutputStream(targetFile).use { output ->
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
-                output.flush()
-            }
-            true
-        }.getOrDefault(false)
     }
 
     private fun renderPromotionalCarousel(promotions: List<PromoSlideUi>) {
@@ -2978,16 +2874,16 @@ class KioskCatalogActivity : AppCompatActivity() {
         if (imageUrl.isBlank()) return
 
         imageView.tag = imageUrl
-        imageCache.get(imageUrl)?.let { bitmap ->
+        catalogImageCache.getBitmap(imageUrl)?.let { bitmap ->
             imageView.setImageBitmap(bitmap)
             imageView.scaleType = loadedScaleType()
             return
         }
 
-        if (isLocalImagePath(imageUrl)) {
-            val bitmap = loadBitmapFromLocalPath(imageUrl, 240)
+        if (catalogImageCache.isLocalImagePath(imageUrl)) {
+            val bitmap = catalogImageCache.loadBitmapFromLocalPath(imageUrl, 240)
             if (bitmap != null) {
-                imageCache.put(imageUrl, bitmap)
+                catalogImageCache.putBitmap(imageUrl, bitmap)
                 imageView.setImageBitmap(bitmap)
                 imageView.scaleType = loadedScaleType()
             }
@@ -3003,9 +2899,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         if (!shouldStartDownload) return
 
         lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 240) }
+            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 240) }
             if (bitmap != null) {
-                imageCache.put(imageUrl, bitmap)
+                catalogImageCache.putBitmap(imageUrl, bitmap)
             }
             val targets = synchronized(imageTargetsByUrl) {
                 imageTargetsByUrl.remove(imageUrl).orEmpty()
@@ -3032,16 +2928,16 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         val tagValue = "promo:$imageUrl"
         imageView.tag = tagValue
-        imageCache.get(imageUrl)?.let { bitmap ->
+        catalogImageCache.getBitmap(imageUrl)?.let { bitmap ->
             imageView.setImageBitmap(bitmap)
             imageView.scaleType = ImageView.ScaleType.CENTER_CROP
             return
         }
 
-        if (isLocalImagePath(imageUrl)) {
-            val bitmap = loadBitmapFromLocalPath(imageUrl, 900)
+        if (catalogImageCache.isLocalImagePath(imageUrl)) {
+            val bitmap = catalogImageCache.loadBitmapFromLocalPath(imageUrl, 900)
             if (bitmap != null) {
-                imageCache.put(imageUrl, bitmap)
+                catalogImageCache.putBitmap(imageUrl, bitmap)
                 imageView.setImageBitmap(bitmap)
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
             }
@@ -3049,77 +2945,15 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 900) }
+            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 900) }
             if (bitmap != null) {
-                imageCache.put(imageUrl, bitmap)
+                catalogImageCache.putBitmap(imageUrl, bitmap)
             }
             if (imageView.tag == tagValue && bitmap != null) {
                 imageView.setImageBitmap(bitmap)
                 imageView.scaleType = ImageView.ScaleType.CENTER_CROP
             }
         }
-    }
-
-    private fun downloadBitmap(rawUrl: String, targetSizePx: Int): android.graphics.Bitmap? {
-        val primary = rawUrl.trim()
-        val alternatives = buildList {
-            add(primary)
-            if (primary.startsWith("http://", ignoreCase = true)) {
-                add(primary.replaceFirst("http://", "https://", ignoreCase = true))
-            }
-        }
-
-        for (candidate in alternatives) {
-            var connection: HttpURLConnection? = null
-            try {
-                connection = (URL(candidate).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 10_000
-                    readTimeout = 10_000
-                    instanceFollowRedirects = true
-                    doInput = true
-                    requestMethod = "GET"
-                    setRequestProperty("User-Agent", "BoxiPago-Android/1.0")
-                }
-                connection.connect()
-                if (connection.responseCode !in 200..299) continue
-                val bytes = connection.inputStream.use { input ->
-                    val buffer = ByteArray(8 * 1024)
-                    val output = ByteArrayOutputStream()
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                    }
-                    output.toByteArray()
-                }
-                decodeSampledBitmap(bytes, targetSizePx)?.let { bitmap ->
-                    return bitmap
-                }
-            } catch (_: Exception) {
-                // continue with next alternative
-            } finally {
-                connection?.disconnect()
-            }
-        }
-        return null
-    }
-
-    private fun decodeSampledBitmap(data: ByteArray, targetSizePx: Int): android.graphics.Bitmap? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
-
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-
-        var inSampleSize = 1
-        while (bounds.outWidth / inSampleSize > targetSizePx * 2 || bounds.outHeight / inSampleSize > targetSizePx * 2) {
-            inSampleSize *= 2
-        }
-
-        val options = BitmapFactory.Options().apply {
-            this.inSampleSize = inSampleSize
-            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
-        }
-        return BitmapFactory.decodeByteArray(data, 0, data.size, options)
     }
 
     private fun syncCartWithCatalog(latestCatalog: List<CeldaUi>) {
@@ -3246,16 +3080,16 @@ class KioskCatalogActivity : AppCompatActivity() {
         val tagValue = "legacy-promo:$imageUrl"
         promoCarousel.tag = tagValue
 
-        val cached = imageCache.get(imageUrl)
+        val cached = catalogImageCache.getBitmap(imageUrl)
         if (cached != null) {
             promoCarousel.background = BitmapDrawable(resources, cached)
             return
         }
 
         lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { downloadBitmap(imageUrl, 1200) }
+            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 1200) }
             if (bitmap != null) {
-                imageCache.put(imageUrl, bitmap)
+                catalogImageCache.putBitmap(imageUrl, bitmap)
             }
             if (promoCarousel.tag == tagValue && bitmap != null) {
                 promoCarousel.background = BitmapDrawable(resources, bitmap)
@@ -3335,6 +3169,25 @@ private data class LegacySlide(
     val title: String,
     val subtitle: String
 )
+
+private class CatalogViewModelFactory(
+    private val vendingBackendGateway: HttpVendingBackendGateway,
+    private val catalogImageCache: CatalogImageCache,
+    private val authSessionManager: AuthSessionManager
+) : ViewModelProvider.Factory {
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(CatalogViewModel::class.java)) {
+            return CatalogViewModel(
+                vendingBackendGateway,
+                catalogImageCache,
+                authSessionManager
+            ) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
 
 private data class PromoSlideUi(
     val url: String,

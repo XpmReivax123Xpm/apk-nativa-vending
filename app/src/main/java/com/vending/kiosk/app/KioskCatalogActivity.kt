@@ -23,14 +23,12 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import android.widget.ViewFlipper
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.getValue
@@ -43,9 +41,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.repeatOnLifecycle
 import com.vending.kiosk.R
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
-import com.vending.kiosk.app.ui.catalog.CatalogCarouselView
-import com.vending.kiosk.app.ui.catalog.CatalogGridItem
-import com.vending.kiosk.app.ui.catalog.CatalogGridView
 import com.vending.kiosk.app.ui.catalog.CatalogScreen
 import com.vending.kiosk.app.ui.catalog.CatalogUiState
 import com.vending.kiosk.app.ui.catalog.CatalogViewModel
@@ -94,18 +89,8 @@ import java.net.URL
 class KioskCatalogActivity : AppCompatActivity() {
 
     private lateinit var tvTitle: TextView
-    private lateinit var tvSubtitle: TextView
-    private lateinit var tvStatus: TextView
     private lateinit var cartBarView: CartBarView
-    private lateinit var catalogGridView: CatalogGridView<CeldaUi>
-    private lateinit var promoCarousel: View
     private lateinit var screenRootView: View
-    private var tvPromoTitle: TextView? = null
-    private var tvPromoSubtitle: TextView? = null
-    private lateinit var catalogProductPager: HorizontalScrollView
-    private lateinit var catalogPagesStrip: LinearLayout
-    private lateinit var btnCatalogPrev: TextView
-    private lateinit var btnCatalogNext: TextView
     private lateinit var catalogComposeHost: ComposeView
     private lateinit var catalogViewModel: CatalogViewModel
     private var catalogComposeState by mutableStateOf(CatalogUiState())
@@ -119,28 +104,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private val authSessionManager by lazy { AuthSessionManager(this) }
     private val vendingBackendGateway by lazy { HttpVendingBackendGateway(authSessionManager) }
-    private var useLegacyCarousel = false
-    private val carouselHandler = Handler(Looper.getMainLooper())
-    private val carouselIntervalMs = 5_000L
-    private var carouselIndex = 0
-    private lateinit var catalogCarouselView: CatalogCarouselView
-    private val legacySlides = listOf(
-        LegacySlide(R.drawable.bg_catalog_promo_1, "Promociones", "Espacio para ofertas y anuncios"),
-        LegacySlide(R.drawable.bg_catalog_promo_2, "Nuevos productos", "Carrusel preparado para imagenes"),
-        LegacySlide(R.drawable.bg_catalog_promo_3, "Avisos", "Descuentos, mantenimiento y novedades")
-    )
-    private var promotionalSlides: List<PromoSlideUi> = emptyList()
-
     private var machineId: Int = 0
     private var machineCode: String = ""
     private var authHeader: String = ""
     private var catalogItems: List<CeldaUi> = emptyList()
-    private var catalogGridItems: List<CatalogGridItem<CeldaUi>> = emptyList()
-    private var currentCatalogPage = 0
-    private var catalogPageCount = 0
-    private var catalogViewportGeneration = 0L
-    private var catalogSettleRunnable: Runnable? = null
-    private var programmaticCatalogTargetScrollX: Int? = null
     private val cartItems = linkedMapOf<Int, CartLine>()
     private val catalogImageCache by lazy { CatalogImageCache(this) }
     private val imageTargetsByUrl = mutableMapOf<String, MutableList<ImageView>>()
@@ -196,21 +163,6 @@ class KioskCatalogActivity : AppCompatActivity() {
             Toast.LENGTH_SHORT
         ).show()
         scheduleInactivityRefresh()
-    }
-
-    private val carouselTicker = object : Runnable {
-        override fun run() {
-            try {
-                if (!useLegacyCarousel || tvPromoTitle == null || tvPromoSubtitle == null) return
-                val slideCount = getLegacySlideCount()
-                if (slideCount <= 1) return
-                showLegacySlide(carouselIndex % slideCount)
-                carouselIndex++
-                carouselHandler.postDelayed(this, carouselIntervalMs)
-            } catch (_: Throwable) {
-                carouselHandler.removeCallbacks(this)
-            }
-        }
     }
 
     private val serialListener = object : SerialManager.Listener {
@@ -324,28 +276,17 @@ class KioskCatalogActivity : AppCompatActivity() {
             R.layout.activity_kiosk_catalog
         }
         setContentView(layoutRes)
-        useLegacyCarousel = false
-
         tvTitle = findViewById(R.id.tvCatalogTitle)
-        tvSubtitle = findViewById(R.id.tvCatalogSubtitle)
-        tvStatus = findViewById(R.id.tvCatalogStatus)
         catalogComposeHost = findViewById(R.id.catalogComposeHost)
         cartBarView = CartBarView(
             cartBar = findViewById(R.id.cartFabContainer),
             badge = findViewById(R.id.tvCartBadge),
             total = findViewById(R.id.tvCartTotal)
         )
-        promoCarousel = findViewById(R.id.vfPromoCarousel)
-        catalogProductPager = findViewById(R.id.catalogProductPager)
-        catalogPagesStrip = findViewById(R.id.catalogPagesStrip)
-        btnCatalogPrev = findViewById(R.id.btnCatalogPrev)
-        btnCatalogNext = findViewById(R.id.btnCatalogNext)
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
         btnKioskViewLogs = findViewById(R.id.btnKioskViewLogs)
         btnKioskViewBitacora = findViewById(R.id.btnKioskViewBitacora)
         screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
-        useLegacyCarousel = false
-
         setupDispenseRuntime()
         setupCartBadge()
         setupBackToMainButton()
@@ -396,14 +337,12 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onPause() {
         unlockHoldHandler.removeCallbacksAndMessages(null)
-        carouselHandler.removeCallbacks(carouselTicker)
         inactivityHandler.removeCallbacksAndMessages(null)
         stopIdleIoPolling()
         super.onPause()
     }
 
     override fun onStop() {
-        carouselHandler.removeCallbacks(carouselTicker)
         super.onStop()
     }
 
@@ -426,7 +365,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         monitorViewerRunnable?.let { inactivityHandler.removeCallbacks(it) }
         monitorViewerRunnable = null
         unlockHoldHandler.removeCallbacksAndMessages(null)
-        carouselHandler.removeCallbacks(carouselTicker)
         inactivityHandler.removeCallbacksAndMessages(null)
         if (::vendFlow.isInitialized) {
             runCatching { vendFlow.stop() }
@@ -978,189 +916,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
             }
         }
-    }
-
-    private fun renderPromotionalCarousel(promotions: List<PromoSlideUi>) {
-        if (useLegacyCarousel) {
-            if (promotions.isNotEmpty()) {
-                carouselIndex = 0
-                showLegacySlide(0)
-            } else {
-                showLegacySlide(carouselIndex % legacySlides.size)
-            }
-            return
-        }
-
-        val flipper = promoCarousel as? ViewFlipper ?: return
-        flipper.stopFlipping()
-        flipper.removeAllViews()
-
-        if (promotions.isEmpty()) {
-            catalogCarouselView.inflateDefaultViewFlipperSlides(flipper)
-        } else {
-            promotions.forEach { promo ->
-                val slide = FrameLayout(this).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    background = ColorDrawable(Color.parseColor("#DCE7F3"))
-                }
-                val image = ImageView(this).apply {
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                    // Keep carousel proportions stable: image fills the fixed carousel frame.
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                }
-                slide.addView(image)
-                flipper.addView(slide)
-                loadPromoImage(promo.url, image)
-            }
-        }
-
-        flipper.displayedChild = 0
-        if (flipper.childCount > 1) {
-            flipper.startFlipping()
-        }
-    }
-
-    private fun renderCatalog(celdas: List<CeldaUi>) {
-        runCatching {
-            val visibles = celdas.filter { isCellSellable(it) }
-            if (visibles.isEmpty()) {
-                tvStatus.visibility = View.VISIBLE
-                tvStatus.text = "Sin productos disponibles para venta"
-                catalogPagesStrip.removeAllViews()
-                return
-            }
-
-            catalogGridItems = visibles.map { item ->
-                CatalogGridItem(
-                    source = item,
-                    cellCode = item.codigoCelda,
-                    productName = item.producto,
-                    priceText = if (item.precio > 0.0) "Bs ${formatPrice(item.precio)}" else "Sin precio",
-                    imageUrl = item.imagenUrl,
-                    isAvailable = isCellSellable(item)
-                )
-            }
-            catalogPageCount = (catalogGridItems.size + CatalogGridView.ITEMS_PER_PAGE - 1) /
-                CatalogGridView.ITEMS_PER_PAGE
-            currentCatalogPage = 0
-            renderCatalogPages()
-        }.onFailure { error ->
-            tvStatus.visibility = View.VISIBLE
-            tvStatus.text = "Error de render: ${error.message ?: "sin detalle"}"
-        }
-    }
-
-    private fun setupCatalogPagination() {
-        btnCatalogPrev.setOnClickListener { showPreviousCatalogPage() }
-        btnCatalogNext.setOnClickListener { showNextCatalogPage() }
-        catalogProductPager.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    programmaticCatalogTargetScrollX = null
-                    cancelCatalogPageSettle()
-                }
-
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> scheduleCatalogPageSettle()
-            }
-            false
-        }
-        catalogProductPager.setOnScrollChangeListener { _, scrollX, _, _, _ ->
-            val programmaticTarget = programmaticCatalogTargetScrollX
-            if (programmaticTarget != null) {
-                if (scrollX != programmaticTarget) return@setOnScrollChangeListener
-                programmaticCatalogTargetScrollX = null
-            }
-            scheduleCatalogPageSettle()
-        }
-        updateCatalogPaginationControls()
-    }
-
-    private fun resetCatalogPagination() {
-        catalogViewportGeneration += 1
-        cancelCatalogPageSettle()
-        programmaticCatalogTargetScrollX = null
-        catalogProductPager.scrollTo(0, 0)
-        catalogGridItems = emptyList()
-        currentCatalogPage = 0
-        catalogPageCount = 0
-        updateCatalogPaginationControls()
-    }
-
-    private fun showPreviousCatalogPage() {
-        navigateToCatalogPage(currentCatalogPage - 1)
-    }
-
-    private fun showNextCatalogPage() {
-        navigateToCatalogPage(currentCatalogPage + 1)
-    }
-
-    private fun navigateToCatalogPage(targetPage: Int) {
-        if (targetPage !in 0 until catalogPageCount) return
-        val pageWidth = catalogProductPager.width
-        if (pageWidth <= 0) return
-        currentCatalogPage = targetPage
-        val targetScrollX = targetPage * pageWidth
-        programmaticCatalogTargetScrollX = targetScrollX
-        cancelCatalogPageSettle()
-        catalogProductPager.smoothScrollTo(targetScrollX, 0)
-        updateCatalogPaginationControls()
-    }
-
-    private fun renderCatalogPages() {
-        val renderGeneration = ++catalogViewportGeneration
-        cancelCatalogPageSettle()
-        catalogProductPager.post {
-            if (renderGeneration != catalogViewportGeneration) return@post
-            val pageWidth = catalogProductPager.width
-            if (pageWidth <= 0) return@post
-            catalogGridView.render(catalogGridItems, pageWidth)
-            catalogProductPager.scrollTo(0, 0)
-            currentCatalogPage = 0
-            updateCatalogPaginationControls()
-        }
-    }
-
-    private fun scheduleCatalogPageSettle() {
-        if (catalogPageCount <= 0 || catalogProductPager.width <= 0) return
-        cancelCatalogPageSettle()
-        val settleGeneration = catalogViewportGeneration
-        val runnable = Runnable {
-            if (settleGeneration != catalogViewportGeneration) return@Runnable
-            settleCatalogPage()
-        }
-        catalogSettleRunnable = runnable
-        catalogProductPager.postDelayed(runnable, CATALOG_PAGE_SETTLE_DELAY_MS)
-    }
-
-    private fun cancelCatalogPageSettle() {
-        catalogSettleRunnable?.let(catalogProductPager::removeCallbacks)
-        catalogSettleRunnable = null
-    }
-
-    private fun settleCatalogPage() {
-        val pageWidth = catalogProductPager.width
-        if (pageWidth <= 0 || catalogPageCount <= 0) return
-        val targetPage = ((catalogProductPager.scrollX + pageWidth / 2) / pageWidth)
-            .coerceIn(0, catalogPageCount - 1)
-        currentCatalogPage = targetPage
-        catalogProductPager.smoothScrollTo(targetPage * pageWidth, 0)
-        updateCatalogPaginationControls()
-    }
-
-    private fun updateCatalogPaginationControls() {
-        val hasPreviousPage = currentCatalogPage > 0
-        val hasNextPage = currentCatalogPage < catalogPageCount - 1
-        btnCatalogPrev.isEnabled = hasPreviousPage
-        btnCatalogPrev.alpha = if (hasPreviousPage) 1f else 0.35f
-        btnCatalogNext.isEnabled = hasNextPage
-        btnCatalogNext.alpha = if (hasNextPage) 1f else 0.35f
     }
 
     private fun onCatalogProductTapped(item: CeldaUi) {
@@ -2921,41 +2676,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun loadPromoImage(imageUrl: String, imageView: ImageView) {
-        imageView.setImageDrawable(null)
-        imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-        if (imageUrl.isBlank()) return
-
-        val tagValue = "promo:$imageUrl"
-        imageView.tag = tagValue
-        catalogImageCache.getBitmap(imageUrl)?.let { bitmap ->
-            imageView.setImageBitmap(bitmap)
-            imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-            return
-        }
-
-        if (catalogImageCache.isLocalImagePath(imageUrl)) {
-            val bitmap = catalogImageCache.loadBitmapFromLocalPath(imageUrl, 900)
-            if (bitmap != null) {
-                catalogImageCache.putBitmap(imageUrl, bitmap)
-                imageView.setImageBitmap(bitmap)
-                imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-            return
-        }
-
-        lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 900) }
-            if (bitmap != null) {
-                catalogImageCache.putBitmap(imageUrl, bitmap)
-            }
-            if (imageView.tag == tagValue && bitmap != null) {
-                imageView.setImageBitmap(bitmap)
-                imageView.scaleType = ImageView.ScaleType.CENTER_CROP
-            }
-        }
-    }
-
     private fun syncCartWithCatalog(latestCatalog: List<CeldaUi>) {
         if (cartItems.isEmpty()) return
         val byId = latestCatalog.associateBy { it.planogramaCeldaId }
@@ -3014,91 +2734,6 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int {
         return (value * resources.displayMetrics.density).toInt()
-    }
-
-    private fun setupCarouselTouchControls() {
-        var downX = 0f
-        promoCarousel.setOnTouchListener { _, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    catalogCarouselView.pauseAutoCarousel()
-                    downX = event.x
-                    true
-                }
-
-                MotionEvent.ACTION_UP -> {
-                    val deltaX = event.x - downX
-                    val threshold = dp(36).toFloat()
-                    val handled = when {
-                        deltaX < -threshold -> {
-                            catalogCarouselView.showNextPromoSlide()
-                            true
-                        }
-
-                        deltaX > threshold -> {
-                            catalogCarouselView.showPreviousPromoSlide()
-                            true
-                        }
-
-                        else -> true
-                    }
-                    catalogCarouselView.resumeAutoCarousel()
-                    handled
-                }
-
-                MotionEvent.ACTION_CANCEL -> {
-                    catalogCarouselView.resumeAutoCarousel()
-                    true
-                }
-
-                else -> true
-            }
-        }
-    }
-
-    private fun showLegacySlide(index: Int) {
-        if (promotionalSlides.isNotEmpty()) {
-            val slide = promotionalSlides[index % promotionalSlides.size]
-            tvPromoTitle?.text = ""
-            tvPromoSubtitle?.text = ""
-            tvPromoTitle?.visibility = View.GONE
-            tvPromoSubtitle?.visibility = View.GONE
-            loadLegacyPromoBackground(slide.url)
-            return
-        }
-
-        val slide = legacySlides[index % legacySlides.size]
-        promoCarousel.setBackgroundResource(slide.backgroundRes)
-        tvPromoTitle?.text = slide.title
-        tvPromoSubtitle?.text = slide.subtitle
-        tvPromoTitle?.visibility = View.VISIBLE
-        tvPromoSubtitle?.visibility = View.VISIBLE
-    }
-
-    private fun loadLegacyPromoBackground(imageUrl: String) {
-        if (imageUrl.isBlank()) return
-        val tagValue = "legacy-promo:$imageUrl"
-        promoCarousel.tag = tagValue
-
-        val cached = catalogImageCache.getBitmap(imageUrl)
-        if (cached != null) {
-            promoCarousel.background = BitmapDrawable(resources, cached)
-            return
-        }
-
-        lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 1200) }
-            if (bitmap != null) {
-                catalogImageCache.putBitmap(imageUrl, bitmap)
-            }
-            if (promoCarousel.tag == tagValue && bitmap != null) {
-                promoCarousel.background = BitmapDrawable(resources, bitmap)
-            }
-        }
-    }
-
-    private fun getLegacySlideCount(): Int {
-        return if (promotionalSlides.isNotEmpty()) promotionalSlides.size else legacySlides.size
     }
 
     private fun applyCatalogSystemBars() {
@@ -3160,15 +2795,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
         private const val IDLE_IO_POLL_MS = 750L
-        private const val CATALOG_PAGE_SETTLE_DELAY_MS = 120L
     }
 }
-
-private data class LegacySlide(
-    val backgroundRes: Int,
-    val title: String,
-    val subtitle: String
-)
 
 private class CatalogViewModelFactory(
     private val vendingBackendGateway: HttpVendingBackendGateway,

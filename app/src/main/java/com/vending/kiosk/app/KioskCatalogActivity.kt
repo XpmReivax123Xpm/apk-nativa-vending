@@ -2,7 +2,6 @@
 
 import android.content.res.ColorStateList
 import android.content.Intent
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
@@ -11,7 +10,6 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
-import android.util.Base64
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
@@ -60,37 +58,29 @@ import com.vending.kiosk.app.ui.cart.CartScreen
 import com.vending.kiosk.app.ui.cart.CartViewModel
 import com.vending.kiosk.app.ui.dispense.DispenseDialogView
 import com.vending.kiosk.app.ui.idle.IdleVideoOverlayView
-import com.vending.kiosk.app.ui.payment.CheckoutDialogView
-import com.vending.kiosk.app.ui.payment.PaymentMethodDialogOption
-import com.vending.kiosk.app.ui.payment.PaymentMethodDialogView
-import com.vending.kiosk.app.ui.payment.QrPaymentDialogView
+import com.vending.kiosk.app.ui.payment.PaymentEvent
+import com.vending.kiosk.app.ui.payment.PaymentScreen
+import com.vending.kiosk.app.ui.payment.PaymentStep
+import com.vending.kiosk.app.ui.payment.PaymentTerminalResult
+import com.vending.kiosk.app.ui.payment.PaymentUiState
+import com.vending.kiosk.app.ui.payment.PaymentViewModel
 import com.vending.kiosk.app.data.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.data.backend.CatalogGatewayException
-import com.vending.kiosk.app.data.backend.CreateOrderQrGatewayException
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
-import com.vending.kiosk.app.data.backend.MachineLoginResult
-import com.vending.kiosk.app.data.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.data.images.CatalogImageCache
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.domain.cart.CartItem
 import com.vending.kiosk.app.domain.cart.CartUseCase
 import androidx.compose.ui.platform.ComposeView
-import com.vending.kiosk.integration.backend.models.CancelOrderResult as BackendCancelOrderResult
 import com.vending.kiosk.integration.backend.models.CatalogResponse as BackendCatalogResponse
-import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest as BackendCreateOrderQrRequest
-import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse as BackendCreateOrderQrResponse
+import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.DispenseStatusRequest as BackendDispenseStatusRequest
-import com.vending.kiosk.integration.backend.models.PaymentMethod as BackendPaymentMethod
-import com.vending.kiosk.integration.backend.models.PaymentStatus as BackendPaymentStatus
 import com.vending.kiosk.integration.serial.runtime.CommandSet
 import com.vending.kiosk.integration.serial.runtime.HexUtil
 import com.vending.kiosk.integration.serial.runtime.SerialManager
 import com.vending.kiosk.integration.serial.runtime.VendingFlowController
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -104,10 +94,16 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var catalogComposeHost: ComposeView
     private lateinit var catalogViewModel: CatalogViewModel
     private lateinit var cartViewModel: CartViewModel
+    private lateinit var paymentViewModel: PaymentViewModel
     private var catalogComposeState by mutableStateOf(CatalogUiState())
     private var cartComposeState by mutableStateOf(CartUiState())
+    private var paymentComposeState by mutableStateOf(PaymentUiState())
     private var cartTimeoutTimer: CountDownTimer? = null
+    private var paymentTimeoutTimer: CountDownTimer? = null
     private var cartModalShown = false
+    private var paymentModalShown = false
+    private var paymentTimeoutStep: PaymentStep? = null
+    private var paidOrderHandledId: Int? = null
     private var catalogLoadInProgress = false
     private var sessionLostHandled = false
     private var btnKioskBackToMain: Button? = null
@@ -131,11 +127,6 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispensingInProgress = false
     private var clearCartOnDispenseFinish = false
     private var activeDispensePedidoId = 0
-    private var cachedPaymentMethods: List<PaymentMethodOption> = emptyList()
-    private var cachedPaymentMethodsAtMs: Long = 0L
-
-    private var qrPollingJob: Job? = null
-
     private var dispenseDialog: AlertDialog? = null
     private var dispenseDialogView: DispenseDialogView? = null
     private var dispenseSuccessCloseTimer: CountDownTimer? = null
@@ -330,20 +321,29 @@ class KioskCatalogActivity : AppCompatActivity() {
             this,
             CartViewModelFactory(CartUseCase())
         )[CartViewModel::class.java]
+        paymentViewModel = ViewModelProvider(
+            this,
+            PaymentViewModelFactory(
+                vendingBackendGateway,
+                MachineAuthGateway,
+                authSessionManager,
+                machineId
+            )
+        )[PaymentViewModel::class.java]
         observeCartState()
         observeCatalogState()
+        observePaymentState()
         catalogViewModel.configureMachine(machineId, machineCode, machineLocation)
         catalogLoadInProgress = true
         catalogViewModel.loadCatalog()
-        prefetchPaymentMethodsIfNeeded()
     }
 
     override fun onResume() {
         super.onResume()
+        paymentViewModel.prefetchPaymentMethodsIfNeeded()
         applyImmersiveKioskUi()
         startIdleIoPolling()
         scheduleInactivityRefresh()
-        prefetchPaymentMethodsIfNeeded()
     }
 
     override fun onPause() {
@@ -360,7 +360,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     override fun onDestroy() {
         cartTimeoutTimer?.cancel()
         cartTimeoutTimer = null
-        qrPollingJob?.cancel()
+        paymentTimeoutTimer?.cancel()
+        paymentTimeoutTimer = null
         dismissDispenseSuccessDialog()
         dispenseErrorDialog?.takeIf { it.isShowing }?.dismiss()
         dispenseErrorDialog = null
@@ -718,22 +719,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         Toast.makeText(this, "Modo seguro de catalogo activado", Toast.LENGTH_SHORT).show()
     }
 
-    private fun isUnauthorizedMessage(message: String): Boolean {
-        return message.contains("HTTP 401", ignoreCase = true)
-    }
-
-    private fun resolveValidAuthHeader(forceRefresh: Boolean = false): String? {
-        if (!forceRefresh) {
-            authSessionManager.getAuthorizationHeader()?.let { return it }
-        }
-
-        val refresh = MachineAuthGateway.refreshSessionWithStoredMachineCredentials(authSessionManager)
-        return when (refresh) {
-            is MachineLoginResult.Success -> authSessionManager.getAuthorizationHeader()
-            is MachineLoginResult.Error -> null
-        }
-    }
-
     private fun handleAuthSessionLost() {
         Toast.makeText(
             this,
@@ -768,7 +753,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 )
 
                 AnimatedVisibility(
-                    visible = cartComposeState.isCartOpen,
+                    visible = cartComposeState.isCartOpen && paymentComposeState.step == PaymentStep.Closed,
                     enter = fadeIn(),
                     exit = fadeOut()
                 ) {
@@ -781,7 +766,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 }
 
                 AnimatedVisibility(
-                    visible = cartComposeState.isCartOpen,
+                    visible = cartComposeState.isCartOpen && paymentComposeState.step == PaymentStep.Closed,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     enter = slideInVertically { it },
                     exit = slideOutVertically { it }
@@ -795,6 +780,18 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onBuy = ::buyCartFromCompose,
                         onClose = ::closeCartFromCompose,
                         onUserInteraction = ::restartCartTimeout
+                    )
+                }
+
+                if (paymentComposeState.step != PaymentStep.Closed) {
+                    PaymentScreen(
+                        state = paymentComposeState,
+                        onSelectPaymentMethod = paymentViewModel::selectPaymentMethod,
+                        onContinueToCheckout = paymentViewModel::continueToCheckout,
+                        onReturnToMethodSelection = paymentViewModel::returnToMethodSelection,
+                        onConfirmCheckout = paymentViewModel::confirmCheckout,
+                        onCancel = ::cancelPaymentFromCompose,
+                        onInteraction = ::restartPaymentTimeout
                     )
                 }
             }
@@ -889,9 +886,10 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun buyCartFromCompose() {
-        val selections = cartViewModel.uiState.value.items.toPurchaseSelections()
+        val snapshot = cartViewModel.uiState.value.items.map { it.copy() }
+        if (snapshot.isEmpty()) return
         cartViewModel.closeCart()
-        openPaymentMethodDialog(selections = selections, fromCart = true)
+        paymentViewModel.startPayment(snapshot)
     }
 
     private fun refreshCatalogAndClearCart() {
@@ -1022,579 +1020,116 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun openPaymentMethodDialog(selections: List<PurchaseSelection>, fromCart: Boolean) {
-        val dialog = AlertDialog.Builder(this)
-            .setCancelable(true)
-            .create()
-
-        var paymentMethodDialogView: PaymentMethodDialogView? = null
-        var autoCloseTimer: CountDownTimer? = null
-        fun resetAutoCloseTimer() {
-            autoCloseTimer?.cancel()
-            autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
-                override fun onTick(millisUntilFinished: Long) {
-                    val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
-                    paymentMethodDialogView?.renderTimer("${seconds}s")
-                }
-
-                override fun onFinish() {
-                    paymentMethodDialogView?.renderTimer("0s")
-                    if (dialog.isShowing) {
-                        dialog.dismiss()
-                    }
-                    refreshCatalogAndClearCart()
-                }
-            }.start()
-        }
-
-        var displayedPaymentMethods: List<PaymentMethodOption> = emptyList()
-        paymentMethodDialogView = PaymentMethodDialogView(
-            context = this,
-            onMethodSelected = {
-                paymentMethodDialogView?.hideError()
-                resetAutoCloseTimer()
-            },
-            onContinueRequested = { selectedMethodId ->
-                resetAutoCloseTimer()
-                val method = displayedPaymentMethods.firstOrNull { it.id == selectedMethodId }
-                if (selectedMethodId == null) {
-                    paymentMethodDialogView?.renderError(
-                        "Selecciona un metodo de pago",
-                        Color.parseColor("#B3261E")
-                    )
-                } else if (method == null) {
-                    paymentMethodDialogView?.renderError(
-                        "Metodo de pago invalido",
-                        Color.parseColor("#B3261E")
-                    )
-                } else {
-                    dialog.dismiss()
-                    openCheckoutDialog(selections, fromCart, method)
-                }
-            },
-            onCancelRequested = { dialog.dismiss() },
-            onUserInteraction = { resetAutoCloseTimer() }
-        )
-        val paymentMethodView = requireNotNull(paymentMethodDialogView)
-        dialog.setView(paymentMethodView.root)
-
-        fun renderPaymentMethods(methods: List<PaymentMethodOption>) {
-            displayedPaymentMethods = methods
-            paymentMethodView.renderMethods(
-                methods.map { PaymentMethodDialogOption(it.id, it.label) },
-                methods.firstOrNull()?.id
-            )
-        }
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        resetAutoCloseTimer()
-        val hadCachedMethods = cachedPaymentMethods.isNotEmpty()
-        if (hadCachedMethods) {
-            renderPaymentMethods(cachedPaymentMethods)
-            paymentMethodView.setContinueEnabled(true)
-            paymentMethodView.hideError()
-        } else {
-            paymentMethodView.setContinueEnabled(false)
-            paymentMethodView.renderError(
-                "Cargando metodos de pago...",
-                Color.parseColor("#0965AF")
-            )
-        }
+    private fun observePaymentState() {
         lifecycleScope.launch {
-            when (val result = withContext(Dispatchers.IO) { loadEnabledPaymentMethods() }) {
-                is PaymentMethodsResult.Success -> {
-                    cachedPaymentMethods = result.methods
-                    cachedPaymentMethodsAtMs = System.currentTimeMillis()
-                    renderPaymentMethods(result.methods)
-                    paymentMethodView.setContinueEnabled(true)
-                    paymentMethodView.hideError()
-                }
-
-                is PaymentMethodsResult.Error -> {
-                    if (!hadCachedMethods) {
-                        paymentMethodView.setContinueEnabled(false)
-                        paymentMethodView.renderError(
-                            result.message,
-                            Color.parseColor("#B3261E")
-                        )
-                    }
-                    if (result.unauthorized) {
-                        dialog.dismiss()
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                paymentViewModel.uiState.collect { state ->
+                    paymentComposeState = state
+                    handlePaymentVisibility(state)
+                    if (state.sessionLost) {
+                        paymentViewModel.consumeSessionLost()
                         handleAuthSessionLost()
                     }
                 }
             }
         }
-        dialog.setOnDismissListener {
-            autoCloseTimer?.cancel()
-            onModalDismissed()
-        }
-    }
-
-    private fun openCheckoutDialog(
-        selections: List<PurchaseSelection>,
-        fromCart: Boolean,
-        paymentMethod: PaymentMethodOption
-    ) {
-        if (selections.isEmpty()) return
-
-        val lines = selections.joinToString("\n") {
-            "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
-        }
-        val total = selections.sumOf { it.item.precio * it.quantity }
-
-        val dialog = AlertDialog.Builder(this)
-            .create()
-        dialog.setCanceledOnTouchOutside(false)
-
-        lateinit var checkoutDialogView: CheckoutDialogView
-        var autoCloseTimer: CountDownTimer? = null
-        fun resetAutoCloseTimer() {
-            autoCloseTimer?.cancel()
-            autoCloseTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1000L) {
-                override fun onTick(millisUntilFinished: Long) {
-                    val seconds = ((millisUntilFinished + 999L) / 1000L).coerceAtLeast(0L)
-                    checkoutDialogView.renderTimer("${seconds}s")
-                }
-
-                override fun onFinish() {
-                    checkoutDialogView.renderTimer("0s")
-                    if (dialog.isShowing) {
-                        dialog.dismiss()
-                    }
-                    refreshCatalogAndClearCart()
-                }
-            }.start()
-        }
-
-        checkoutDialogView = CheckoutDialogView(
-            context = this,
-            onCancelRequested = {
-                resetAutoCloseTimer()
-                dialog.dismiss()
-            },
-            onGenerateQrRequested = {
-                resetAutoCloseTimer()
-                checkoutDialogView.setLoading(true)
-                checkoutDialogView.hideError()
-                val generatingDialog = AlertDialog.Builder(this@KioskCatalogActivity)
-                    .setView(checkoutDialogView.createGeneratingQrContent())
-                    .setCancelable(false)
-                    .create().apply {
-                        setCanceledOnTouchOutside(false)
-                        window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-                        setOnDismissListener {
-                            onModalDismissed()
-                        }
-                        onModalShown()
-                        show()
-                    }
-
-                lifecycleScope.launch {
-                    val result = withContext(Dispatchers.IO) {
-                        val currentHeader = resolveValidAuthHeader(forceRefresh = false)
-                        if (currentHeader.isNullOrBlank()) {
-                            QrGenerationResult.Error("Sesion de maquina expirada")
-                        } else {
-                            this@KioskCatalogActivity.authHeader = currentHeader
-                            var qrResult = createOrderAndGenerateQr(
-                                machineId = machineId,
-                                paymentMethodId = paymentMethod.id,
-                                customerName = DEFAULT_CUSTOMER_NAME,
-                                customerPhone = DEFAULT_CUSTOMER_PHONE,
-                                customerCi = DEFAULT_CUSTOMER_CI_NIT,
-                                items = selections
-                            )
-                            if (qrResult is QrGenerationResult.Error && isUnauthorizedMessage(qrResult.message)) {
-                                val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
-                                if (!refreshedHeader.isNullOrBlank()) {
-                                    this@KioskCatalogActivity.authHeader = refreshedHeader
-                                    qrResult = createOrderAndGenerateQr(
-                                        machineId = machineId,
-                                        paymentMethodId = paymentMethod.id,
-                                        customerName = DEFAULT_CUSTOMER_NAME,
-                                        customerPhone = DEFAULT_CUSTOMER_PHONE,
-                                        customerCi = DEFAULT_CUSTOMER_CI_NIT,
-                                        items = selections
-                                    )
-                                }
-                            }
-                            qrResult
-                        }
-                    }
-                    generatingDialog.dismiss()
-
-                    checkoutDialogView.setLoading(false)
-
-                    when (result) {
-                        is QrGenerationResult.Success -> {
-                            dialog.dismiss()
-                            openQrDialog(result, selections, fromCart, paymentMethod.label)
-                        }
-
-                        is QrGenerationResult.Error -> {
-                            if (isUnauthorizedMessage(result.message)) {
-                                handleAuthSessionLost()
-                            } else {
-                                checkoutDialogView.renderError(result.message)
-                            }
-                        }
-                    }
-                }
-            },
-            onUserInteraction = { resetAutoCloseTimer() }
-        )
-        checkoutDialogView.renderCheckout(
-            summaryText = "$lines\n\nTotal: Bs ${formatPrice(total)}",
-            methodText = "Metodo de pago: ${paymentMethod.label}"
-        )
-        dialog.setView(checkoutDialogView.root)
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        resetAutoCloseTimer()
-        dialog.setOnDismissListener {
-            autoCloseTimer?.cancel()
-            onModalDismissed()
-        }
-    }
-
-    private suspend fun createOrderAndGenerateQr(
-        machineId: Int,
-        paymentMethodId: Int,
-        customerName: String,
-        customerPhone: String,
-        customerCi: String,
-        items: List<PurchaseSelection>
-    ): QrGenerationResult {
-        return try {
-            vendingBackendGateway.createOrderQr(
-                BackendCreateOrderQrRequest(
-                    machineId = machineId,
-                    paymentMethodId = paymentMethodId,
-                    customerName = customerName,
-                    customerPhone = customerPhone,
-                    customerCi = customerCi,
-                    items = items.map { selection ->
-                        BackendCreateOrderQrRequest.Item(
-                            planogramCellId = selection.item.planogramaCeldaId,
-                            productId = selection.item.productoId,
-                            quantity = selection.quantity
-                        )
-                    }
-                )
-            ).toQrGenerationSuccess()
-        } catch (ex: CreateOrderQrGatewayException) {
-            QrGenerationResult.Error(ex.message ?: "Fallo de conexion al generar QR: sin detalle")
-        } catch (ex: Exception) {
-            QrGenerationResult.Error("Fallo de conexion al generar QR: ${ex.message ?: "sin detalle"}")
-        }
-    }
-
-    private fun BackendCreateOrderQrResponse.toQrGenerationSuccess(): QrGenerationResult.Success {
-        return QrGenerationResult.Success(
-            pedidoId = orderId,
-            qrBase64 = qrBase64,
-            expiration = expiration,
-            detalles = details.map { detail ->
-                PedidoDetalleRef(
-                    tnPedidoDetalle = detail.orderDetailId,
-                    tnPlanogramaCelda = detail.planogramCellId
-                )
-            }
-        )
-    }
-
-    private suspend fun loadEnabledPaymentMethods(): PaymentMethodsResult {
-        val currentHeader = resolveValidAuthHeader(forceRefresh = false)
-            ?: return PaymentMethodsResult.Error("Sesion de maquina expirada", unauthorized = true)
-        authHeader = currentHeader
-
-        var result = fetchEnabledPaymentMethods()
-        if (result is PaymentMethodsResult.Error && result.unauthorized) {
-            val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
-            if (!refreshedHeader.isNullOrBlank()) {
-                authHeader = refreshedHeader
-                result = fetchEnabledPaymentMethods()
-            }
-        }
-        return result
-    }
-
-    private fun prefetchPaymentMethodsIfNeeded(force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        if (!force && cachedPaymentMethods.isNotEmpty() && (now - cachedPaymentMethodsAtMs) < PAYMENT_METHODS_CACHE_TTL_MS) {
-            return
-        }
-        lifecycleScope.launch(Dispatchers.IO) {
-            val result = loadEnabledPaymentMethods()
-            if (result is PaymentMethodsResult.Success) {
-                cachedPaymentMethods = result.methods
-                cachedPaymentMethodsAtMs = System.currentTimeMillis()
-            }
-        }
-    }
-
-    private suspend fun fetchEnabledPaymentMethods(): PaymentMethodsResult {
-        return try {
-            val methods = vendingBackendGateway.fetchEnabledPaymentMethods()
-            PaymentMethodsResult.Success(methods.map { it.toPaymentMethodOption() })
-        } catch (ex: PaymentMethodsGatewayException) {
-            PaymentMethodsResult.Error(
-                ex.message ?: "Fallo obteniendo servicios habilitados: sin detalle",
-                unauthorized = ex.unauthorized
-            )
-        } catch (ex: Exception) {
-            PaymentMethodsResult.Error("Fallo obteniendo servicios habilitados: ${ex.message ?: "sin detalle"}")
-        }
-    }
-
-    private fun BackendPaymentMethod.toPaymentMethodOption(): PaymentMethodOption {
-        return PaymentMethodOption(id = id, label = label)
-    }
-
-    private fun openQrDialog(
-        result: QrGenerationResult.Success,
-        selections: List<PurchaseSelection>,
-        fromCart: Boolean,
-        paymentMethodLabel: String
-    ) {
-        val bitmap = decodeQrBase64(result.qrBase64)
-        if (bitmap == null) {
-            Toast.makeText(this, "No se pudo convertir el QR", Toast.LENGTH_LONG).show()
-            return
-        }
-
-        lateinit var dialog: AlertDialog
-        lateinit var tvQrStatus: TextView
-        lateinit var progressQr: ProgressBar
-        lateinit var btnClose: Button
-        var cancelInProgress = false
-
-        fun onCancelRequested() {
-            if (cancelInProgress) return
-            qrPollingJob?.cancel()
-            val confirmView = LayoutInflater.from(this).inflate(R.layout.dialog_cancel_order_confirm, null)
-            val btnNo = confirmView.findViewById<Button>(R.id.btnCancelOrderNo)
-            val btnYes = confirmView.findViewById<Button>(R.id.btnCancelOrderYes)
-            val confirmDialog = AlertDialog.Builder(this)
-                .setView(confirmView)
-                .setCancelable(false)
-                .create()
-
-            confirmDialog.setOnDismissListener {
-                onModalDismissed()
-            }
-            btnNo.setOnClickListener {
-                confirmDialog.dismiss()
-                if (!cancelInProgress && dialog.isShowing) {
-                    tvQrStatus.text = "Esperando confirmacion de pago..."
-                    progressQr.visibility = View.VISIBLE
-                    startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
-                }
-            }
-            btnYes.setOnClickListener {
-                cancelInProgress = true
-                btnClose.isEnabled = false
-                tvQrStatus.text = "Cancelando pedido..."
-                progressQr.visibility = View.VISIBLE
-                confirmDialog.dismiss()
-
-                lifecycleScope.launch {
-                    val cancelResult = withContext(Dispatchers.IO) {
-                        val currentHeader = resolveValidAuthHeader(forceRefresh = false)
-                            ?: return@withContext OrderCancelResult.Error("Sesion de maquina expirada")
-                        this@KioskCatalogActivity.authHeader = currentHeader
-                        cancelOrder(result.pedidoId)
-                    }
-
-                    when (cancelResult) {
-                        is OrderCancelResult.Success -> {
-                            dialog.dismiss()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                paymentViewModel.events.collect { event ->
+                    when (event) {
+                        is PaymentEvent.Terminal -> handlePaymentTerminal(event.result)
+                        PaymentEvent.RefreshCatalogRequested -> {
+                            paymentViewModel.closePayment()
                             refreshCatalogAndClearCart()
-                            Toast.makeText(
-                                this@KioskCatalogActivity,
-                                cancelResult.message.ifBlank { "Pedido cancelado." },
-                                Toast.LENGTH_SHORT
-                            ).show()
                         }
-
-                        is OrderCancelResult.Error -> {
-                            if (isUnauthorizedMessage(cancelResult.message)) {
-                                handleAuthSessionLost()
-                                return@launch
-                            }
-                            tvQrStatus.text = cancelResult.message.ifBlank { "No se pudo cancelar el pedido." }
-                            btnClose.isEnabled = true
-                            cancelInProgress = false
-                            startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
-                        }
+                        PaymentEvent.SessionLost -> Unit
                     }
                 }
             }
-
-            onModalShown()
-            confirmDialog.show()
-            confirmDialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         }
-        val qrDialogView = QrPaymentDialogView(
-            context = this,
-            bitmap = bitmap,
-            expiration = result.expiration,
-            onCancelRequested = { onCancelRequested() }
-        )
-        tvQrStatus = qrDialogView.statusText
-        progressQr = qrDialogView.progress
-        btnClose = qrDialogView.mainButton
-        dialog = AlertDialog.Builder(this)
-            .setView(qrDialogView.root)
-            .setCancelable(false)
-            .create()
+    }
 
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        qrDialogView.makeDialogDraggable(dialog)
-        dialog.setOnDismissListener {
-            qrPollingJob?.cancel()
+    private fun handlePaymentVisibility(state: PaymentUiState) {
+        val isActive = state.step != PaymentStep.Closed
+        if (isActive && !paymentModalShown) {
+            paymentModalShown = true
+            onModalShown()
+        } else if (!isActive && paymentModalShown) {
+            paymentModalShown = false
+            paymentTimeoutTimer?.cancel()
+            paymentTimeoutTimer = null
+            paymentTimeoutStep = null
             onModalDismissed()
         }
 
-        startQrPaymentPolling(dialog, tvQrStatus, progressQr, btnClose, result, selections, fromCart, paymentMethodLabel)
+        if (state.step == PaymentStep.MethodSelection || state.step == PaymentStep.Checkout) {
+            if (paymentTimeoutStep != state.step) restartPaymentTimeout()
+        } else {
+            paymentTimeoutTimer?.cancel()
+            paymentTimeoutTimer = null
+            paymentTimeoutStep = null
+        }
     }
 
-    private fun startQrPaymentPolling(
-        dialog: AlertDialog,
-        tvQrStatus: TextView,
-        progressQr: ProgressBar,
-        btnClose: Button,
-        result: QrGenerationResult.Success,
-        selections: List<PurchaseSelection>,
-        fromCart: Boolean,
-        paymentMethodLabel: String
-    ) {
-        qrPollingJob?.cancel()
-        qrPollingJob = lifecycleScope.launch {
-            val started = System.currentTimeMillis()
-            while (isActive && System.currentTimeMillis() - started <= PAYMENT_TIMEOUT_MS) {
-                val pollResult = withContext(Dispatchers.IO) {
-                    val currentHeader = resolveValidAuthHeader(forceRefresh = false)
-                    if (currentHeader.isNullOrBlank()) {
-                        PaymentPollResult.Error("Sesion de maquina expirada")
-                    } else {
-                        this@KioskCatalogActivity.authHeader = currentHeader
-                        var fetched = fetchPaymentStatus(result.pedidoId)
-                        if (fetched is PaymentPollResult.Error && isUnauthorizedMessage(fetched.message)) {
-                            val refreshedHeader = resolveValidAuthHeader(forceRefresh = true)
-                            if (!refreshedHeader.isNullOrBlank()) {
-                                this@KioskCatalogActivity.authHeader = refreshedHeader
-                                fetched = fetchPaymentStatus(result.pedidoId)
-                            }
-                        }
-                        fetched
-                    }
-                }
+    private fun restartPaymentTimeout() {
+        val step = paymentViewModel.uiState.value.step
+        if (step != PaymentStep.MethodSelection && step != PaymentStep.Checkout) return
+        paymentTimeoutTimer?.cancel()
+        paymentTimeoutStep = step
+        paymentTimeoutTimer = object : CountDownTimer(PRODUCT_DIALOG_TIMEOUT_MS, 1_000L) {
+            override fun onTick(millisUntilFinished: Long) = Unit
 
-                when (pollResult) {
-                    is PaymentPollResult.Paid -> {
-                        progressQr.visibility = View.GONE
-                        tvQrStatus.text = "Pago confirmado"
-                        btnClose.visibility = View.GONE
-                        btnClose.isEnabled = false
-                        delay(500)
-                        dialog.dismiss()
-                        showDispenseDialogAndStart(selections, fromCart, result, paymentMethodLabel)
-                        return@launch
-                    }
-
-                    is PaymentPollResult.Pending -> {
-                        tvQrStatus.text = "Esperando confirmacion de pago..."
-                    }
-
-                    is PaymentPollResult.Failed -> {
-                        progressQr.visibility = View.GONE
-                        tvQrStatus.text = pollResult.message
-                        btnClose.text = "Cerrar"
-                        return@launch
-                    }
-
-                    is PaymentPollResult.Cancelled -> {
-                        progressQr.visibility = View.GONE
-                        tvQrStatus.text = pollResult.message
-                        btnClose.text = "Cerrar"
-                        return@launch
-                    }
-
-                    is PaymentPollResult.Error -> {
-                        if (isUnauthorizedMessage(pollResult.message)) {
-                            dialog.dismiss()
-                            handleAuthSessionLost()
-                            return@launch
-                        }
-                        tvQrStatus.text = pollResult.message
-                    }
-                }
-
-                delay(PAYMENT_POLL_INTERVAL_MS)
-            }
-
-            if (isActive) {
-                progressQr.visibility = View.VISIBLE
-                btnClose.isEnabled = false
-                tvQrStatus.text = "Tiempo de espera agotado. Cancelando pedido..."
-                val cancelResult = withContext(Dispatchers.IO) {
-                    val currentHeader = resolveValidAuthHeader(forceRefresh = false)
-                        ?: return@withContext OrderCancelResult.Error("Sesion de maquina expirada")
-                    this@KioskCatalogActivity.authHeader = currentHeader
-                    cancelOrder(result.pedidoId)
-                }
-
-                if (cancelResult is OrderCancelResult.Error && isUnauthorizedMessage(cancelResult.message)) {
-                    dialog.dismiss()
-                    handleAuthSessionLost()
-                    return@launch
-                }
-
-                progressQr.visibility = View.GONE
-                dialog.dismiss()
+            override fun onFinish() {
+                paymentViewModel.closePayment()
                 refreshCatalogAndClearCart()
-                val message = when (cancelResult) {
-                    is OrderCancelResult.Success -> cancelResult.message.ifBlank { "QR vencido. Pedido cancelado." }
-                    is OrderCancelResult.Error -> "QR vencido. No se pudo notificar la cancelacion."
-                }
-                Toast.makeText(this@KioskCatalogActivity, message, Toast.LENGTH_SHORT).show()
             }
+        }.start()
+    }
+
+    private fun cancelPaymentFromCompose() {
+        when (paymentViewModel.uiState.value.step) {
+            PaymentStep.Qr -> paymentViewModel.cancelPendingOrder()
+            PaymentStep.MethodSelection,
+            PaymentStep.Checkout,
+            PaymentStep.Completed -> paymentViewModel.closePayment()
+            PaymentStep.Closed -> Unit
         }
     }
 
-    private suspend fun cancelOrder(pedidoId: Int): OrderCancelResult {
-        return when (val result = vendingBackendGateway.cancelOrder(pedidoId.toLong())) {
-            is BackendCancelOrderResult.Success -> OrderCancelResult.Success(result.message)
-            is BackendCancelOrderResult.Error -> OrderCancelResult.Error(result.message)
-        }
-    }
+    private fun handlePaymentTerminal(result: PaymentTerminalResult) {
+        when (result) {
+            is PaymentTerminalResult.Paid -> {
+                if (paidOrderHandledId == result.order.orderId) return
+                paidOrderHandledId = result.order.orderId
+                val state = paymentViewModel.uiState.value
+                val paymentMethodLabel = state.selectedPaymentMethod?.label.orEmpty()
+                val selections = state.items.toPurchaseSelections()
+                if (selections.isEmpty() || paymentMethodLabel.isBlank()) return
+                paymentViewModel.closePayment()
+                showDispenseDialogAndStart(selections, result.order, paymentMethodLabel)
+            }
 
-    private suspend fun fetchPaymentStatus(pedidoId: Int): PaymentPollResult {
-        return when (val status = vendingBackendGateway.fetchPaymentStatus(pedidoId.toLong())) {
-            is BackendPaymentStatus.Paid -> PaymentPollResult.Paid
-            is BackendPaymentStatus.Pending -> PaymentPollResult.Pending(status.message)
-            is BackendPaymentStatus.Cancelled -> PaymentPollResult.Cancelled(status.message)
-            is BackendPaymentStatus.Failed -> PaymentPollResult.Failed(status.message)
-            is BackendPaymentStatus.Error -> PaymentPollResult.Error(status.message)
+            is PaymentTerminalResult.Cancelled,
+            is PaymentTerminalResult.TimedOut -> {
+                val message = when (result) {
+                    is PaymentTerminalResult.Cancelled -> result.message
+                    is PaymentTerminalResult.TimedOut -> result.message
+                    else -> ""
+                }
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            }
+
+            is PaymentTerminalResult.Failed -> Unit
         }
     }
 
     private fun showDispenseDialogAndStart(
         selections: List<PurchaseSelection>,
-        fromCart: Boolean,
-        qrResult: QrGenerationResult.Success,
+        qrResult: CreateOrderQrResponse,
         paymentMethodLabel: String
     ) {
         val queue = mutableListOf<DispenseQueueItem>()
-        val detallePendiente = qrResult.detalles.toMutableList()
+        val detallePendiente = qrResult.details.toMutableList()
         selections.forEach { selection ->
             val physical = selection.item.physicalCell.takeIf { it in 10..68 }
                 ?: mapCellCodeToPhysical(selection.item.codigoCelda)
@@ -1603,7 +1138,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 return
             }
             repeat(selection.quantity) {
-                val idx = detallePendiente.indexOfFirst { it.tnPlanogramaCelda == selection.item.planogramaCeldaId }
+                val idx = detallePendiente.indexOfFirst { it.planogramCellId == selection.item.planogramaCeldaId }
                 val detalle = if (idx >= 0) {
                     detallePendiente.removeAt(idx)
                 } else {
@@ -1612,7 +1147,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 queue += DispenseQueueItem(
                     cell = physical,
                     item = selection.item,
-                    tnPedidoDetalle = detalle?.tnPedidoDetalle ?: 0,
+                    tnPedidoDetalle = detalle?.orderDetailId ?: 0,
                     tnEstadoDispensacion = 0
                 )
             }
@@ -1660,12 +1195,12 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispensingQueue = queue
         dispensingCursor = 0
         dispensingInProgress = true
-        clearCartOnDispenseFinish = fromCart
-        activeDispensePedidoId = qrResult.pedidoId
+        clearCartOnDispenseFinish = true
+        activeDispensePedidoId = qrResult.orderId
 
         interactionMonitor.startSession(
             machineCode = machineCode,
-            pedidoId = qrResult.pedidoId,
+            pedidoId = qrResult.orderId,
             paymentMethodLabel = paymentMethodLabel,
             selectedCellsSummary = selections.map {
                 "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
@@ -2269,16 +1804,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.WHITE))
     }
 
-    private fun decodeQrBase64(rawBase64: String): android.graphics.Bitmap? {
-        return try {
-            val clean = rawBase64.substringAfter("base64,", rawBase64).trim()
-            val bytes = Base64.decode(clean, Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        } catch (_: Exception) {
-            null
-        }
-    }
-
     private fun loadProductImage(imageUrl: String, imageView: ImageView) {
         val keepCenterCrop = imageView.scaleType == ImageView.ScaleType.CENTER_CROP
         val keepFitXy = imageView.scaleType == ImageView.ScaleType.FIT_XY
@@ -2416,15 +1941,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         const val EXTRA_MACHINE_CODE = "extra_machine_code"
         const val EXTRA_MACHINE_LOCATION = "extra_machine_location"
 
-        private const val PAYMENT_POLL_INTERVAL_MS = 5_000L
-        private const val PAYMENT_TIMEOUT_MS = 120_000L
-        private const val PAYMENT_METHODS_CACHE_TTL_MS = 120_000L
-
         private const val DEFAULT_PORT = "/dev/ttyS1"
         private const val DEFAULT_BAUD = 9600
-        private const val DEFAULT_CUSTOMER_NAME = "Sin nombre"
-        private const val DEFAULT_CUSTOMER_PHONE = "9999999"
-        private const val DEFAULT_CUSTOMER_CI_NIT = "9999999"
         private const val PRODUCT_DIALOG_TIMEOUT_MS = 60_000L
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
@@ -2464,6 +1982,27 @@ private class CartViewModelFactory(
     }
 }
 
+private class PaymentViewModelFactory(
+    private val vendingBackendGateway: HttpVendingBackendGateway,
+    private val machineAuthGateway: MachineAuthGateway,
+    private val authSessionManager: AuthSessionManager,
+    private val machineId: Int
+) : ViewModelProvider.Factory {
+
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(PaymentViewModel::class.java)) {
+            return PaymentViewModel(
+                vendingBackendGateway,
+                machineAuthGateway,
+                authSessionManager,
+                machineId
+            ) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+    }
+}
+
 private data class PromoSlideUi(
     val url: String,
     val visualOrder: Int,
@@ -2496,8 +2035,6 @@ private data class DispenseQueueItem(
     var driverZeroDelivered: Boolean = false
 )
 
-private data class PaymentMethodOption(val id: Int, val label: String)
-
 private sealed interface CatalogResult {
     data class Success(
         val celdas: List<CeldaUi>,
@@ -2507,43 +2044,9 @@ private sealed interface CatalogResult {
     data class Error(val message: String, val unauthorized: Boolean = false) : CatalogResult
 }
 
-private sealed interface QrGenerationResult {
-    data class Success(
-        val pedidoId: Int,
-        val qrBase64: String,
-        val expiration: String,
-        val detalles: List<PedidoDetalleRef>
-    ) : QrGenerationResult
-
-    data class Error(val message: String) : QrGenerationResult
-}
-
-private sealed interface PaymentMethodsResult {
-    data class Success(val methods: List<PaymentMethodOption>) : PaymentMethodsResult
-    data class Error(val message: String, val unauthorized: Boolean = false) : PaymentMethodsResult
-}
-
-private sealed interface PaymentPollResult {
-    data object Paid : PaymentPollResult
-    data class Pending(val message: String) : PaymentPollResult
-    data class Cancelled(val message: String) : PaymentPollResult
-    data class Failed(val message: String) : PaymentPollResult
-    data class Error(val message: String) : PaymentPollResult
-}
-
-private sealed interface OrderCancelResult {
-    data class Success(val message: String) : OrderCancelResult
-    data class Error(val message: String) : OrderCancelResult
-}
-
 private sealed interface MachineAccessResult {
     data object Granted : MachineAccessResult
     data class Denied(val message: String) : MachineAccessResult
     data class Error(val message: String) : MachineAccessResult
 }
-
-private data class PedidoDetalleRef(
-    val tnPedidoDetalle: Int,
-    val tnPlanogramaCelda: Int
-)
 

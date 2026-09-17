@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -56,7 +57,12 @@ private const val PROMOTION_ADVANCE_DELAY_MS = 5_000L
 @Composable
 fun CatalogScreen(
     state: CatalogUiState,
-    onProductClick: (CatalogItem) -> Unit
+    cartQuantities: Map<Int, Int> = emptyMap(),
+    cartTotalUnits: Int = 0,
+    cartTotalAmount: Double = 0.0,
+    onIncrementProduct: (CatalogItem) -> Unit = {},
+    onDecrementProduct: (CatalogItem) -> Unit = {},
+    onCartClick: () -> Unit = {}
 ) {
     val primaryBlue = Color(0xFF0E3B86)
     val backgroundBlue = Color(0xFF071D3B)
@@ -82,17 +88,28 @@ fun CatalogScreen(
                 cyan = cyan
             )
 
-            when {
-                state.error != null -> CatalogStatus(message = state.error)
-                state.isLoading -> CatalogLoading(orange = orange)
-                state.items.isEmpty() -> CatalogStatus(message = "No hay productos disponibles")
-                else -> CatalogContent(
-                    state = state,
-                    onProductClick = onProductClick,
-                    cyan = cyan,
-                    orange = orange
-                )
+            Box(modifier = Modifier.weight(1f)) {
+                when {
+                    state.error != null -> CatalogStatus(message = state.error)
+                    state.isLoading -> CatalogLoading(orange = orange)
+                    state.items.isEmpty() -> CatalogStatus(message = "No hay productos disponibles")
+                    else -> CatalogContent(
+                        state = state,
+                        cartQuantities = cartQuantities,
+                        onIncrementProduct = onIncrementProduct,
+                        onDecrementProduct = onDecrementProduct,
+                        cyan = cyan,
+                        orange = orange
+                    )
+                }
             }
+            CatalogCartBar(
+                totalUnits = cartTotalUnits,
+                totalAmount = cartTotalAmount,
+                onClick = onCartClick,
+                cyan = cyan,
+                orange = orange
+            )
         }
     }
 }
@@ -131,7 +148,9 @@ private fun CatalogHeader(machineCode: String, machineLocation: String, cyan: Co
 @Composable
 private fun CatalogContent(
     state: CatalogUiState,
-    onProductClick: (CatalogItem) -> Unit,
+    cartQuantities: Map<Int, Int>,
+    onIncrementProduct: (CatalogItem) -> Unit,
+    onDecrementProduct: (CatalogItem) -> Unit,
     cyan: Color,
     orange: Color
 ) {
@@ -150,7 +169,9 @@ private fun CatalogContent(
             PromotionCarousel(promotions = state.promotions, cyan = cyan)
             ProductPager(
                 items = state.items,
-                onProductClick = onProductClick,
+                cartQuantities = cartQuantities,
+                onIncrementProduct = onIncrementProduct,
+                onDecrementProduct = onDecrementProduct,
                 cyan = cyan,
                 orange = orange
             )
@@ -206,7 +227,9 @@ private fun PromotionCarousel(promotions: List<String>, cyan: Color) {
 @Composable
 private fun ProductPager(
     items: List<CatalogItem>,
-    onProductClick: (CatalogItem) -> Unit,
+    cartQuantities: Map<Int, Int>,
+    onIncrementProduct: (CatalogItem) -> Unit,
+    onDecrementProduct: (CatalogItem) -> Unit,
     cyan: Color,
     orange: Color
 ) {
@@ -237,7 +260,9 @@ private fun ProductPager(
         ) { page ->
             ProductGrid(
                 items = items.drop(page * ITEMS_PER_PAGE).take(ITEMS_PER_PAGE),
-                onProductClick = onProductClick,
+                cartQuantities = cartQuantities,
+                onIncrementProduct = onIncrementProduct,
+                onDecrementProduct = onDecrementProduct,
                 cyan = cyan,
                 orange = orange
             )
@@ -265,7 +290,9 @@ private fun PageArrow(symbol: String, enabled: Boolean, onClick: () -> Unit) {
 @Composable
 private fun ProductGrid(
     items: List<CatalogItem>,
-    onProductClick: (CatalogItem) -> Unit,
+    cartQuantities: Map<Int, Int>,
+    onIncrementProduct: (CatalogItem) -> Unit,
+    onDecrementProduct: (CatalogItem) -> Unit,
     cyan: Color,
     orange: Color
 ) {
@@ -282,7 +309,9 @@ private fun ProductGrid(
                     } else {
                         ProductCard(
                             item = item,
-                            onClick = { onProductClick(item) },
+                            quantity = cartQuantities[item.planogramCellId] ?: 0,
+                            onIncrement = { onIncrementProduct(item) },
+                            onDecrement = { onDecrementProduct(item) },
                             cyan = cyan,
                             orange = orange,
                             modifier = Modifier.weight(1f)
@@ -297,18 +326,20 @@ private fun ProductGrid(
 @Composable
 private fun ProductCard(
     item: CatalogItem,
-    onClick: () -> Unit,
+    quantity: Int,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
     cyan: Color,
     orange: Color,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier
-            .aspectRatio(0.78f)
-            .clickable(onClick = onClick),
+            .aspectRatio(0.78f),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFF)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        border = if (quantity > 0) BorderStroke(2.dp, cyan) else null
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Text(
@@ -336,6 +367,99 @@ private fun ProductCard(
                 color = if (item.unitPrice > 0.0) orange else Color(0xFF60738C),
                 textAlign = TextAlign.Center,
                 fontSize = 17.sp,
+                fontWeight = FontWeight.Black
+            )
+            ProductQuantityControl(
+                quantity = quantity,
+                onIncrement = onIncrement,
+                onDecrement = onDecrement,
+                accent = cyan
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProductQuantityControl(
+    quantity: Int,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    accent: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (quantity > 0) {
+            IconButton(onClick = onDecrement, modifier = Modifier.size(30.dp)) {
+                Text(text = "−", color = Color(0xFF17427A), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                text = quantity.toString(),
+                color = Color(0xFF17427A),
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(min = 24.dp)
+            )
+        }
+        IconButton(onClick = onIncrement, modifier = Modifier.size(30.dp)) {
+            Text(text = "+", color = accent, fontSize = 22.sp, fontWeight = FontWeight.Black)
+        }
+    }
+}
+
+@Composable
+private fun CatalogCartBar(
+    totalUnits: Int,
+    totalAmount: Double,
+    onClick: () -> Unit,
+    cyan: Color,
+    orange: Color
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xE615437D)),
+        border = BorderStroke(1.dp, cyan.copy(alpha = 0.6f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(contentAlignment = Alignment.TopEnd) {
+                    Text(text = "🛒", fontSize = 24.sp)
+                    if (totalUnits > 0) {
+                        Text(
+                            text = totalUnits.toString(),
+                            modifier = Modifier
+                                .background(orange, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.dp),
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black
+                        )
+                    }
+                }
+                Spacer(Modifier.size(10.dp))
+                Text(
+                    text = "Cart",
+                    color = Color(0xFFD6E9FF),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Text(
+                text = "%.2f Bs".format(totalAmount),
+                color = orange,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Black
             )
         }
@@ -419,21 +543,20 @@ private fun previewItem(index: Int) = CatalogItem(
 
 @Preview(showBackground = true, widthDp = 540, heightDp = 960)
 @Composable
-private fun CatalogScreenSixProductsPreview() {
+private fun CatalogScreenEmptyCartPreview() {
     CatalogScreen(
         state = CatalogUiState(
             machineCode = "MQ-1001",
             machineLocation = "Edificio Central",
             items = (1..6).map(::previewItem),
             promotions = listOf("promo-1", "promo-2")
-        ),
-        onProductClick = {}
+        )
     )
 }
 
 @Preview(showBackground = true, widthDp = 540, heightDp = 960)
 @Composable
-private fun CatalogScreenPaginationPreview() {
+private fun CatalogScreenSelectedProductsPaginationPreview() {
     CatalogScreen(
         state = CatalogUiState(
             machineCode = "MQ-1002",
@@ -441,7 +564,9 @@ private fun CatalogScreenPaginationPreview() {
             items = (1..8).map(::previewItem),
             promotions = listOf("promo-1")
         ),
-        onProductClick = {}
+        cartQuantities = mapOf(1 to 1, 3 to 2, 7 to 3),
+        cartTotalUnits = 6,
+        cartTotalAmount = 57.0
     )
 }
 
@@ -449,8 +574,7 @@ private fun CatalogScreenPaginationPreview() {
 @Composable
 private fun CatalogScreenLoadingPreview() {
     CatalogScreen(
-        state = CatalogUiState(machineCode = "MQ-1003", machineLocation = "Depósito", isLoading = true),
-        onProductClick = {}
+        state = CatalogUiState(machineCode = "MQ-1003", machineLocation = "Depósito", isLoading = true)
     )
 }
 
@@ -458,7 +582,6 @@ private fun CatalogScreenLoadingPreview() {
 @Composable
 private fun CatalogScreenEmptyPreview() {
     CatalogScreen(
-        state = CatalogUiState(machineCode = "MQ-1004", machineLocation = "Sucursal Sur"),
-        onProductClick = {}
+        state = CatalogUiState(machineCode = "MQ-1004", machineLocation = "Sucursal Sur")
     )
 }

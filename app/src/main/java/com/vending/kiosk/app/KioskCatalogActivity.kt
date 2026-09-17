@@ -21,7 +21,6 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -56,7 +55,13 @@ import com.vending.kiosk.app.ui.catalog.CatalogViewModel
 import com.vending.kiosk.app.ui.cart.CartUiState
 import com.vending.kiosk.app.ui.cart.CartScreen
 import com.vending.kiosk.app.ui.cart.CartViewModel
-import com.vending.kiosk.app.ui.dispense.DispenseDialogView
+import com.vending.kiosk.app.ui.dispense.DispenseErrorUi
+import com.vending.kiosk.app.ui.dispense.DispenseProductSummary
+import com.vending.kiosk.app.ui.dispense.DispenseScreen
+import com.vending.kiosk.app.ui.dispense.DispenseSurface
+import com.vending.kiosk.app.ui.dispense.DispenseUiState
+import com.vending.kiosk.app.ui.dispense.DispenseViewModel
+import com.vending.kiosk.app.ui.dispense.ManualRetryUiState
 import com.vending.kiosk.app.ui.idle.IdleVideoOverlayView
 import com.vending.kiosk.app.ui.payment.PaymentEvent
 import com.vending.kiosk.app.ui.payment.PaymentScreen
@@ -95,13 +100,16 @@ class KioskCatalogActivity : AppCompatActivity() {
     private lateinit var catalogViewModel: CatalogViewModel
     private lateinit var cartViewModel: CartViewModel
     private lateinit var paymentViewModel: PaymentViewModel
+    private lateinit var dispenseViewModel: DispenseViewModel
     private var catalogComposeState by mutableStateOf(CatalogUiState())
     private var cartComposeState by mutableStateOf(CartUiState())
     private var paymentComposeState by mutableStateOf(PaymentUiState())
+    private var dispenseComposeState by mutableStateOf(DispenseUiState())
     private var cartTimeoutTimer: CountDownTimer? = null
     private var paymentTimeoutTimer: CountDownTimer? = null
     private var cartModalShown = false
     private var paymentModalShown = false
+    private var dispenseModalShown = false
     private var paymentTimeoutStep: PaymentStep? = null
     private var paidOrderHandledId: Int? = null
     private var catalogLoadInProgress = false
@@ -118,7 +126,6 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var machineCode: String = ""
     private var authHeader: String = ""
     private val catalogImageCache by lazy { CatalogImageCache(this) }
-    private val imageTargetsByUrl = mutableMapOf<String, MutableList<ImageView>>()
 
     private val serial = SerialManager()
     private lateinit var vendFlow: VendingFlowController
@@ -127,20 +134,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispensingInProgress = false
     private var clearCartOnDispenseFinish = false
     private var activeDispensePedidoId = 0
-    private var dispenseDialog: AlertDialog? = null
-    private var dispenseDialogView: DispenseDialogView? = null
-    private var dispenseSuccessCloseTimer: CountDownTimer? = null
-    private var dispenseSuccessDialog: AlertDialog? = null
-    private var dispenseErrorDialog: AlertDialog? = null
-    private var ioTimeoutDialog: AlertDialog? = null
-    private var ioProlongedWaitDialog: AlertDialog? = null
-    private var platformStuckDialog: AlertDialog? = null
-    private var platformRecoveringDialog: AlertDialog? = null
-    private var dispenseSuccessContent: DispenseDialogView.SuccessContent? = null
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
     private var dispenseSuccessTimerRunnable: Runnable? = null
-    private var retrieveDialog: AlertDialog? = null
-    private var retrieveContent: DispenseDialogView.RetrieveContent? = null
     private var monitorViewerDialog: AlertDialog? = null
     private var monitorViewerRunnable: Runnable? = null
     private var idleVideoOverlayView: IdleVideoOverlayView? = null
@@ -189,7 +184,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             interactionMonitor.appendBitacora(msg)
             if (dispensingInProgress && msg.startsWith("TX:")) {
                 runOnUiThread {
-                    dispenseDialogView?.renderStatus("Espera un momento, por favor...")
+                    dispenseViewModel.updateStatus("Espera un momento, por favor...")
                 }
             }
         }
@@ -203,8 +198,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         override fun onNeedRetrieve(msg: String) {
             interactionMonitor.appendBoth("NEED_RETRIEVE: $msg")
             runOnUiThread {
-                dismissPlatformStuckDialog()
-                dismissPlatformRecoveringDialog()
                 if (dispensingInProgress) {
                     reportDispenseStateByIndex(
                         index = dispensingCursor,
@@ -213,7 +206,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     )
                     val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
                     showRetrieveDialogForCurrentItem()
-                    dispenseDialogView?.postRenderStatus(
+                    dispenseViewModel.updateStatus(
                         "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
                     )
                 }
@@ -229,7 +222,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             interactionMonitor.appendBoth("PLATFORM_STUCK: $msg")
             runOnUiThread {
                 if (dispensingInProgress) {
-                    showPlatformStuckDialog(msg)
+                    dispenseViewModel.showPlatformStuck(msg)
                 }
             }
         }
@@ -248,14 +241,11 @@ class KioskCatalogActivity : AppCompatActivity() {
                 val parts = stepMsg.split("|", limit = 2)
                 val code = parts.firstOrNull()?.trim().orEmpty()
                 if (code == "IO_TIMEOUT_RECOVERED") {
-                    dismissIoTimeoutDialog()
-                    dismissDispenseIoProlongedWaitDialog()
                     if (dispensingInProgress) {
                         showRetrieveDialogForCurrentItem()
                     }
                 } else if (code == "IO_TIMEOUT_PROLONGED") {
                     if (dispensingInProgress) {
-                        dismissIoTimeoutDialog()
                         showDispenseIoProlongedWaitDialog()
                     }
                 } else if (code == "DRIVER_ZERO_PICKUP_MODE") {
@@ -330,9 +320,11 @@ class KioskCatalogActivity : AppCompatActivity() {
                 machineId
             )
         )[PaymentViewModel::class.java]
+        dispenseViewModel = ViewModelProvider(this)[DispenseViewModel::class.java]
         observeCartState()
         observeCatalogState()
         observePaymentState()
+        observeDispenseState()
         catalogViewModel.configureMachine(machineId, machineCode, machineLocation)
         catalogLoadInProgress = true
         catalogViewModel.loadCatalog()
@@ -362,16 +354,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         cartTimeoutTimer = null
         paymentTimeoutTimer?.cancel()
         paymentTimeoutTimer = null
-        dismissDispenseSuccessDialog()
-        dispenseErrorDialog?.takeIf { it.isShowing }?.dismiss()
-        dispenseErrorDialog = null
-        dismissIoTimeoutDialog()
-        dismissDispenseIoProlongedWaitDialog()
-        dismissPlatformStuckDialog()
-        dismissPlatformRecoveringDialog()
-        dispenseDialog?.takeIf { it.isShowing }?.dismiss()
-        dispenseDialog = null
-        dismissRetrieveDialog()
+        stopDispenseSuccessCountdown()
         idleVideoOverlayView?.hide()
         idleVideoOverlayView?.stopPlayback()
         monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
@@ -503,6 +486,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     override fun onBackPressed() {
+        if (dispenseComposeState.surface != DispenseSurface.Hidden) {
+            return
+        }
         if (kioskLocked) {
             Toast.makeText(this, "Modo kiosk activo", Toast.LENGTH_SHORT).show()
             return
@@ -794,6 +780,18 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onInteraction = ::restartPaymentTimeout
                     )
                 }
+
+                if (dispenseComposeState.surface != DispenseSurface.Hidden) {
+                    DispenseScreen(
+                        state = dispenseComposeState,
+                        onManualPickupRetry = ::requestManualPickupRetry,
+                        onPlatformRecoveryRequested = ::requestPlatformRecovery,
+                        onSuccessCloseRequested = ::closeDispenseSuccessSurface,
+                        onErrorViewLogsRequested = ::showDispenseErrorLogs,
+                        onErrorViewBitacoraRequested = ::showDispenseErrorBitacora,
+                        onErrorSaveMonitoringRequested = ::saveDispenseErrorMonitoring
+                    )
+                }
             }
         }
         lifecycleScope.launch {
@@ -819,6 +817,27 @@ class KioskCatalogActivity : AppCompatActivity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun observeDispenseState() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                dispenseViewModel.uiState.collect { state ->
+                    dispenseComposeState = state
+                    handleDispenseVisibility(state.surface != DispenseSurface.Hidden)
+                }
+            }
+        }
+    }
+
+    private fun handleDispenseVisibility(isVisible: Boolean) {
+        if (isVisible && !dispenseModalShown) {
+            dispenseModalShown = true
+            onModalShown()
+        } else if (!isVisible && dispenseModalShown) {
+            dispenseModalShown = false
+            onModalDismissed()
         }
     }
 
@@ -1128,29 +1147,13 @@ class KioskCatalogActivity : AppCompatActivity() {
         qrResult: CreateOrderQrResponse,
         paymentMethodLabel: String
     ) {
-        val queue = mutableListOf<DispenseQueueItem>()
-        val detallePendiente = qrResult.details.toMutableList()
-        selections.forEach { selection ->
-            val physical = selection.item.physicalCell.takeIf { it in 10..68 }
-                ?: mapCellCodeToPhysical(selection.item.codigoCelda)
-            if (physical == null) {
-                Toast.makeText(this, "No se pudo mapear la celda ${selection.item.codigoCelda}", Toast.LENGTH_LONG).show()
+        val queue = when (val result = buildDispenseQueue(selections, qrResult.details)) {
+            is DispenseQueueBuildResult.InvalidCell -> {
+                Toast.makeText(this, "No se pudo mapear la celda ${result.cellCode}", Toast.LENGTH_LONG).show()
                 return
             }
-            repeat(selection.quantity) {
-                val idx = detallePendiente.indexOfFirst { it.planogramCellId == selection.item.planogramaCeldaId }
-                val detalle = if (idx >= 0) {
-                    detallePendiente.removeAt(idx)
-                } else {
-                    if (detallePendiente.isNotEmpty()) detallePendiente.removeAt(0) else null
-                }
-                queue += DispenseQueueItem(
-                    cell = physical,
-                    item = selection.item,
-                    tnPedidoDetalle = detalle?.orderDetailId ?: 0,
-                    tnEstadoDispensacion = 0
-                )
-            }
+
+            is DispenseQueueBuildResult.Success -> result.queue
         }
 
         if (queue.isEmpty()) {
@@ -1161,35 +1164,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         if (!ensureSerialConnection()) {
             Toast.makeText(this, "No se pudo abrir puerto serial /dev/ttyS1", Toast.LENGTH_LONG).show()
             return
-        }
-
-        lateinit var dialog: AlertDialog
-        val dispenseView = DispenseDialogView(
-            context = this,
-            loadProductImage = ::loadProductImage,
-            onCloseRequested = {
-                dispenseSuccessCloseTimer?.cancel()
-                dispenseSuccessCloseTimer = null
-                dismissRetrieveDialog()
-                dialog.dismiss()
-            }
-        )
-
-        dialog = AlertDialog.Builder(this)
-            .setView(dispenseView.root)
-            .setCancelable(false)
-            .create()
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dispenseDialog = dialog
-        dispenseDialogView = dispenseView
-        dialog.setOnDismissListener {
-            dispenseSuccessCloseTimer?.cancel()
-            dispenseSuccessCloseTimer = null
-            dispenseDialog = null
-            onModalDismissed()
         }
 
         dispensingQueue = queue
@@ -1208,14 +1182,48 @@ class KioskCatalogActivity : AppCompatActivity() {
         )
         interactionMonitor.appendBoth("Dispensacion iniciada para ${dispensingQueue.size} item(s)")
 
-        dispenseView.renderTitle("DISPENSANDO...")
-        dispenseView.renderStatus("Espere un momento, por favor...")
-        dispenseView.renderProgress("1 de ${dispensingQueue.size}")
-        dispenseView.renderProductName(dispensingQueue.firstOrNull()?.item?.producto.orEmpty())
-        dispenseView.renderTimer(visible = false)
-        dispenseView.renderCloseButton(text = "Cerrar", visible = false)
+        val firstItem = dispensingQueue.firstOrNull()
+        dispenseViewModel.showDispensing(
+            currentIndex = 1,
+            totalItems = dispensingQueue.size,
+            productName = firstItem?.item?.producto.orEmpty(),
+            productImageSource = resolveDispenseImageSource(firstItem?.item?.imagenUrl.orEmpty())
+        )
 
         startNextDispenseItem()
+    }
+
+    private fun buildDispenseQueue(
+        selections: List<PurchaseSelection>,
+        details: List<CreateOrderQrResponse.OrderDetail>
+    ): DispenseQueueBuildResult {
+        val queue = mutableListOf<DispenseQueueItem>()
+        val detallePendiente = details.toMutableList()
+        selections.forEach { selection ->
+            val physical = selection.item.physicalCell.takeIf { it in 10..68 }
+                ?: mapCellCodeToPhysical(selection.item.codigoCelda)
+                ?: return DispenseQueueBuildResult.InvalidCell(selection.item.codigoCelda)
+            repeat(selection.quantity) {
+                val idx = detallePendiente.indexOfFirst { it.planogramCellId == selection.item.planogramaCeldaId }
+                val detalle = if (idx >= 0) {
+                    detallePendiente.removeAt(idx)
+                } else {
+                    if (detallePendiente.isNotEmpty()) detallePendiente.removeAt(0) else null
+                }
+                queue += DispenseQueueItem(
+                    cell = physical,
+                    item = selection.item,
+                    tnPedidoDetalle = detalle?.orderDetailId ?: 0,
+                    tnEstadoDispensacion = 0
+                )
+            }
+        }
+        return DispenseQueueBuildResult.Success(queue)
+    }
+
+    private sealed interface DispenseQueueBuildResult {
+        data class Success(val queue: List<DispenseQueueItem>) : DispenseQueueBuildResult
+        data class InvalidCell(val cellCode: String) : DispenseQueueBuildResult
     }
 
     private fun ensureSerialConnection(): Boolean {
@@ -1249,9 +1257,13 @@ class KioskCatalogActivity : AppCompatActivity() {
         val currentCell = currentItem.cell
         val currentNumber = dispensingCursor + 1
         val total = dispensingQueue.size
-        dispenseDialogView?.renderProgress("$currentNumber de $total")
-        dispenseDialogView?.renderProduct(currentItem.item.producto, currentItem.item.imagenUrl)
-        dispenseDialogView?.renderStatus("Espera un momento, por favor...")
+        dispenseViewModel.showDispensing(
+            currentIndex = currentNumber,
+            totalItems = total,
+            productName = currentItem.item.producto,
+            productImageSource = resolveDispenseImageSource(currentItem.item.imagenUrl),
+            statusText = "Espera un momento, por favor..."
+        )
         interactionMonitor.appendBoth(
             "Inicio dispensacion celda ${currentItem.item.codigoCelda} (fisica $currentCell) | producto=${currentItem.item.producto} | item ${currentNumber} de $total"
         )
@@ -1271,7 +1283,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                 "Dispensacion celda ${justDone.item.codigoCelda} completa | producto=${justDone.item.producto}"
             )
         }
-        dismissRetrieveDialog()
         if (justDone?.driverZeroDelivered == true) {
             reportDispenseStateByIndex(
                 index = dispensingCursor,
@@ -1293,7 +1304,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         interactionMonitor.appendBoth("Incidencia en dispensacion | code=$errorCode | message=$message")
         if (errorCode == "IO_TIMEOUT") {
             if (dispensingInProgress) {
-                showDispenseIoTimeoutDialog(message)
+                dispenseViewModel.showIoTimeout(message)
             }
             return
         }
@@ -1314,32 +1325,15 @@ class KioskCatalogActivity : AppCompatActivity() {
             }
         }
         dispensingInProgress = false
-        dismissRetrieveDialog()
         runCatching { vendFlow.stop() }
-        dispenseSuccessCloseTimer?.cancel()
-        dispenseSuccessCloseTimer = null
-        dismissIoTimeoutDialog()
-        dismissDispenseIoProlongedWaitDialog()
-        dismissPlatformStuckDialog()
-        dismissPlatformRecoveringDialog()
-        dispenseDialog?.takeIf { it.isShowing }?.dismiss()
-        dispenseDialog = null
-        if (errorCode == "PRODUCT_CRUSHED") {
-            showDispenseErrorDialog(
-                message = message,
-                layoutRes = R.layout.dialog_dispense_product_crushed
-            )
-        } else {
-            showDispenseErrorDialog(message)
-        }
+        stopDispenseSuccessCountdown()
+        showDispenseError(message, errorCode)
     }
 
     private fun onDispenseFinished() {
         dispensingInProgress = false
-        dismissRetrieveDialog()
         runCatching { vendFlow.stop() }
-        dispenseSuccessCloseTimer?.cancel()
-        dispenseSuccessCloseTimer = null
+        stopDispenseSuccessCountdown()
         interactionMonitor.appendBoth("Compra finalizada sin incidencias fatales")
         interactionMonitor.finalizeAndSave()
 
@@ -1347,10 +1341,6 @@ class KioskCatalogActivity : AppCompatActivity() {
             cartViewModel.clear()
         }
 
-        dispenseDialog?.takeIf { it.isShowing }?.dismiss()
-        dismissDispenseIoProlongedWaitDialog()
-        dismissPlatformStuckDialog()
-        dismissPlatformRecoveringDialog()
         showDispenseSuccessDialog()
 
         loadCatalog(machineId, authHeader)
@@ -1395,282 +1385,50 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun showDispenseErrorDialog(
-        message: String,
-        layoutRes: Int = R.layout.dialog_dispense_error
-    ) {
-        if (dispenseErrorDialog?.isShowing == true) return
-        val view = LayoutInflater.from(this).inflate(layoutRes, null)
-        val tvMessage = view.findViewById<TextView>(R.id.tvDispenseErrorMessage)
-        val ivHero = view.findViewById<ImageView>(R.id.ivDispenseErrorHero)
-        val llDelivered = view.findViewById<LinearLayout>(R.id.llDispenseDeliveredItems)
-        val llPending = view.findViewById<LinearLayout>(R.id.llDispensePendingItems)
-        val llAnomalous = view.findViewById<LinearLayout>(R.id.llDispenseAnomalousItems)
-        val btnErrorViewLogs = view.findViewById<Button>(R.id.btnErrorViewLogs)
-        val btnErrorViewBitacora = view.findViewById<Button>(R.id.btnErrorViewBitacora)
-        val btnErrorSaveMonitoring = view.findViewById<Button>(R.id.btnErrorSaveMonitoring)
-        tvMessage.text = message.ifBlank { "No se pudo completar la dispensacion." }
-
-        val delivered = dispensingQueue.filter { it.tnEstadoDispensacion == 4 }
-        val anomalous = dispensingQueue.filter { it.tnEstadoDispensacion == 7 }
-        val pending = dispensingQueue.filter { it.tnEstadoDispensacion != 4 && it.tnEstadoDispensacion != 7 }
-
-        fun renderItems(container: LinearLayout, items: List<DispenseQueueItem>) {
-            container.removeAllViews()
-            if (items.isEmpty()) {
-                val empty = TextView(this).apply {
-                    text = "- Ninguno"
-                    setTextColor(Color.parseColor("#0B456F"))
-                    textSize = 15f
-                }
-                container.addView(empty)
-                return
-            }
-
-            val grouped = items
-                .groupingBy { it.item.producto.ifBlank { "Producto sin nombre" } to it.item.imagenUrl }
+    private fun showDispenseError(message: String, errorCode: String) {
+        fun List<DispenseQueueItem>.toProductSummaries(): List<DispenseProductSummary> =
+            groupingBy { it.item.producto.ifBlank { "Producto sin nombre" } to it.item.imagenUrl }
                 .eachCount()
-                .entries
+                .map { (entry, quantity) ->
+                    DispenseProductSummary(
+                        name = entry.first,
+                        quantity = quantity,
+                        imageSource = resolveDispenseImageSource(entry.second)
+                    )
+                }
 
-            grouped.forEach { (entry, qty) ->
-                val row = LayoutInflater.from(this)
-                    .inflate(R.layout.item_dispense_error_product, container, false)
-                val iv = row.findViewById<ImageView>(R.id.ivDispenseErrorItemPreview)
-                val tv = row.findViewById<TextView>(R.id.tvDispenseErrorItemText)
-                loadProductImage(entry.second, iv)
-                tv.text = "${entry.first} x$qty"
-                container.addView(row)
-            }
-        }
-
-        renderItems(llDelivered, delivered)
-        renderItems(llPending, pending)
-        renderItems(llAnomalous, anomalous)
-
-        btnErrorViewLogs.setOnClickListener {
-            showMonitoringViewerDialog(
-                title = "Logs en vivo - incidencia",
-                live = true,
-                bitacora = false
+        dispenseViewModel.showError(
+            DispenseErrorUi(
+                message = message.ifBlank { "No se pudo completar la dispensacion." },
+                code = errorCode.takeIf { it.isNotBlank() },
+                isProductCrushed = errorCode == "PRODUCT_CRUSHED",
+                deliveredProducts = dispensingQueue.filter { it.tnEstadoDispensacion == 4 }.toProductSummaries(),
+                pendingProducts = dispensingQueue.filter { it.tnEstadoDispensacion != 4 && it.tnEstadoDispensacion != 7 }.toProductSummaries(),
+                reviewProducts = dispensingQueue.filter { it.tnEstadoDispensacion == 7 }.toProductSummaries()
             )
-        }
-        btnErrorViewBitacora.setOnClickListener {
-            showMonitoringViewerDialog(
-                title = "Bitacora en vivo - incidencia",
-                live = true,
-                bitacora = true
-            )
-        }
-        btnErrorSaveMonitoring.setOnClickListener {
-            val saved = interactionMonitor.finalizeAndSave()
-            if (saved == null) {
-                Toast.makeText(this, "No habia una sesion activa para guardar.", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(
-                    this,
-                    "Guardado en: ${saved.logsFile.parentFile?.absolutePath.orEmpty()}",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(view)
-            .setCancelable(false)
-            .create()
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.96f).toInt()
-        val dialogHeightPx = (resources.displayMetrics.heightPixels * 0.92f).toInt()
-        dialog.window?.setLayout(
-            dialogWidthPx,
-            dialogHeightPx
         )
-        ivHero.layoutParams = ivHero.layoutParams.apply {
-            height = (dialogHeightPx * 0.30f).toInt().coerceAtLeast(dp(180))
-            width = ViewGroup.LayoutParams.MATCH_PARENT
-        }
-        dispenseErrorDialog = dialog
-        dialog.setOnDismissListener {
-            dispenseErrorDialog = null
-            onModalDismissed()
-        }
-    }
-
-    private fun showDispenseIoTimeoutDialog(message: String) {
-        if (ioTimeoutDialog?.isShowing == true) return
-        val content = DispenseDialogView.createIoTimeoutContent(this)
-        content.renderMessage(message.ifBlank { "La puerta no responde aun. Seguimos esperando confirmacion de apertura." })
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(content.root)
-            .setCancelable(false)
-            .create()
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.90f).toInt()
-        dialog.window?.setLayout(dialogWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
-        ioTimeoutDialog = dialog
-        dialog.setOnDismissListener {
-            ioTimeoutDialog = null
-            onModalDismissed()
-        }
-    }
-
-    private fun dismissIoTimeoutDialog() {
-        ioTimeoutDialog?.takeIf { it.isShowing }?.dismiss()
-        ioTimeoutDialog = null
     }
 
     private fun showDispenseIoProlongedWaitDialog() {
-        if (ioProlongedWaitDialog?.isShowing == true) return
-        lateinit var content: DispenseDialogView.IoProlongedWaitContent
-        content = DispenseDialogView.createIoProlongedWaitContent(this) {
-            val wasAlreadyRetrying = vendFlow.isManualDoorRetryRunning()
-            val started = runCatching { vendFlow.requestManualDoorRetrySequence() }.getOrDefault(false)
-            if (started) {
-                content.renderRetrying()
-            } else {
-                if (wasAlreadyRetrying || vendFlow.isManualDoorRetryRunning()) {
-                    content.renderAlreadyRetrying()
-                } else {
-                    content.renderUnableToStart()
-                }
-            }
-        }
-        content.renderAvailable()
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(content.root)
-            .setCancelable(false)
-            .create()
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.90f).toInt()
-        dialog.window?.setLayout(dialogWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
-        ioProlongedWaitDialog = dialog
-        dialog.setOnDismissListener {
-            ioProlongedWaitDialog = null
-            onModalDismissed()
-        }
-    }
-
-    private fun dismissDispenseIoProlongedWaitDialog() {
-        ioProlongedWaitDialog?.takeIf { it.isShowing }?.dismiss()
-        ioProlongedWaitDialog = null
-    }
-
-    private fun showPlatformStuckDialog(message: String) {
-        if (platformStuckDialog?.isShowing == true) return
-        lateinit var dialog: AlertDialog
-        val content = DispenseDialogView.createPlatformStuckContent(this) {
-            val started = runCatching { vendFlow.requestPlatformRecoveryToBase() }.getOrDefault(false)
-            if (started) {
-                dialog.dismiss()
-                showPlatformRecoveringDialog()
-            } else {
-                Toast.makeText(this, "No hay recuperacion pendiente.", Toast.LENGTH_SHORT).show()
-            }
-        }
-        content.renderMessage(message.ifBlank { "Se detecto plataforma atorada. Presiona el boton para volver a base." })
-
-        dialog = AlertDialog.Builder(this)
-            .setView(content.root)
-            .setCancelable(false)
-            .create()
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val dialogWidthPx = (resources.displayMetrics.widthPixels * 0.90f).toInt()
-        dialog.window?.setLayout(dialogWidthPx, WindowManager.LayoutParams.WRAP_CONTENT)
-        platformStuckDialog = dialog
-        dialog.setOnDismissListener {
-            platformStuckDialog = null
-            onModalDismissed()
-        }
-    }
-
-    private fun dismissPlatformStuckDialog() {
-        platformStuckDialog?.takeIf { it.isShowing }?.dismiss()
-        platformStuckDialog = null
-    }
-
-    private fun showPlatformRecoveringDialog() {
-        if (platformRecoveringDialog?.isShowing == true) return
-        val content = DispenseDialogView.createPlatformRecoveringContent(this)
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(content.root)
-            .setCancelable(false)
-            .create()
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        platformRecoveringDialog = dialog
-        dialog.setOnDismissListener {
-            platformRecoveringDialog = null
-            onModalDismissed()
-        }
-    }
-
-    private fun dismissPlatformRecoveringDialog() {
-        platformRecoveringDialog?.takeIf { it.isShowing }?.dismiss()
-        platformRecoveringDialog = null
+        dispenseViewModel.showProlongedWait(
+            message = "Esto está tardando más de lo esperado. Por favor, presione el botón para un reintento manual.",
+            manualRetryState = ManualRetryUiState.Available
+        )
     }
 
     private fun showDispenseSuccessDialog() {
-        if (dispenseSuccessDialog?.isShowing == true) return
-
-        val successContent = DispenseDialogView.createSuccessContent(this)
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(successContent.root)
-            .setCancelable(false)
-            .create()
-
-        successContent.setOnSuccessCloseRequested {
-            stopDispenseSuccessCountdown()
-            dialog.dismiss()
-        }
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        dispenseSuccessDialog = dialog
-        dispenseSuccessContent = successContent
-        dialog.setOnDismissListener {
-            stopDispenseSuccessCountdown()
-            dispenseSuccessContent = null
-            dispenseSuccessDialog = null
-            onModalDismissed()
-        }
-
-        startDispenseSuccessCountdown(dialog)
+        dispenseViewModel.showSuccess("Dispensado completado correctamente.")
+        startDispenseSuccessCountdown()
     }
 
-    private fun dismissDispenseSuccessDialog() {
-        stopDispenseSuccessCountdown()
-        dispenseSuccessDialog?.takeIf { it.isShowing }?.dismiss()
-        dispenseSuccessDialog = null
-        dispenseSuccessContent = null
-    }
-
-    private fun startDispenseSuccessCountdown(dialog: AlertDialog) {
+    private fun startDispenseSuccessCountdown() {
         stopDispenseSuccessCountdown()
         var secondsLeft = (DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS / 1000L).toInt().coerceAtLeast(0)
 
         fun scheduleNextTick() {
-            dispenseSuccessContent?.renderTimer("${secondsLeft}s")
+            dispenseViewModel.updateSuccessCountdown(secondsLeft)
             if (secondsLeft <= 0) {
-                dialog.takeIf { it.isShowing }?.dismiss()
+                dispenseViewModel.hide()
                 return
             }
             secondsLeft -= 1
@@ -1685,8 +1443,6 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun stopDispenseSuccessCountdown() {
         dispenseSuccessTimerRunnable?.let { dispenseSuccessTimerHandler.removeCallbacks(it) }
         dispenseSuccessTimerRunnable = null
-        dispenseSuccessCloseTimer?.cancel()
-        dispenseSuccessCloseTimer = null
     }
 
     private fun showRetrieveDialogForCurrentItem() {
@@ -1698,35 +1454,70 @@ class KioskCatalogActivity : AppCompatActivity() {
         val title = "Producto listo! $currentNumber de $total"
         val message = "Por favor, retira tu $currentProduct"
 
-        if (retrieveDialog?.isShowing == true) {
-            retrieveContent?.render(title, message)
-            return
-        }
+        val currentItem = dispensingQueue.getOrNull(dispensingCursor)?.item
+        dispenseViewModel.showRetrieve(
+            title = title,
+            message = message,
+            productName = currentItem?.producto.orEmpty(),
+            productImageSource = resolveDispenseImageSource(currentItem?.imagenUrl.orEmpty())
+        )
+    }
 
-        val content = DispenseDialogView.createRetrieveContent(this)
-        content.render(title, message)
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(content.root)
-            .setCancelable(false)
-            .create()
-
-        onModalShown()
-        dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        retrieveDialog = dialog
-        retrieveContent = content
-        dialog.setOnDismissListener {
-            retrieveContent = null
-            retrieveDialog = null
-            onModalDismissed()
+    private fun requestManualPickupRetry() {
+        val wasAlreadyRetrying = vendFlow.isManualDoorRetryRunning()
+        val started = runCatching { vendFlow.requestManualDoorRetrySequence() }.getOrDefault(false)
+        when {
+            started -> dispenseViewModel.setManualRetryInProgress()
+            wasAlreadyRetrying || vendFlow.isManualDoorRetryRunning() -> dispenseViewModel.setManualRetryAlreadyInProgress()
+            else -> dispenseViewModel.setManualRetryUnableToStart()
         }
     }
 
-    private fun dismissRetrieveDialog() {
-        retrieveDialog?.takeIf { it.isShowing }?.dismiss()
-        retrieveDialog = null
-        retrieveContent = null
+    private fun requestPlatformRecovery() {
+        val started = runCatching { vendFlow.requestPlatformRecoveryToBase() }.getOrDefault(false)
+        if (started) {
+            dispenseViewModel.showPlatformRecovering("Recuperando plataforma. Por favor espere...")
+        } else {
+            Toast.makeText(this, "No hay recuperacion pendiente.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun closeDispenseSuccessSurface() {
+        stopDispenseSuccessCountdown()
+        dispenseViewModel.hide()
+    }
+
+    private fun showDispenseErrorLogs() {
+        showMonitoringViewerDialog(
+            title = "Logs en vivo - incidencia",
+            live = true,
+            bitacora = false
+        )
+    }
+
+    private fun showDispenseErrorBitacora() {
+        showMonitoringViewerDialog(
+            title = "Bitacora en vivo - incidencia",
+            live = true,
+            bitacora = true
+        )
+    }
+
+    private fun saveDispenseErrorMonitoring() {
+        val saved = interactionMonitor.finalizeAndSave()
+        if (saved == null) {
+            Toast.makeText(this, "No habia una sesion activa para guardar.", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(
+                this,
+                "Guardado en: ${saved.logsFile.parentFile?.absolutePath.orEmpty()}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun resolveDispenseImageSource(imageSource: String): String? {
+        return imageSource.takeIf(catalogImageCache::isLocalImagePath)
     }
 
     private fun showMonitoringViewerDialog(
@@ -1802,74 +1593,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         monitorViewerDialog = dialog
         dialog.show()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.WHITE))
-    }
-
-    private fun loadProductImage(imageUrl: String, imageView: ImageView) {
-        val keepCenterCrop = imageView.scaleType == ImageView.ScaleType.CENTER_CROP
-        val keepFitXy = imageView.scaleType == ImageView.ScaleType.FIT_XY
-
-        fun placeholderScaleType(): ImageView.ScaleType = when {
-            keepCenterCrop -> ImageView.ScaleType.CENTER_CROP
-            keepFitXy -> ImageView.ScaleType.FIT_XY
-            else -> ImageView.ScaleType.CENTER_INSIDE
-        }
-
-        fun loadedScaleType(): ImageView.ScaleType = when {
-            keepCenterCrop -> ImageView.ScaleType.CENTER_CROP
-            keepFitXy -> ImageView.ScaleType.FIT_XY
-            else -> ImageView.ScaleType.FIT_CENTER
-        }
-
-        imageView.setImageResource(android.R.drawable.ic_menu_gallery)
-        imageView.scaleType = placeholderScaleType()
-        if (imageUrl.isBlank()) return
-
-        imageView.tag = imageUrl
-        catalogImageCache.getBitmap(imageUrl)?.let { bitmap ->
-            imageView.setImageBitmap(bitmap)
-            imageView.scaleType = loadedScaleType()
-            return
-        }
-
-        if (catalogImageCache.isLocalImagePath(imageUrl)) {
-            val bitmap = catalogImageCache.loadBitmapFromLocalPath(imageUrl, 240)
-            if (bitmap != null) {
-                catalogImageCache.putBitmap(imageUrl, bitmap)
-                imageView.setImageBitmap(bitmap)
-                imageView.scaleType = loadedScaleType()
-            }
-            return
-        }
-
-        var shouldStartDownload = false
-        synchronized(imageTargetsByUrl) {
-            val targets = imageTargetsByUrl.getOrPut(imageUrl) { mutableListOf() }
-            targets.add(imageView)
-            if (targets.size == 1) shouldStartDownload = true
-        }
-        if (!shouldStartDownload) return
-
-        lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 240) }
-            if (bitmap != null) {
-                catalogImageCache.putBitmap(imageUrl, bitmap)
-            }
-            val targets = synchronized(imageTargetsByUrl) {
-                imageTargetsByUrl.remove(imageUrl).orEmpty()
-            }
-            targets.forEach { target ->
-                if (target.tag == imageUrl && bitmap != null) {
-                    val shouldKeepCenterCrop = target.scaleType == ImageView.ScaleType.CENTER_CROP
-                    val shouldKeepFitXy = target.scaleType == ImageView.ScaleType.FIT_XY
-                    target.setImageBitmap(bitmap)
-                    target.scaleType = when {
-                        shouldKeepCenterCrop -> ImageView.ScaleType.CENTER_CROP
-                        shouldKeepFitXy -> ImageView.ScaleType.FIT_XY
-                        else -> ImageView.ScaleType.FIT_CENTER
-                    }
-                }
-            }
-        }
     }
 
     private fun formatPrice(value: Double): String = String.format(java.util.Locale.US, "%.2f", value)

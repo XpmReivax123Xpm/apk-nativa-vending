@@ -61,6 +61,7 @@ import com.vending.kiosk.app.ui.dispense.DispenseSurface
 import com.vending.kiosk.app.ui.dispense.DispenseUiState
 import com.vending.kiosk.app.ui.dispense.DispenseViewModel
 import com.vending.kiosk.app.ui.dispense.ManualRetryUiState
+import com.vending.kiosk.app.ui.idle.IdleController
 import com.vending.kiosk.app.ui.idle.IdleVideoOverlayView
 import com.vending.kiosk.app.ui.payment.PaymentEvent
 import com.vending.kiosk.app.ui.payment.PaymentScreen
@@ -139,26 +140,10 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var kioskLocked = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
-    private val inactivityHandler = Handler(Looper.getMainLooper())
+    private val monitorViewerHandler = Handler(Looper.getMainLooper())
     private val idleIoHandler = Handler(Looper.getMainLooper())
     private var idleIoPollingActive = false
-    private var activeModalCount = 0
-    private val inactivityRunnable = Runnable {
-        if (activeModalCount > 0) {
-            Log.d(TAG, "Inactivity refresh skipped: modal is open")
-            scheduleInactivityRefresh()
-            return@Runnable
-        }
-        if (machineId <= 0 || authHeader.isBlank()) return@Runnable
-        refreshCatalogAndClearCart()
-        idleVideoOverlayView?.show()
-        Toast.makeText(
-            this,
-            "Inactividad detectada. Mostrando video de espera.",
-            Toast.LENGTH_SHORT
-        ).show()
-        scheduleInactivityRefresh()
-    }
+    private val idleController = IdleController(::enterIdle)
 
     private val serialListener = object : SerialManager.Listener {
         override fun onRx(data: ByteArray, size: Int) {
@@ -278,12 +263,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         idleVideoOverlayView = IdleVideoOverlayView(
             root = screenRootView,
             onOverlayTouched = {
-                idleVideoOverlayView?.hide()
-                scheduleInactivityRefresh()
+                exitIdleAndRegisterInteraction()
             },
             onPlaybackError = {
-                idleVideoOverlayView?.hide()
-                scheduleInactivityRefresh()
+                exitIdleAndRegisterInteraction()
             }
         )
 
@@ -332,12 +315,13 @@ class KioskCatalogActivity : AppCompatActivity() {
         paymentViewModel.prefetchPaymentMethodsIfNeeded()
         applyImmersiveKioskUi()
         startIdleIoPolling()
-        scheduleInactivityRefresh()
+        idleController.start()
     }
 
     override fun onPause() {
         unlockHoldHandler.removeCallbacksAndMessages(null)
-        inactivityHandler.removeCallbacksAndMessages(null)
+        idleController.stop()
+        monitorViewerHandler.removeCallbacksAndMessages(null)
         stopIdleIoPolling()
         super.onPause()
     }
@@ -356,10 +340,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         idleVideoOverlayView?.stopPlayback()
         monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
         monitorViewerDialog = null
-        monitorViewerRunnable?.let { inactivityHandler.removeCallbacks(it) }
+        monitorViewerRunnable?.let { monitorViewerHandler.removeCallbacks(it) }
         monitorViewerRunnable = null
         unlockHoldHandler.removeCallbacksAndMessages(null)
-        inactivityHandler.removeCallbacksAndMessages(null)
+        idleController.stop()
+        monitorViewerHandler.removeCallbacksAndMessages(null)
         if (::vendFlow.isInitialized) {
             runCatching { vendFlow.stop() }
         }
@@ -917,31 +902,32 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onUserInteraction() {
         super.onUserInteraction()
-        if (idleVideoOverlayView?.isVisible == true) {
-            idleVideoOverlayView?.hide()
-        }
-        scheduleInactivityRefresh()
+        exitIdleAndRegisterInteraction()
     }
 
-    private fun scheduleInactivityRefresh() {
-        inactivityHandler.removeCallbacks(inactivityRunnable)
-        if (activeModalCount > 0) {
-            Log.d(TAG, "Inactivity timer paused while modal is visible")
-            return
-        }
-        inactivityHandler.postDelayed(inactivityRunnable, PLANOGRAM_INACTIVITY_REFRESH_MS)
+    private fun enterIdle() {
+        if (machineId <= 0 || authHeader.isBlank()) return
+        refreshCatalogAndClearCart()
+        idleVideoOverlayView?.show()
+        Toast.makeText(
+            this,
+            "Inactividad detectada. Mostrando video de espera.",
+            Toast.LENGTH_SHORT
+        ).show()
+        idleController.start()
+    }
+
+    private fun exitIdleAndRegisterInteraction() {
+        idleVideoOverlayView?.hide()
+        idleController.onUserInteraction()
     }
 
     private fun onModalShown() {
-        activeModalCount += 1
-        inactivityHandler.removeCallbacks(inactivityRunnable)
+        idleController.onModalShown()
     }
 
     private fun onModalDismissed() {
-        activeModalCount = (activeModalCount - 1).coerceAtLeast(0)
-        if (activeModalCount == 0) {
-            scheduleInactivityRefresh()
-        }
+        idleController.onModalDismissed()
     }
 
     private fun observePaymentState() {
@@ -1464,6 +1450,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             .setView(container)
             .setPositiveButton("Cerrar", null)
             .create()
+        var modalRegistered = false
 
         fun updateContent() {
             val text = when {
@@ -1482,21 +1469,27 @@ class KioskCatalogActivity : AppCompatActivity() {
                 override fun run() {
                     if (monitorViewerDialog?.isShowing != true) return
                     updateContent()
-                    inactivityHandler.postDelayed(this, 350L)
+                    monitorViewerHandler.postDelayed(this, 350L)
                 }
             }
             monitorViewerRunnable = runnable
-            inactivityHandler.post(runnable)
+            monitorViewerHandler.post(runnable)
         }
 
         dialog.setOnDismissListener {
             monitorViewerDialog = null
-            monitorViewerRunnable?.let { inactivityHandler.removeCallbacks(it) }
+            monitorViewerRunnable?.let { monitorViewerHandler.removeCallbacks(it) }
             monitorViewerRunnable = null
+            if (modalRegistered) {
+                modalRegistered = false
+                onModalDismissed()
+            }
         }
 
         monitorViewerDialog = dialog
         dialog.show()
+        modalRegistered = true
+        onModalShown()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.WHITE))
     }
 
@@ -1571,7 +1564,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val DEFAULT_BAUD = 9600
         private const val PRODUCT_DIALOG_TIMEOUT_MS = 60_000L
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
-        private const val PLANOGRAM_INACTIVITY_REFRESH_MS = 60_000L
         private const val IDLE_IO_POLL_MS = 750L
     }
 }
@@ -1660,4 +1652,3 @@ private sealed interface MachineAccessResult {
     data class Denied(val message: String) : MachineAccessResult
     data class Error(val message: String) : MachineAccessResult
 }
-

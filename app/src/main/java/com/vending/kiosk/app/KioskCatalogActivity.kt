@@ -3,7 +3,6 @@
 import android.content.res.ColorStateList
 import android.content.Intent
 import android.graphics.Color
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
@@ -70,14 +69,12 @@ import com.vending.kiosk.app.ui.payment.PaymentTerminalResult
 import com.vending.kiosk.app.ui.payment.PaymentUiState
 import com.vending.kiosk.app.ui.payment.PaymentViewModel
 import com.vending.kiosk.app.data.backend.HttpVendingBackendGateway
-import com.vending.kiosk.app.data.backend.CatalogGatewayException
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.images.CatalogImageCache
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.domain.cart.CartItem
 import com.vending.kiosk.app.domain.cart.CartUseCase
 import androidx.compose.ui.platform.ComposeView
-import com.vending.kiosk.integration.backend.models.CatalogResponse as BackendCatalogResponse
 import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.DispenseStatusRequest as BackendDispenseStatusRequest
 import com.vending.kiosk.integration.serial.runtime.CommandSet
@@ -918,60 +915,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun fetchCatalog(machineId: Int): CatalogResult {
-        return CatalogResult.Error("Legacy catalog loading is disabled")
-    }
-
-    private fun mapCatalogResponse(response: BackendCatalogResponse): CatalogResult.Success {
-        val celdas = response.cells.mapIndexed { index, cell ->
-            val slotBase = when {
-                cell.productId > 0 -> "product_${cell.productId}"
-                else -> "cell_${cell.sourceCellId.takeIf { it != 0 } ?: index}"
-            }
-            CeldaUi(
-                planogramaCeldaId = cell.planogramCellId,
-                productoId = cell.productId,
-                codigoCelda = cell.cellCode,
-                producto = cell.productName,
-                precio = cell.price,
-                stockDisponible = cell.availableStock,
-                vendible = cell.vendible,
-                physicalCell = cell.physicalCell,
-                imagenUrl = catalogImageCache.resolveImageSourceForCache(
-                    slot = "${slotBase}_principal",
-                    incomingId = cell.imageId,
-                    remoteUrl = cell.imageUrl,
-                    targetSizePx = 480
-                ),
-                imagenUrlSecundaria = catalogImageCache.resolveImageSourceForCache(
-                    slot = "${slotBase}_secondary",
-                    incomingId = cell.secondaryImageId,
-                    remoteUrl = cell.secondaryImageUrl,
-                    targetSizePx = 480
-                )
-            )
-        }
-        val promotions = response.promotions.map { promo ->
-            PromoSlideUi(
-                url = catalogImageCache.resolveImageSourceForCache(
-                    slot = "promo_${promo.id}",
-                    incomingId = promo.id,
-                    remoteUrl = promo.url,
-                    targetSizePx = 900
-                ),
-                visualOrder = promo.visualOrder,
-                id = promo.id
-            )
-        }
-        val backgroundImageUrl = catalogImageCache.resolveImageSourceForCache(
-            slot = "background_main",
-            incomingId = response.backgroundImageId,
-            remoteUrl = response.backgroundImageUrl,
-            targetSizePx = 1440
-        )
-        return CatalogResult.Success(celdas, promotions, backgroundImageUrl)
-    }
-
     override fun onUserInteraction() {
         super.onUserInteraction()
         if (idleVideoOverlayView?.isVisible == true) {
@@ -998,44 +941,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         activeModalCount = (activeModalCount - 1).coerceAtLeast(0)
         if (activeModalCount == 0) {
             scheduleInactivityRefresh()
-        }
-    }
-
-    private fun applyUiBackground(imageUrl: String) {
-        if (imageUrl.isBlank()) {
-            screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
-            return
-        }
-
-        val tagValue = "ui-bg:$imageUrl"
-        screenRootView.tag = tagValue
-        val cached = catalogImageCache.getBitmap(imageUrl)
-        if (cached != null) {
-            screenRootView.background = BitmapDrawable(resources, cached)
-            return
-        }
-
-        if (catalogImageCache.isLocalImagePath(imageUrl)) {
-            val bitmap = catalogImageCache.loadBitmapFromLocalPath(imageUrl, 1440)
-            if (bitmap != null) {
-                catalogImageCache.putBitmap(imageUrl, bitmap)
-                screenRootView.background = BitmapDrawable(resources, bitmap)
-                return
-            }
-            screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
-            return
-        }
-
-        lifecycleScope.launch {
-            val bitmap = withContext(Dispatchers.IO) { catalogImageCache.downloadBitmap(imageUrl, 1440) }
-            if (bitmap != null) {
-                catalogImageCache.putBitmap(imageUrl, bitmap)
-            }
-            if (screenRootView.tag == tagValue && bitmap != null) {
-                screenRootView.background = BitmapDrawable(resources, bitmap)
-            } else if (screenRootView.tag == tagValue) {
-                screenRootView.setBackgroundResource(R.drawable.bg_kiosk_catalog_screen_hot)
-            }
         }
     }
 
@@ -1595,8 +1500,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.WHITE))
     }
 
-    private fun formatPrice(value: Double): String = String.format(java.util.Locale.US, "%.2f", value)
-
     private fun mapCellCodeToPhysical(code: String): Int? {
         val clean = code.trim().uppercase()
         clean.toIntOrNull()?.let { direct ->
@@ -1726,12 +1629,6 @@ private class PaymentViewModelFactory(
     }
 }
 
-private data class PromoSlideUi(
-    val url: String,
-    val visualOrder: Int,
-    val id: Int
-)
-
 private data class CeldaUi(
     val planogramaCeldaId: Int,
     val productoId: Int,
@@ -1757,15 +1654,6 @@ private data class DispenseQueueItem(
     var tnEstadoDispensacion: Int = 0,
     var driverZeroDelivered: Boolean = false
 )
-
-private sealed interface CatalogResult {
-    data class Success(
-        val celdas: List<CeldaUi>,
-        val promotions: List<PromoSlideUi>,
-        val backgroundImageUrl: String
-    ) : CatalogResult
-    data class Error(val message: String, val unauthorized: Boolean = false) : CatalogResult
-}
 
 private sealed interface MachineAccessResult {
     data object Granted : MachineAccessResult

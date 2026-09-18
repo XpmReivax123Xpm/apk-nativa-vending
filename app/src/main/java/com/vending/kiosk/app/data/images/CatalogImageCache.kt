@@ -67,22 +67,7 @@ class CatalogImageCache(context: Context) {
         return targetFile.absolutePath
     }
 
-    fun getBitmap(key: String): Bitmap? = imageCache.get(key)
-
-    fun putBitmap(key: String, bitmap: Bitmap) {
-        imageCache.put(key, bitmap)
-    }
-
     fun isLocalImagePath(path: String): Boolean = path.isNotBlank() && !isRemoteUrl(path)
-
-    fun loadBitmapFromLocalPath(path: String, targetSizePx: Int): Bitmap? {
-        val file = File(path)
-        if (!file.exists()) return null
-        return runCatching {
-            val bytes = file.readBytes()
-            decodeSampledBitmap(bytes, targetSizePx)
-        }.getOrNull()
-    }
 
     fun downloadBitmap(rawUrl: String, targetSizePx: Int): Bitmap? {
         val primary = rawUrl.trim()

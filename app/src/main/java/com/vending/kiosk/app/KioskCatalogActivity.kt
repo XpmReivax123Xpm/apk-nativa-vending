@@ -63,6 +63,7 @@ import com.vending.kiosk.app.ui.dispense.DispenseViewModel
 import com.vending.kiosk.app.ui.dispense.ManualRetryUiState
 import com.vending.kiosk.app.ui.idle.IdleController
 import com.vending.kiosk.app.ui.idle.IdleVideoOverlayView
+import com.vending.kiosk.app.ui.monitoring.MonitoringViewerController
 import com.vending.kiosk.app.ui.payment.PaymentEvent
 import com.vending.kiosk.app.ui.payment.PaymentScreen
 import com.vending.kiosk.app.ui.payment.PaymentStep
@@ -133,13 +134,11 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var activeDispensePedidoId = 0
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
     private var dispenseSuccessTimerRunnable: Runnable? = null
-    private var monitorViewerDialog: AlertDialog? = null
-    private var monitorViewerRunnable: Runnable? = null
+    private val monitoringViewerController = MonitoringViewerController(this)
     private var idleVideoOverlayView: IdleVideoOverlayView? = null
     private var kioskLocked = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
-    private val monitorViewerHandler = Handler(Looper.getMainLooper())
     private val idleIoHandler = Handler(Looper.getMainLooper())
     private var idleIoPollingActive = false
     private val idleController = IdleController(::enterIdle)
@@ -320,7 +319,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     override fun onPause() {
         unlockHoldHandler.removeCallbacksAndMessages(null)
         idleController.stop()
-        monitorViewerHandler.removeCallbacksAndMessages(null)
+        monitoringViewerController.cancelRefresh()
         stopIdleIoPolling()
         super.onPause()
     }
@@ -337,13 +336,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         stopDispenseSuccessCountdown()
         idleVideoOverlayView?.hide()
         idleVideoOverlayView?.stopPlayback()
-        monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
-        monitorViewerDialog = null
-        monitorViewerRunnable?.let { monitorViewerHandler.removeCallbacks(it) }
-        monitorViewerRunnable = null
+        monitoringViewerController.dismiss()
         unlockHoldHandler.removeCallbacksAndMessages(null)
         idleController.stop()
-        monitorViewerHandler.removeCallbacksAndMessages(null)
         if (::vendFlow.isInitialized) {
             runCatching { vendFlow.stop() }
         }
@@ -413,10 +408,12 @@ class KioskCatalogActivity : AppCompatActivity() {
                 Toast.makeText(this, "Aun no hay logs guardados de clientes.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            showMonitoringViewerDialog(
+            monitoringViewerController.show(
                 title = "Logs - ultima interaccion",
                 live = false,
-                bitacora = false
+                contentProvider = interactionMonitor::getLastLogsText,
+                onShown = ::onModalShown,
+                onDismissed = ::onModalDismissed
             )
         }
         btnKioskViewBitacora?.setOnClickListener {
@@ -425,10 +422,12 @@ class KioskCatalogActivity : AppCompatActivity() {
                 Toast.makeText(this, "Aun no hay bitacora guardada de clientes.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            showMonitoringViewerDialog(
+            monitoringViewerController.show(
                 title = "Bitacora - ultima interaccion",
                 live = false,
-                bitacora = true
+                contentProvider = interactionMonitor::getLastBitacoraText,
+                onShown = ::onModalShown,
+                onDismissed = ::onModalDismissed
             )
         }
     }
@@ -1321,18 +1320,34 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showDispenseErrorLogs() {
-        showMonitoringViewerDialog(
+        monitoringViewerController.show(
             title = "Logs en vivo - incidencia",
             live = true,
-            bitacora = false
+            contentProvider = {
+                if (interactionMonitor.isActive()) {
+                    interactionMonitor.getCurrentLogsText()
+                } else {
+                    interactionMonitor.getLastLogsText()
+                }
+            },
+            onShown = ::onModalShown,
+            onDismissed = ::onModalDismissed
         )
     }
 
     private fun showDispenseErrorBitacora() {
-        showMonitoringViewerDialog(
+        monitoringViewerController.show(
             title = "Bitacora en vivo - incidencia",
             live = true,
-            bitacora = true
+            contentProvider = {
+                if (interactionMonitor.isActive()) {
+                    interactionMonitor.getCurrentBitacoraText()
+                } else {
+                    interactionMonitor.getLastBitacoraText()
+                }
+            },
+            onShown = ::onModalShown,
+            onDismissed = ::onModalDismissed
         )
     }
 
@@ -1351,88 +1366,6 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun resolveDispenseImageSource(imageSource: String): String? {
         return imageSource.takeIf(catalogImageCache::isLocalImagePath)
-    }
-
-    private fun showMonitoringViewerDialog(
-        title: String,
-        live: Boolean,
-        bitacora: Boolean
-    ) {
-        monitorViewerDialog?.takeIf { it.isShowing }?.dismiss()
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-        }
-        val tvTitle = TextView(this).apply {
-            text = title
-            setTextColor(Color.parseColor("#0B456F"))
-            textSize = 18f
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }
-        val scroll = android.widget.ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(420)
-            ).apply { topMargin = dp(10) }
-        }
-        val tvContent = TextView(this).apply {
-            setTextColor(Color.parseColor("#0A2239"))
-            textSize = 13f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setTextIsSelectable(true)
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            setBackgroundColor(Color.parseColor("#F3F7FB"))
-        }
-        scroll.addView(tvContent)
-        container.addView(tvTitle)
-        container.addView(scroll)
-
-        val dialog = AlertDialog.Builder(this)
-            .setView(container)
-            .setPositiveButton("Cerrar", null)
-            .create()
-        var modalRegistered = false
-
-        fun updateContent() {
-            val text = when {
-                live && interactionMonitor.isActive() && bitacora -> interactionMonitor.getCurrentBitacoraText()
-                live && interactionMonitor.isActive() -> interactionMonitor.getCurrentLogsText()
-                bitacora -> interactionMonitor.getLastBitacoraText()
-                else -> interactionMonitor.getLastLogsText()
-            }
-            tvContent.text = text.ifBlank { "Sin datos para mostrar." }
-            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
-        }
-
-        updateContent()
-        if (live) {
-            val runnable = object : Runnable {
-                override fun run() {
-                    if (monitorViewerDialog?.isShowing != true) return
-                    updateContent()
-                    monitorViewerHandler.postDelayed(this, 350L)
-                }
-            }
-            monitorViewerRunnable = runnable
-            monitorViewerHandler.post(runnable)
-        }
-
-        dialog.setOnDismissListener {
-            monitorViewerDialog = null
-            monitorViewerRunnable?.let { monitorViewerHandler.removeCallbacks(it) }
-            monitorViewerRunnable = null
-            if (modalRegistered) {
-                modalRegistered = false
-                onModalDismissed()
-            }
-        }
-
-        monitorViewerDialog = dialog
-        dialog.show()
-        modalRegistered = true
-        onModalShown()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.WHITE))
     }
 
     private fun mapCellCodeToPhysical(code: String): Int? {

@@ -71,6 +71,8 @@ import com.vending.kiosk.app.ui.payment.PaymentUiState
 import com.vending.kiosk.app.ui.payment.PaymentViewModel
 import com.vending.kiosk.app.data.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
+import com.vending.kiosk.app.data.backend.AdminAccessGateway
+import com.vending.kiosk.app.data.backend.AdminAccessResult
 import com.vending.kiosk.app.data.images.CatalogImageCache
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.domain.cart.CartItem
@@ -86,9 +88,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 class KioskCatalogActivity : AppCompatActivity() {
 
@@ -591,21 +590,21 @@ class KioskCatalogActivity : AppCompatActivity() {
             tvError.visibility = View.GONE
             lifecycleScope.launch {
                 val result = withContext(Dispatchers.IO) {
-                    validateMachineAccess(machineCode, pin)
+                    AdminAccessGateway.validateAccess(machineCode, pin)
                 }
                 setLoading(false)
                 when (result) {
-                    is MachineAccessResult.Granted -> {
+                    is AdminAccessResult.Granted -> {
                         dialog.dismiss()
                         exitKioskMode()
                     }
 
-                    is MachineAccessResult.Denied -> {
+                    is AdminAccessResult.Denied -> {
                         tvError.visibility = View.VISIBLE
                         tvError.text = result.message
                     }
 
-                    is MachineAccessResult.Error -> {
+                    is AdminAccessResult.Error -> {
                         tvError.visibility = View.VISIBLE
                         tvError.text = result.message
                     }
@@ -618,63 +617,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.setOnDismissListener {
             onModalDismissed()
-        }
-    }
-
-    private fun validateMachineAccess(machineCode: String, pin: String): MachineAccessResult {
-        if (machineCode.isBlank()) return MachineAccessResult.Error("Codigo de maquina invalido")
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/acceso"
-        var connection: HttpURLConnection? = null
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val payload = JSONObject().apply {
-                put("tcCodigoMaquina", machineCode)
-                put("tcPin", pin)
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return MachineAccessResult.Error("Sin respuesta de validacion de PIN")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "No se pudo validar acceso")
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val acceso = values.optInt("tnAcceso", 0)
-
-            return if (statusCode in 200..299 && backendError == 0 && backendStatus == 1 && acceso == 1) {
-                MachineAccessResult.Granted
-            } else if (acceso == 0 || backendError != 0 || backendStatus != 1) {
-                MachineAccessResult.Denied(backendMessage.ifBlank { "PIN invalido" })
-            } else {
-                MachineAccessResult.Error("$backendMessage (HTTP $statusCode)")
-            }
-        } catch (ex: Exception) {
-            MachineAccessResult.Error("Error validando acceso: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
         }
     }
 
@@ -1646,9 +1588,3 @@ private data class DispenseQueueItem(
     var tnEstadoDispensacion: Int = 0,
     var driverZeroDelivered: Boolean = false
 )
-
-private sealed interface MachineAccessResult {
-    data object Granted : MachineAccessResult
-    data class Denied(val message: String) : MachineAccessResult
-    data class Error(val message: String) : MachineAccessResult
-}

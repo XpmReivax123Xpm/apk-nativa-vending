@@ -11,6 +11,7 @@ import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -18,6 +19,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : AppCompatActivity() {
     private val authSessionManager by lazy { AuthSessionManager(this) }
     private var userSelectedMainMenuAction = false
+    private var autoResumeJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,7 +40,7 @@ class MainActivity : AppCompatActivity() {
             credentials.machineCode.isNotBlank() &&
             credentials.machinePin.isNotBlank()
 
-        lifecycleScope.launch {
+        val job = lifecycleScope.launch {
             delay(AUTO_RESUME_BOOT_DELAY_MS)
 
             if (autoResumeEnabled && hasMachineData) {
@@ -112,6 +114,12 @@ class MainActivity : AppCompatActivity() {
                 showMainMenu()
             }
         }
+        autoResumeJob = job
+        job.invokeOnCompletion {
+            if (autoResumeJob === job) {
+                autoResumeJob = null
+            }
+        }
 
         val btnVendingKiosk = findViewById<View>(R.id.btnVendingKiosk)
         val btnVendingTester = findViewById<View>(R.id.btnVendingTester)
@@ -119,18 +127,22 @@ class MainActivity : AppCompatActivity() {
         val btnExitApp = findViewById<View>(R.id.btnExitApp)
 
         btnVendingKiosk.setOnClickListener {
+            autoResumeJob?.takeIf { it.isActive }?.cancel()
             userSelectedMainMenuAction = true
             startActivity(Intent(this, KioskLoginActivity::class.java))
         }
         btnVendingTester.setOnClickListener {
+            autoResumeJob?.takeIf { it.isActive }?.cancel()
             userSelectedMainMenuAction = true
             startActivity(Intent(this, VendingTesterActivity::class.java))
         }
         btnVendingCalibrator.setOnClickListener {
+            autoResumeJob?.takeIf { it.isActive }?.cancel()
             userSelectedMainMenuAction = true
             startActivity(Intent(this, VendingCalibratorActivity::class.java))
         }
         btnExitApp.setOnClickListener {
+            autoResumeJob?.takeIf { it.isActive }?.cancel()
             userSelectedMainMenuAction = true
             val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_HOME)
@@ -139,6 +151,12 @@ class MainActivity : AppCompatActivity() {
             startActivity(homeIntent)
             finishAffinity()
         }
+    }
+
+    override fun onDestroy() {
+        autoResumeJob?.cancel()
+        autoResumeJob = null
+        super.onDestroy()
     }
 
     companion object {

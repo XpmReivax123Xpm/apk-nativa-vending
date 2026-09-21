@@ -114,8 +114,6 @@ class DispenseViewModel : ViewModel() {
 
     fun setManualRetryInProgress() = setManualRetryState(ManualRetryUiState.InProgress)
 
-    fun setManualRetryAvailable() = setManualRetryState(ManualRetryUiState.Available)
-
     fun setManualRetryAlreadyInProgress() = setManualRetryState(ManualRetryUiState.AlreadyInProgress)
 
     fun setManualRetryUnableToStart() = setManualRetryState(ManualRetryUiState.UnableToStart)

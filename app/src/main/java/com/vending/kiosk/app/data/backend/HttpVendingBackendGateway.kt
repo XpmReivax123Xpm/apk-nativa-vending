@@ -138,9 +138,6 @@ class HttpVendingBackendGateway(
         )
     }
 
-    suspend fun fetchCatalogItems(machineId: Long): List<CatalogItem> =
-        fetchCatalogData(machineId).items
-
     override suspend fun fetchEnabledPaymentMethods(): List<PaymentMethod> {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
         val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pago/qr/servicios-habilitados"

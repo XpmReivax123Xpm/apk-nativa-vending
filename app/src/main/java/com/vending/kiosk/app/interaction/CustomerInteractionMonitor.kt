@@ -75,8 +75,6 @@ class CustomerInteractionMonitor(private val context: Context) {
 
     fun getLastBitacoraText(): String = lastBitacoraText
 
-    fun getLastSavedArtifacts(): SavedArtifacts? = lastSavedArtifacts
-
     fun finalizeAndSave(): SavedArtifacts? {
         if (!active) return lastSavedArtifacts
         appendBoth("Sesion finalizada")
@@ -86,11 +84,6 @@ class CustomerInteractionMonitor(private val context: Context) {
         lastSavedArtifacts = saved
         active = false
         return saved
-    }
-
-    fun forceCloseWithoutSave() {
-        if (!active) return
-        active = false
     }
 
     private fun persistCurrentBuffers(): SavedArtifacts? {
@@ -109,8 +102,6 @@ class CustomerInteractionMonitor(private val context: Context) {
             null
         }
     }
-
-    fun getBaseDirAbsolutePath(): String = getBaseDir().absolutePath
 
     private fun getBaseDir(): File {
         val root = context.getExternalFilesDir(null) ?: context.filesDir

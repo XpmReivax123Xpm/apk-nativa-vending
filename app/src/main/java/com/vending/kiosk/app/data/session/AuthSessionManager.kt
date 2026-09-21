@@ -50,10 +50,6 @@ class AuthSessionManager(context: Context) {
         return System.currentTimeMillis() >= expiresAt
     }
 
-    fun clearSession() {
-        prefs.edit().clear().apply()
-    }
-
     fun setKioskAutoResumeEnabled(enabled: Boolean) {
         prefs.edit()
             .putBoolean(KEY_KIOSK_AUTO_RESUME_ENABLED, enabled)

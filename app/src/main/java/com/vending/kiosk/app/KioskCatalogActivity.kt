@@ -10,7 +10,6 @@ import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.view.Gravity
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -324,10 +323,6 @@ class KioskCatalogActivity : AppCompatActivity() {
         super.onPause()
     }
 
-    override fun onStop() {
-        super.onStop()
-    }
-
     override fun onDestroy() {
         cartTimeoutTimer?.cancel()
         cartTimeoutTimer = null
@@ -637,7 +632,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun loadCatalog(machineId: Int, authHeader: String) {
+    private fun loadCatalog() {
         catalogLoadInProgress = true
         catalogViewModel.loadCatalog()
     }
@@ -837,7 +832,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun refreshCatalogAndClearCart() {
         cartViewModel.clear()
         if (machineId > 0 && authHeader.isNotBlank()) {
-            loadCatalog(machineId, authHeader)
+            loadCatalog()
         }
     }
 
@@ -1175,7 +1170,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         showDispenseSuccessDialog()
 
-        loadCatalog(machineId, authHeader)
+        loadCatalog()
     }
 
     private fun parseRuntimeDispenseError(raw: String): Pair<String, String> {

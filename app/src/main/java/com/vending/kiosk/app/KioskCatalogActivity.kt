@@ -102,6 +102,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var cartComposeState by mutableStateOf(CartUiState())
     private var paymentComposeState by mutableStateOf(PaymentUiState())
     private var dispenseComposeState by mutableStateOf(DispenseUiState())
+    private var screenInitialized = false
     private var cartTimeoutTimer: CountDownTimer? = null
     private var paymentTimeoutTimer: CountDownTimer? = null
     private var cartModalShown = false
@@ -305,10 +306,15 @@ class KioskCatalogActivity : AppCompatActivity() {
         catalogViewModel.configureMachine(machineId, machineCode, machineLocation)
         catalogLoadInProgress = true
         catalogViewModel.loadCatalog()
+        screenInitialized = true
     }
 
     override fun onResume() {
         super.onResume()
+        if (!screenInitialized) {
+            applyImmersiveKioskUi()
+            return
+        }
         paymentViewModel.prefetchPaymentMethodsIfNeeded()
         applyImmersiveKioskUi()
         startIdleIoPolling()
@@ -842,6 +848,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun enterIdle() {
+        if (!screenInitialized) return
         if (machineId <= 0 || authHeader.isBlank()) return
         refreshCatalogAndClearCart()
         idleVideoOverlayView?.show()

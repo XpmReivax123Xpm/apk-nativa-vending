@@ -8,6 +8,14 @@ import java.util.Locale
 
 class CustomerInteractionMonitor(private val context: Context) {
 
+    private val lock = Any()
+
+    private data class PersistenceSnapshot(
+        val sessionId: String,
+        val logsText: String,
+        val bitacoraText: String
+    )
+
     data class SavedArtifacts(
         val logsFile: File,
         val bitacoraFile: File
@@ -30,73 +38,94 @@ class CustomerInteractionMonitor(private val context: Context) {
         paymentMethodLabel: String,
         selectedCellsSummary: List<String>
     ) {
-        logsBuffer.clear()
-        bitacoraBuffer.clear()
-        sessionId = fileFormat.format(Date())
-        active = true
-        lastSavedArtifacts = null
+        synchronized(lock) {
+            logsBuffer.clear()
+            bitacoraBuffer.clear()
+            sessionId = fileFormat.format(Date())
+            active = true
+            lastSavedArtifacts = null
 
-        val safeMachine = machineCode.ifBlank { "SIN_MAQUINA" }
-        val safePedido = if (pedidoId > 0) pedidoId.toString() else "SIN_PEDIDO"
-        appendLog("Sesion iniciada | maquina=$safeMachine | pedido=$safePedido")
-        appendLog("Metodo de pago: $paymentMethodLabel")
-        if (selectedCellsSummary.isEmpty()) {
-            appendLog("Celdas seleccionadas: (sin detalle)")
-        } else {
-            appendLog("Celdas seleccionadas:")
-            selectedCellsSummary.forEach { appendLog(" - $it") }
+            val safeMachine = machineCode.ifBlank { "SIN_MAQUINA" }
+            val safePedido = if (pedidoId > 0) pedidoId.toString() else "SIN_PEDIDO"
+            appendLogLocked("Sesion iniciada | maquina=$safeMachine | pedido=$safePedido")
+            appendLogLocked("Metodo de pago: $paymentMethodLabel")
+            if (selectedCellsSummary.isEmpty()) {
+                appendLogLocked("Celdas seleccionadas: (sin detalle)")
+            } else {
+                appendLogLocked("Celdas seleccionadas:")
+                selectedCellsSummary.forEach { appendLogLocked(" - $it") }
+            }
+            appendBitacoraLocked("SESSION START | maquina=$safeMachine | pedido=$safePedido | metodo=$paymentMethodLabel")
+            selectedCellsSummary.forEach { appendBitacoraLocked("ITEM | $it") }
         }
-        appendBitacora("SESSION START | maquina=$safeMachine | pedido=$safePedido | metodo=$paymentMethodLabel")
-        selectedCellsSummary.forEach { appendBitacora("ITEM | $it") }
     }
 
-    fun isActive(): Boolean = active
+    fun isActive(): Boolean = synchronized(lock) { active }
 
     fun appendLog(message: String) {
-        if (!active) return
-        logsBuffer.append("${timestamp()} | $message\n")
+        synchronized(lock) {
+            appendLogLocked(message)
+        }
     }
 
     fun appendBitacora(message: String) {
-        if (!active) return
-        bitacoraBuffer.append("${timestamp()} | $message\n")
+        synchronized(lock) {
+            appendBitacoraLocked(message)
+        }
     }
 
     fun appendBoth(message: String) {
-        appendLog(message)
-        appendBitacora(message)
+        synchronized(lock) {
+            appendBothLocked(message)
+        }
     }
 
-    fun getCurrentLogsText(): String = logsBuffer.toString()
+    fun getCurrentLogsText(): String = synchronized(lock) { logsBuffer.toString() }
 
-    fun getCurrentBitacoraText(): String = bitacoraBuffer.toString()
+    fun getCurrentBitacoraText(): String = synchronized(lock) { bitacoraBuffer.toString() }
 
-    fun getLastLogsText(): String = lastLogsText
+    fun getLastLogsText(): String = synchronized(lock) { lastLogsText }
 
-    fun getLastBitacoraText(): String = lastBitacoraText
+    fun getLastBitacoraText(): String = synchronized(lock) { lastBitacoraText }
 
     fun finalizeAndSave(): SavedArtifacts? {
-        if (!active) return lastSavedArtifacts
-        appendBoth("Sesion finalizada")
-        val saved = persistCurrentBuffers() ?: return null
-        lastLogsText = logsBuffer.toString()
-        lastBitacoraText = bitacoraBuffer.toString()
-        lastSavedArtifacts = saved
-        active = false
+        val snapshot = synchronized(lock) {
+            if (!active) {
+                null
+            } else {
+                appendBothLocked("Sesion finalizada")
+                PersistenceSnapshot(
+                    sessionId = sessionId ?: fileFormat.format(Date()),
+                    logsText = logsBuffer.toString(),
+                    bitacoraText = bitacoraBuffer.toString()
+                )
+            }
+        }
+
+        if (snapshot == null) {
+            return synchronized(lock) { lastSavedArtifacts }
+        }
+
+        val saved = persistCurrentBuffers(snapshot) ?: return null
+        synchronized(lock) {
+            lastLogsText = snapshot.logsText
+            lastBitacoraText = snapshot.bitacoraText
+            lastSavedArtifacts = saved
+            active = false
+        }
         return saved
     }
 
-    private fun persistCurrentBuffers(): SavedArtifacts? {
+    private fun persistCurrentBuffers(snapshot: PersistenceSnapshot): SavedArtifacts? {
         return try {
             val baseDir = getBaseDir()
             if (!baseDir.exists()) baseDir.mkdirs()
 
-            val sid = sessionId ?: fileFormat.format(Date())
-            val logsFile = File(baseDir, "logs_$sid.txt")
-            val bitacoraFile = File(baseDir, "bitacora_$sid.txt")
+            val logsFile = File(baseDir, "logs_${snapshot.sessionId}.txt")
+            val bitacoraFile = File(baseDir, "bitacora_${snapshot.sessionId}.txt")
 
-            logsFile.writeText(logsBuffer.toString())
-            bitacoraFile.writeText(bitacoraBuffer.toString())
+            logsFile.writeText(snapshot.logsText)
+            bitacoraFile.writeText(snapshot.bitacoraText)
             SavedArtifacts(logsFile = logsFile, bitacoraFile = bitacoraFile)
         } catch (_: Exception) {
             null
@@ -108,6 +137,22 @@ class CustomerInteractionMonitor(private val context: Context) {
         return File(root, "monitoreo de ciclo de vida de interaccion con el cliente")
     }
 
-    private fun timestamp(): String = timeFormat.format(Date())
+    private fun appendLogLocked(message: String) {
+        if (!active) return
+        logsBuffer.append("${timestampLocked()} | $message\n")
+    }
+
+    private fun appendBitacoraLocked(message: String) {
+        if (!active) return
+        bitacoraBuffer.append("${timestampLocked()} | $message\n")
+    }
+
+    private fun appendBothLocked(message: String) {
+        if (!active) return
+        appendLogLocked(message)
+        appendBitacoraLocked(message)
+    }
+
+    private fun timestampLocked(): String = timeFormat.format(Date())
 }
 

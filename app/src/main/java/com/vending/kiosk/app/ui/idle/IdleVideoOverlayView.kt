@@ -29,20 +29,23 @@ class IdleVideoOverlayView(
         overlay.visibility = View.VISIBLE
 
         video.setOnPreparedListener { _: MediaPlayer ->
-            video.start()
+            if (isVisible) {
+                video.start()
+            }
         }
         video.setOnCompletionListener {
             playNextVideo()
         }
         video.setOnErrorListener { _, _, _ ->
-            onPlaybackError()
+            if (isVisible) {
+                onPlaybackError()
+            }
             true
         }
         playVideoAt(videoIndex)
     }
 
     fun hide() {
-        if (!isVisible) return
         isVisible = false
         videoIndex = 0
         video.pause()
@@ -50,6 +53,10 @@ class IdleVideoOverlayView(
     }
 
     fun stopPlayback() {
+        isVisible = false
+        video.setOnPreparedListener(null)
+        video.setOnCompletionListener(null)
+        video.setOnErrorListener(null)
         video.stopPlayback()
     }
 
@@ -60,10 +67,13 @@ class IdleVideoOverlayView(
     }
 
     private fun playVideoAt(index: Int) {
+        if (!isVisible) return
         val videoResId = IDLE_VIDEO_RES_IDS.getOrNull(index) ?: return
         val uri = Uri.parse("android.resource://${overlay.context.packageName}/$videoResId")
         video.setVideoURI(uri)
-        video.start()
+        if (isVisible) {
+            video.start()
+        }
     }
 
     private companion object {

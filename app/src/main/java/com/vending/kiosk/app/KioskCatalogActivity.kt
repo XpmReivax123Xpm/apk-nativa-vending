@@ -322,6 +322,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        idleVideoOverlayView?.hide()
         unlockHoldHandler.removeCallbacksAndMessages(null)
         idleController.stop()
         monitoringViewerController.cancelRefresh()

@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -52,7 +52,7 @@ import kotlinx.coroutines.delay
 import android.graphics.BitmapFactory
 import java.io.File
 
-private const val ITEMS_PER_PAGE = 6
+private const val ITEMS_PER_PAGE = 9
 private const val PROMOTION_ADVANCE_DELAY_MS = 5_000L
 
 @Composable
@@ -166,9 +166,13 @@ private fun CatalogContent(
         enter = fadeIn(tween(220)),
         exit = fadeOut(tween(120))
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
             PromotionCarousel(promotions = LocalPromotions.items, cyan = cyan)
             ProductPager(
+                modifier = Modifier.weight(1f),
                 items = state.items,
                 cartQuantities = cartQuantities,
                 onIncrementProduct = onIncrementProduct,
@@ -248,6 +252,7 @@ private fun LocalPromotionImage(
 
 @Composable
 private fun ProductPager(
+    modifier: Modifier = Modifier,
     items: List<CatalogItem>,
     cartQuantities: Map<Int, Int>,
     onIncrementProduct: (CatalogItem) -> Unit,
@@ -264,7 +269,7 @@ private fun ProductPager(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
         PageArrow(
@@ -274,13 +279,16 @@ private fun ProductPager(
         )
         AnimatedContent(
             targetState = safePage,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
             transitionSpec = {
                 fadeIn(tween(160)) togetherWith fadeOut(tween(120))
             },
             label = "catalogPage"
         ) { page ->
             ProductGrid(
+                modifier = Modifier.fillMaxSize(),
                 items = items.drop(page * ITEMS_PER_PAGE).take(ITEMS_PER_PAGE),
                 cartQuantities = cartQuantities,
                 onIncrementProduct = onIncrementProduct,
@@ -311,6 +319,7 @@ private fun PageArrow(symbol: String, enabled: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun ProductGrid(
+    modifier: Modifier = Modifier,
     items: List<CatalogItem>,
     cartQuantities: Map<Int, Int>,
     onIncrementProduct: (CatalogItem) -> Unit,
@@ -318,16 +327,25 @@ private fun ProductGrid(
     cyan: Color,
     orange: Color
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        repeat(2) { row ->
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        repeat(3) { row ->
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 repeat(3) { column ->
                     val item = items.getOrNull(row * 3 + column)
                     if (item == null) {
-                        Spacer(Modifier.weight(1f))
+                        Spacer(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
                     } else {
                         ProductCard(
                             item = item,
@@ -336,7 +354,9 @@ private fun ProductGrid(
                             onDecrement = { onDecrementProduct(item) },
                             cyan = cyan,
                             orange = orange,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
                         )
                     }
                 }
@@ -356,19 +376,18 @@ private fun ProductCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier
-            .aspectRatio(0.78f),
+        modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFF)),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        border = if (quantity > 0) BorderStroke(2.dp, cyan) else null
+        border = if (quantity > 0) BorderStroke(4.dp, Color(0xFFFFB74D)) else null
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Text(
                 text = item.cellCode,
                 modifier = Modifier.padding(start = 10.dp, top = 8.dp),
                 color = Color(0xFF17427A),
-                style = MaterialTheme.typography.labelMedium,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
             CatalogImageSource(
@@ -427,8 +446,8 @@ private fun ProductQuantityControl(
                 modifier = Modifier.widthIn(min = 24.dp)
             )
         }
-        IconButton(onClick = onIncrement, modifier = Modifier.size(30.dp)) {
-            Text(text = "+", color = accent, fontSize = 22.sp, fontWeight = FontWeight.Black)
+        IconButton(onClick = onIncrement, modifier = Modifier.size(36.dp)) {
+            Text(text = "+", color = accent, fontSize = 28.sp, fontWeight = FontWeight.Black)
         }
     }
 }

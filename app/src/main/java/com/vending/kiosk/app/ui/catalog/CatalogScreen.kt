@@ -430,14 +430,18 @@ private fun ProductCard(
     getCachedImageBitmap: (String) -> Bitmap?,
     modifier: Modifier = Modifier
 ) {
+    val isSelected = quantity > 0
+
     Card(
         modifier = modifier.clickable(onClick = onIncrement),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFF)),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) Color(0xFFFFF4E5) else Color(0xFFF8FBFF)
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         border = BorderStroke(
-            4.dp,
-            if (quantity > 0) Color(0xFFFFB74D) else Color.Transparent
+            6.dp,
+            if (isSelected) Color(0xFFFF6D00) else Color.Transparent
         )
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -460,20 +464,30 @@ private fun ProductCard(
                     .padding(horizontal = 8.dp),
                 contentScale = ContentScale.Crop
             )
-            Text(
-                text = if (item.unitPrice > 0.0) "Bs ${"%.2f".format(item.unitPrice)}" else "Sin precio",
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 9.dp),
-                color = if (item.unitPrice > 0.0) orange else Color(0xFF60738C),
-                textAlign = TextAlign.Center,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Black
-            )
-            ProductQuantityControl(
-                quantity = quantity,
-                onDecrement = onDecrement
-            )
+                    .height(64.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ProductQuantityControl(
+                    quantity = quantity,
+                    onDecrement = onDecrement,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = if (item.unitPrice > 0.0) "Bs ${"%.2f".format(item.unitPrice)}" else "Sin precio",
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(start = 8.dp),
+                    color = if (item.unitPrice > 0.0) orange else Color(0xFF60738C),
+                    textAlign = TextAlign.End,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
         }
     }
 }
@@ -481,27 +495,25 @@ private fun ProductCard(
 @Composable
 private fun ProductQuantityControl(
     quantity: Int,
-    onDecrement: () -> Unit
+    onDecrement: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(36.dp)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.Center,
+        modifier = modifier.height(52.dp),
+        horizontalArrangement = Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (quantity > 0) {
             IconButton(
                 onClick = onDecrement,
                 modifier = Modifier
-                    .size(30.dp)
+                    .size(48.dp)
                     .semantics { contentDescription = "Disminuir cantidad" }
             ) {
                 Box(
                     modifier = Modifier
-                        .width(18.dp)
-                        .height(4.dp)
+                        .width(24.dp)
+                        .height(5.dp)
                         .background(Color(0xFF17427A), CircleShape)
                 )
             }
@@ -509,8 +521,9 @@ private fun ProductQuantityControl(
                 text = quantity.toString(),
                 color = Color(0xFF17427A),
                 fontWeight = FontWeight.Black,
+                fontSize = 22.sp,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.widthIn(min = 24.dp)
+                modifier = Modifier.widthIn(min = 40.dp)
             )
         }
     }

@@ -75,7 +75,7 @@ fun CartScreen(
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "Cart",
+            text = "CARRITO",
             modifier = Modifier.fillMaxWidth(),
             color = darkBlue,
             style = MaterialTheme.typography.headlineSmall,

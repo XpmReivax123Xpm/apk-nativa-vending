@@ -8,10 +8,12 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,10 +22,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vending.kiosk.R
 import com.vending.kiosk.app.domain.catalog.CatalogItem
 import kotlinx.coroutines.delay
 import android.graphics.BitmapFactory
@@ -63,7 +71,8 @@ fun CatalogScreen(
     cartTotalAmount: Double = 0.0,
     onIncrementProduct: (CatalogItem) -> Unit = {},
     onDecrementProduct: (CatalogItem) -> Unit = {},
-    onCartClick: () -> Unit = {}
+    onCartClick: () -> Unit = {},
+    onPayClick: () -> Unit = {}
 ) {
     val primaryBlue = Color(0xFF0E3B86)
     val backgroundBlue = Color(0xFF071D3B)
@@ -107,8 +116,8 @@ fun CatalogScreen(
             CatalogCartBar(
                 totalUnits = cartTotalUnits,
                 totalAmount = cartTotalAmount,
-                onClick = onCartClick,
-                cyan = cyan,
+                onCartClick = onCartClick,
+                onPayClick = onPayClick,
                 orange = orange
             )
         }
@@ -456,53 +465,124 @@ private fun ProductQuantityControl(
 private fun CatalogCartBar(
     totalUnits: Int,
     totalAmount: Double,
-    onClick: () -> Unit,
-    cyan: Color,
+    onCartClick: () -> Unit,
+    onPayClick: () -> Unit,
     orange: Color
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xE615437D)),
-        border = BorderStroke(1.dp, cyan.copy(alpha = 0.6f))
+            .height(104.dp)
+            .clickable(onClick = onCartClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(horizontal = 18.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(contentAlignment = Alignment.TopEnd) {
-                    Text(text = "🛒", fontSize = 24.sp)
-                    if (totalUnits > 0) {
-                        Text(
-                            text = totalUnits.toString(),
-                            modifier = Modifier
-                                .background(orange, RoundedCornerShape(10.dp))
-                                .padding(horizontal = 5.dp, vertical = 1.dp),
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                    }
+            Box(
+                modifier = Modifier.size(58.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_shopping_cart),
+                    contentDescription = "CARRITO",
+                    modifier = Modifier.size(50.dp)
+                )
+                if (totalUnits > 0) {
+                    Text(
+                        text = totalUnits.toString(),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .background(Color(0xFFE91E4D), CircleShape)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Black
+                    )
                 }
-                Spacer(Modifier.size(10.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(52.dp)
+                    .background(Color(0xFFD7DCE8))
+            )
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    text = "Cart",
-                    color = Color(0xFFD6E9FF),
+                    text = "TOTAL:",
+                    color = Color(0xFF7A86A7),
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
+                Spacer(Modifier.size(6.dp))
+                Text(
+                    text = "%.2f Bs".format(totalAmount),
+                    modifier = Modifier.weight(1f),
+                    color = Color(0xFF16213E),
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Black
+                )
             }
-            Text(
-                text = "%.2f Bs".format(totalAmount),
-                color = orange,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Black
-            )
+            Box(
+                modifier = Modifier
+                    .width(200.dp)
+                    .height(72.dp)
+                    .pointerInput(totalUnits) {
+                        if (totalUnits <= 0) {
+                            detectTapGestures(onTap = {})
+                        }
+                    }
+            ) {
+                Button(
+                    onClick = onPayClick,
+                    enabled = totalUnits > 0,
+                    modifier = Modifier.fillMaxSize(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = orange,
+                        contentColor = Color.White,
+                        disabledContainerColor = Color(0xFFD9DEE8),
+                        disabledContentColor = Color(0xFF7A86A7)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "PAGAR",
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .background(Color.White, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "›",
+                                color = if (totalUnits > 0) orange else Color(0xFF9AA3B5),
+                                fontSize = 36.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

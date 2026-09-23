@@ -660,7 +660,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                         }
                     },
                     onDecrementProduct = { item -> cartViewModel.decrement(item.planogramCellId) },
-                    onCartClick = { cartViewModel.openCart() }
+                    onCartClick = { cartViewModel.openCart() },
+                    onPayClick = ::buyCartFromCompose
                 )
 
                 AnimatedVisibility(

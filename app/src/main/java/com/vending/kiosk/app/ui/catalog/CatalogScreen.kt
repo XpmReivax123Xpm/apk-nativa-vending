@@ -44,6 +44,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,11 +64,11 @@ import androidx.compose.ui.unit.sp
 import com.vending.kiosk.R
 import com.vending.kiosk.app.domain.catalog.CatalogItem
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import android.graphics.BitmapFactory
-import java.io.File
+import android.graphics.Bitmap
 
-private const val ITEMS_PER_PAGE = 9
+internal const val ITEMS_PER_PAGE = 9
 private const val PROMOTION_ADVANCE_DELAY_MS = 5_000L
 
 @Composable
@@ -79,7 +80,10 @@ fun CatalogScreen(
     onIncrementProduct: (CatalogItem) -> Unit = {},
     onDecrementProduct: (CatalogItem) -> Unit = {},
     onCartClick: () -> Unit = {},
-    onPayClick: () -> Unit = {}
+    onPayClick: () -> Unit = {},
+    imageCacheVersion: Int = 0,
+    getCachedImageBitmap: (String) -> Bitmap? = { null },
+    onCatalogPageChanged: (Int) -> Unit = {}
 ) {
     val primaryBlue = Color(0xFF0E3B86)
     val backgroundBlue = Color(0xFF071D3B)
@@ -116,7 +120,10 @@ fun CatalogScreen(
                         onIncrementProduct = onIncrementProduct,
                         onDecrementProduct = onDecrementProduct,
                         cyan = cyan,
-                        orange = orange
+                        orange = orange,
+                        imageCacheVersion = imageCacheVersion,
+                        getCachedImageBitmap = getCachedImageBitmap,
+                        onCatalogPageChanged = onCatalogPageChanged
                     )
                 }
             }
@@ -169,7 +176,10 @@ private fun CatalogContent(
     onIncrementProduct: (CatalogItem) -> Unit,
     onDecrementProduct: (CatalogItem) -> Unit,
     cyan: Color,
-    orange: Color
+    orange: Color,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?,
+    onCatalogPageChanged: (Int) -> Unit
 ) {
     var contentVisible by remember { mutableStateOf(false) }
 
@@ -194,7 +204,10 @@ private fun CatalogContent(
                 onIncrementProduct = onIncrementProduct,
                 onDecrementProduct = onDecrementProduct,
                 cyan = cyan,
-                orange = orange
+                orange = orange,
+                imageCacheVersion = imageCacheVersion,
+                getCachedImageBitmap = getCachedImageBitmap,
+                onCatalogPageChanged = onCatalogPageChanged
             )
         }
     }
@@ -275,7 +288,10 @@ private fun ProductPager(
     onIncrementProduct: (CatalogItem) -> Unit,
     onDecrementProduct: (CatalogItem) -> Unit,
     cyan: Color,
-    orange: Color
+    orange: Color,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?,
+    onCatalogPageChanged: (Int) -> Unit
 ) {
     val pageCount = ((items.size + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE).coerceAtLeast(1)
     val pagerState = rememberPagerState(pageCount = { pageCount })
@@ -286,6 +302,11 @@ private fun ProductPager(
         if (pagerState.currentPage > lastPage) {
             pagerState.scrollToPage(lastPage)
         }
+    }
+
+    LaunchedEffect(pagerState, items, pageCount) {
+        snapshotFlow { pagerState.currentPage }
+            .collect { pageIndex -> onCatalogPageChanged(pageIndex) }
     }
 
     Row(
@@ -315,7 +336,9 @@ private fun ProductPager(
                 onIncrementProduct = onIncrementProduct,
                 onDecrementProduct = onDecrementProduct,
                 cyan = cyan,
-                orange = orange
+                orange = orange,
+                imageCacheVersion = imageCacheVersion,
+                getCachedImageBitmap = getCachedImageBitmap
             )
         }
         PageArrow(
@@ -351,7 +374,9 @@ private fun ProductGrid(
     onIncrementProduct: (CatalogItem) -> Unit,
     onDecrementProduct: (CatalogItem) -> Unit,
     cyan: Color,
-    orange: Color
+    orange: Color,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?
 ) {
     Column(
         modifier = modifier,
@@ -380,6 +405,8 @@ private fun ProductGrid(
                             onDecrement = { onDecrementProduct(item) },
                             cyan = cyan,
                             orange = orange,
+                            imageCacheVersion = imageCacheVersion,
+                            getCachedImageBitmap = getCachedImageBitmap,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
@@ -399,6 +426,8 @@ private fun ProductCard(
     onDecrement: () -> Unit,
     cyan: Color,
     orange: Color,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -423,6 +452,8 @@ private fun ProductCard(
                 source = item.primaryImageUrl,
                 label = "Imagen no disponible",
                 accent = cyan,
+                imageCacheVersion = imageCacheVersion,
+                getCachedImageBitmap = getCachedImageBitmap,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
@@ -616,15 +647,15 @@ private fun CatalogImageSource(
     source: String?,
     label: String,
     accent: Color,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop
 ) {
-    val bitmap = remember(source) {
+    val bitmap = remember(source, imageCacheVersion) {
         source
             ?.takeIf { it.isNotBlank() }
-            ?.let(::File)
-            ?.takeIf { it.isAbsolute && it.isFile }
-            ?.let { file -> runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull() }
+            ?.let(getCachedImageBitmap)
     }
 
     Box(
@@ -682,7 +713,6 @@ private fun previewItem(index: Int) = CatalogItem(
     availableStock = 4,
     isVendible = true,
     primaryImageUrl = "",
-    secondaryImageUrl = "",
     physicalCell = index
 )
 

@@ -9,8 +9,6 @@ data class CatalogItem(
     val availableStock: Int,
     val isVendible: Boolean,
     val primaryImageUrl: String,
-    val secondaryImageUrl: String,
     val imageId: Int = 0,
-    val secondaryImageId: Int = 0,
     val physicalCell: Int
 )

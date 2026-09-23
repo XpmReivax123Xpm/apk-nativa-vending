@@ -10,6 +10,5 @@ data class CartItem(
     val isVendible: Boolean,
     val physicalCell: Int,
     val primaryImageUrl: String,
-    val secondaryImageUrl: String,
     val quantity: Int
 )

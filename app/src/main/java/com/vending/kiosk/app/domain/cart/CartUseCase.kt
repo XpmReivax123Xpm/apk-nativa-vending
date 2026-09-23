@@ -89,7 +89,6 @@ class CartUseCase {
                 isVendible = catalogItem.isVendible,
                 physicalCell = catalogItem.physicalCell,
                 primaryImageUrl = catalogItem.primaryImageUrl,
-                secondaryImageUrl = catalogItem.secondaryImageUrl,
                 quantity = minOf(cartItem.quantity, catalogItem.availableStock)
             )
         }.filter { it.quantity > 0 }

@@ -53,12 +53,11 @@ class CatalogImageCache(context: Context) {
         }
 
         val bitmap = downloadBitmap(normalizedUrl, targetSizePx) ?: return normalizedUrl
-        imageCache.put(normalizedUrl, bitmap)
 
         val targetFile = File(localImageCacheDir, "${slotKey}_${token.hashCode()}.png")
         if (!writeBitmapToFile(bitmap, targetFile)) return normalizedUrl
 
-        imageCache.put(targetFile.absolutePath, bitmap)
+        imageCache.put(localBitmapKey(targetFile.absolutePath), bitmap)
         localImageCachePrefs.edit()
             .putString(tokenPrefKey, token)
             .putString(pathPrefKey, targetFile.absolutePath)
@@ -68,6 +67,45 @@ class CatalogImageCache(context: Context) {
     }
 
     fun isLocalImagePath(path: String): Boolean = path.isNotBlank() && !isRemoteUrl(path)
+
+    fun getCachedBitmap(localPath: String): Bitmap? {
+        if (!isLocalImagePath(localPath)) return null
+        val file = File(localPath)
+        if (!file.isAbsolute) return null
+        return imageCache.get(localBitmapKey(file.absolutePath))
+    }
+
+    fun isBitmapPrepared(localPath: String, targetSizePx: Int): Boolean {
+        val bitmap = getCachedBitmap(localPath) ?: return false
+        return bitmap.width <= targetSizePx &&
+            bitmap.height <= targetSizePx
+    }
+
+    /** Call from Dispatchers.IO; this method checks local files and decodes cache misses. */
+    fun preloadLocalImages(localPaths: Collection<String>, targetSizePx: Int): Set<String> {
+        require(targetSizePx > 0)
+        val loadedPaths = linkedSetOf<String>()
+
+        localPaths.distinct().forEach { localPath ->
+            val file = File(localPath)
+            if (!file.isAbsolute || !file.isFile) return@forEach
+
+            val cacheKey = localBitmapKey(file.absolutePath)
+            val cachedBitmap = imageCache.get(cacheKey)
+            if (cachedBitmap != null &&
+                cachedBitmap.width <= targetSizePx &&
+                cachedBitmap.height <= targetSizePx
+            ) {
+                return@forEach
+            }
+
+            val bitmap = decodeSampledBitmap(file, targetSizePx) ?: return@forEach
+            imageCache.put(cacheKey, bitmap)
+            loadedPaths += cacheKey
+        }
+
+        return loadedPaths
+    }
 
     fun downloadBitmap(rawUrl: String, targetSizePx: Int): Bitmap? {
         val primary = rawUrl.trim()
@@ -121,6 +159,8 @@ class CatalogImageCache(context: Context) {
         return path.startsWith("https://", ignoreCase = true) || path.startsWith("http://", ignoreCase = true)
     }
 
+    private fun localBitmapKey(path: String): String = File(path).absoluteFile.path
+
     private fun writeBitmapToFile(bitmap: Bitmap, targetFile: File): Boolean {
         return runCatching {
             targetFile.parentFile?.mkdirs()
@@ -148,5 +188,24 @@ class CatalogImageCache(context: Context) {
             inPreferredConfig = Bitmap.Config.RGB_565
         }
         return BitmapFactory.decodeByteArray(data, 0, data.size, options)
+    }
+
+    private fun decodeSampledBitmap(file: File, targetSizePx: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.absolutePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var inSampleSize = 1
+        while (bounds.outWidth / inSampleSize > targetSizePx ||
+            bounds.outHeight / inSampleSize > targetSizePx
+        ) {
+            inSampleSize *= 2
+        }
+
+        val options = BitmapFactory.Options().apply {
+            this.inSampleSize = inSampleSize
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+        return BitmapFactory.decodeFile(file.absolutePath, options)
     }
 }

@@ -116,9 +116,7 @@ class HttpVendingBackendGateway(
                         productId = cell.productId
                     ),
                     primaryImageUrl = cell.imageUrl,
-                    secondaryImageUrl = cell.secondaryImageUrl,
                     imageId = cell.imageId,
-                    secondaryImageId = cell.secondaryImageId,
                     physicalCell = cell.physicalCell
                 )
             }

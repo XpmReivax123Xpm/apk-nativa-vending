@@ -16,6 +16,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
+
+private const val CATALOG_BITMAP_TARGET_SIZE_PX = 720
 
 data class CatalogUiState(
     val machineId: Int = 0,
@@ -24,7 +27,8 @@ data class CatalogUiState(
     val items: List<CatalogItem> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val sessionLost: Boolean = false
+    val sessionLost: Boolean = false,
+    val imageCacheVersion: Int = 0
 )
 
 class CatalogViewModel(
@@ -35,6 +39,7 @@ class CatalogViewModel(
 
     private val _uiState = MutableStateFlow(CatalogUiState())
     val uiState: StateFlow<CatalogUiState> = _uiState.asStateFlow()
+    private val imagesBeingPreloaded = ConcurrentHashMap.newKeySet<String>()
 
     fun configureMachine(machineId: Int, machineCode: String, machineLocation: String) {
         _uiState.value = _uiState.value.copy(
@@ -59,11 +64,14 @@ class CatalogViewModel(
         viewModelScope.launch {
             try {
                 when (val result = withContext(Dispatchers.IO) { loadCatalogData(machineId) }) {
-                    is CatalogLoadResult.Success -> _uiState.value = _uiState.value.copy(
-                        items = result.items.filter { it.isVendible },
-                        error = null,
-                        sessionLost = false
-                    )
+                    is CatalogLoadResult.Success -> {
+                        _uiState.value = _uiState.value.copy(
+                            items = result.items,
+                            error = null,
+                            sessionLost = false
+                        )
+                        onCatalogPageChanged(0)
+                    }
 
                     CatalogLoadResult.SessionLost -> _uiState.value = _uiState.value.copy(
                         error = "Sesion de maquina expirada",
@@ -82,6 +90,53 @@ class CatalogViewModel(
                 )
             } finally {
                 _uiState.value = _uiState.value.copy(isLoading = false)
+            }
+        }
+    }
+
+    fun getCachedImageBitmap(localPath: String) = catalogImageCache.getCachedBitmap(localPath)
+
+    fun onCatalogPageChanged(pageIndex: Int) {
+        val items = _uiState.value.items
+        if (items.isEmpty()) return
+
+        val pageCount = (items.size + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE
+        val currentPage = pageIndex.coerceIn(0, pageCount - 1)
+        // Keep current-page bitmaps newest in the 8 MiB LRU if neighbors cause eviction.
+        val pagesToPreload = buildList {
+            if (currentPage > 0) add(currentPage - 1)
+            if (currentPage < pageCount - 1) add(currentPage + 1)
+            add(currentPage)
+        }
+        val localImagePaths = pagesToPreload
+            .flatMap { page ->
+                val firstItemIndex = page * ITEMS_PER_PAGE
+                items.drop(firstItemIndex).take(ITEMS_PER_PAGE).map { it.primaryImageUrl }
+            }
+            .filter { it.isNotBlank() && catalogImageCache.isLocalImagePath(it) }
+            .distinct()
+        val pathsToPreload = localImagePaths.filter { path ->
+            !catalogImageCache.isBitmapPrepared(path, CATALOG_BITMAP_TARGET_SIZE_PX) &&
+                imagesBeingPreloaded.add(path)
+        }
+        if (pathsToPreload.isEmpty()) return
+
+        viewModelScope.launch {
+            try {
+                val loadedPaths = withContext(Dispatchers.IO) {
+                    catalogImageCache.preloadLocalImages(
+                        localPaths = pathsToPreload,
+                        targetSizePx = CATALOG_BITMAP_TARGET_SIZE_PX
+                    )
+                }
+                if (loadedPaths.isNotEmpty()) {
+                    val currentState = _uiState.value
+                    _uiState.value = currentState.copy(
+                        imageCacheVersion = currentState.imageCacheVersion + 1
+                    )
+                }
+            } finally {
+                pathsToPreload.forEach { path -> imagesBeingPreloaded.remove(path) }
             }
         }
     }
@@ -122,7 +177,9 @@ class CatalogViewModel(
             return CatalogLoadResult.Failure(exception.message ?: "No se pudo cargar el catalogo")
         }
 
-        val resolvedItems = catalogData.items.mapIndexed { index, item ->
+        val resolvedItems = catalogData.items.mapIndexedNotNull { index, item ->
+            if (!item.isVendible) return@mapIndexedNotNull null
+
             val slotBase = when {
                 item.productId > 0 -> "product_${item.productId}"
                 else -> "cell_${item.planogramCellId.takeIf { it != 0 } ?: index}"
@@ -132,12 +189,6 @@ class CatalogViewModel(
                     slot = "${slotBase}_principal",
                     incomingId = item.imageId,
                     remoteUrl = item.primaryImageUrl,
-                    targetSizePx = 480
-                ),
-                secondaryImageUrl = catalogImageCache.resolveImageSourceForCache(
-                    slot = "${slotBase}_secondary",
-                    incomingId = item.secondaryImageId,
-                    remoteUrl = item.secondaryImageUrl,
                     targetSizePx = 480
                 )
             )

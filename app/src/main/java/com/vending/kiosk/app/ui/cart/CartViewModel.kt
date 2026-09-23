@@ -83,7 +83,6 @@ class CartViewModel(
         isVendible = isVendible,
         physicalCell = physicalCell,
         primaryImageUrl = primaryImageUrl,
-        secondaryImageUrl = secondaryImageUrl,
         quantity = quantity
     )
 }

@@ -316,7 +316,6 @@ private fun previewCartItem(index: Int, quantity: Int) = CartItem(
     isVendible = true,
     physicalCell = index,
     primaryImageUrl = "",
-    secondaryImageUrl = "",
     quantity = quantity
 )
 

@@ -661,7 +661,10 @@ class KioskCatalogActivity : AppCompatActivity() {
                     },
                     onDecrementProduct = { item -> cartViewModel.decrement(item.planogramCellId) },
                     onCartClick = { cartViewModel.openCart() },
-                    onPayClick = ::buyCartFromCompose
+                    onPayClick = ::buyCartFromCompose,
+                    imageCacheVersion = catalogComposeState.imageCacheVersion,
+                    getCachedImageBitmap = catalogViewModel::getCachedImageBitmap,
+                    onCatalogPageChanged = catalogViewModel::onCatalogPageChanged
                 )
 
                 AnimatedVisibility(
@@ -791,8 +794,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         stockDisponible = availableStock,
         vendible = isVendible,
         physicalCell = physicalCell,
-        imagenUrl = primaryImageUrl,
-        imagenUrlSecundaria = secondaryImageUrl
+        imagenUrl = primaryImageUrl
     )
 
     private fun List<CartItem>.toPurchaseSelections(): List<PurchaseSelection> = map {
@@ -1509,8 +1511,7 @@ private data class CeldaUi(
     val stockDisponible: Int,
     val vendible: Boolean,
     val physicalCell: Int,
-    val imagenUrl: String,
-    val imagenUrlSecundaria: String
+    val imagenUrl: String
 )
 
 private data class PurchaseSelection(

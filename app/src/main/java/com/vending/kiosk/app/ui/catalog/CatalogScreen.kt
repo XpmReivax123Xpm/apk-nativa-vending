@@ -439,31 +439,39 @@ private fun ProductCard(
             containerColor = if (isSelected) Color(0xFFFFF4E5) else Color(0xFFF8FBFF)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        border = BorderStroke(
-            6.dp,
-            if (isSelected) Color(0xFFFF6D00) else Color.Transparent
-        )
+        border = if (isSelected) {
+            BorderStroke(6.dp, Color(0xFFFF6D00))
+        } else {
+            null
+        }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Text(
-                text = item.cellCode,
-                modifier = Modifier.padding(start = 10.dp, top = 8.dp),
-                color = Color(0xFF17427A),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-            CatalogImageSource(
-                source = item.primaryImageUrl,
-                label = "Imagen no disponible",
-                accent = cyan,
-                imageCacheVersion = imageCacheVersion,
-                getCachedImageBitmap = getCachedImageBitmap,
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
-                contentScale = ContentScale.Crop
-            )
+            ) {
+                CatalogImageSource(
+                    source = item.primaryImageUrl,
+                    label = "Imagen no disponible",
+                    accent = cyan,
+                    imageCacheVersion = imageCacheVersion,
+                    getCachedImageBitmap = getCachedImageBitmap,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+                Text(
+                    text = item.cellCode,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(8.dp)
+                        .background(Color.White, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    color = Color(0xFF17427A),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -39,7 +39,7 @@
             android:layout_height="0dp"
             android:layout_weight="1"
             android:orientation="vertical"
-            android:padding="12dp">
+            android:paddingBottom="12dp">
 
             <androidx.compose.ui.platform.ComposeView
                 android:id="@+id/catalogComposeHost"

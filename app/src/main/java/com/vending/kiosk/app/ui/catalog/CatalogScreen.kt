@@ -53,6 +53,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -400,11 +402,14 @@ private fun ProductCard(
     modifier: Modifier = Modifier
 ) {
     Card(
-        modifier = modifier,
+        modifier = modifier.clickable(onClick = onIncrement),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFF)),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-        border = if (quantity > 0) BorderStroke(4.dp, Color(0xFFFFB74D)) else null
+        border = BorderStroke(
+            4.dp,
+            if (quantity > 0) Color(0xFFFFB74D) else Color.Transparent
+        )
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Text(
@@ -436,9 +441,7 @@ private fun ProductCard(
             )
             ProductQuantityControl(
                 quantity = quantity,
-                onIncrement = onIncrement,
-                onDecrement = onDecrement,
-                accent = cyan
+                onDecrement = onDecrement
             )
         }
     }
@@ -447,20 +450,29 @@ private fun ProductCard(
 @Composable
 private fun ProductQuantityControl(
     quantity: Int,
-    onIncrement: () -> Unit,
-    onDecrement: () -> Unit,
-    accent: Color
+    onDecrement: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(36.dp)
             .padding(horizontal = 6.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (quantity > 0) {
-            IconButton(onClick = onDecrement, modifier = Modifier.size(30.dp)) {
-                Text(text = "−", color = Color(0xFF17427A), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            IconButton(
+                onClick = onDecrement,
+                modifier = Modifier
+                    .size(30.dp)
+                    .semantics { contentDescription = "Disminuir cantidad" }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(18.dp)
+                        .height(4.dp)
+                        .background(Color(0xFF17427A), CircleShape)
+                )
             }
             Text(
                 text = quantity.toString(),
@@ -469,9 +481,6 @@ private fun ProductQuantityControl(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.widthIn(min = 24.dp)
             )
-        }
-        IconButton(onClick = onIncrement, modifier = Modifier.size(36.dp)) {
-            Text(text = "+", color = accent, fontSize = 28.sp, fontWeight = FontWeight.Black)
         }
     }
 }

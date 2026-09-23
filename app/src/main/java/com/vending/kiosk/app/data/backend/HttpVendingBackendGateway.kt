@@ -18,13 +18,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 data class CatalogData(
-    val items: List<CatalogItem>,
-    val promotions: List<CatalogPromotion>
-)
-
-data class CatalogPromotion(
-    val id: Int,
-    val url: String
+    val items: List<CatalogItem>
 )
 
 class HttpVendingBackendGateway(
@@ -91,7 +85,6 @@ class HttpVendingBackendGateway(
             val background = parseUiBackground(values)
             CatalogResponse(
                 cells = cells,
-                promotions = parsePromotions(values),
                 backgroundImageUrl = background.second,
                 backgroundImageId = background.first
             )
@@ -127,12 +120,6 @@ class HttpVendingBackendGateway(
                     imageId = cell.imageId,
                     secondaryImageId = cell.secondaryImageId,
                     physicalCell = cell.physicalCell
-                )
-            },
-            promotions = catalog.promotions.map { promotion ->
-                CatalogPromotion(
-                    id = promotion.id,
-                    url = promotion.url
                 )
             }
         )
@@ -652,37 +639,6 @@ class HttpVendingBackendGateway(
         }
 
         return cells
-    }
-
-    private fun parsePromotions(values: JSONObject): List<CatalogResponse.Promotion> {
-        val source =
-            values.optJSONArray("taPresentacionArchivos")
-                ?: values.optJSONObject("presentacion")?.optJSONArray("taPresentacionArchivos")
-                ?: values.optJSONObject("planograma")?.optJSONArray("taPresentacionArchivos")
-                ?: values.optJSONObject("taPresentacion")?.optJSONArray("taPresentacionArchivos")
-                ?: return emptyList()
-
-        val slides = mutableListOf<CatalogResponse.Promotion>()
-        for (index in 0 until source.length()) {
-            val item = source.optJSONObject(index) ?: continue
-            val status = item.optInt("tnEstado", 0)
-            if (status != 1) continue
-            val usageType = item.optString("tcUsoTipo", "").trim()
-            if (usageType.isNotBlank() && !usageType.equals("PROMOCIONAL", ignoreCase = true)) continue
-            val mimeType = item.optString("tcMimeType", "").trim()
-            if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) continue
-            val remoteUrl = item.optString("tcUrl", "").trim()
-            if (remoteUrl.isBlank()) continue
-            val presentationId = item.optInt("tnPresentacionArchivo", index)
-
-            slides += CatalogResponse.Promotion(
-                url = remoteUrl,
-                visualOrder = item.optInt("tnOrdenVisual", Int.MAX_VALUE),
-                id = presentationId
-            )
-        }
-
-        return slides.sortedWith(compareBy<CatalogResponse.Promotion> { it.visualOrder }.thenBy { it.id })
     }
 
     private fun parseUiBackground(values: JSONObject): Pair<Int, String> {

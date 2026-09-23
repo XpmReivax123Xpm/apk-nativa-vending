@@ -22,7 +22,6 @@ data class CatalogUiState(
     val machineCode: String = "",
     val machineLocation: String = "",
     val items: List<CatalogItem> = emptyList(),
-    val promotions: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
     val sessionLost: Boolean = false
@@ -62,7 +61,6 @@ class CatalogViewModel(
                 when (val result = withContext(Dispatchers.IO) { loadCatalogData(machineId) }) {
                     is CatalogLoadResult.Success -> _uiState.value = _uiState.value.copy(
                         items = result.items.filter { it.isVendible },
-                        promotions = result.promotions,
                         error = null,
                         sessionLost = false
                     )
@@ -144,15 +142,7 @@ class CatalogViewModel(
                 )
             )
         }
-        val resolvedPromotions = catalogData.promotions.map { promotion ->
-            catalogImageCache.resolveImageSourceForCache(
-                slot = "promo_${promotion.id}",
-                incomingId = promotion.id,
-                remoteUrl = promotion.url,
-                targetSizePx = 900
-            )
-        }
-        return CatalogLoadResult.Success(resolvedItems, resolvedPromotions)
+        return CatalogLoadResult.Success(resolvedItems)
     }
 
     private fun resolveValidAuthHeader(forceRefresh: Boolean = false): String? {
@@ -169,8 +159,7 @@ class CatalogViewModel(
 
 private sealed interface CatalogLoadResult {
     data class Success(
-        val items: List<CatalogItem>,
-        val promotions: List<String>
+        val items: List<CatalogItem>
     ) : CatalogLoadResult
 
     data class Failure(val message: String) : CatalogLoadResult

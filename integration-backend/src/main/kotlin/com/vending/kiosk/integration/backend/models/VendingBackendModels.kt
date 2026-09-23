@@ -2,7 +2,6 @@ package com.vending.kiosk.integration.backend.models
 
 data class CatalogResponse(
     val cells: List<Cell>,
-    val promotions: List<Promotion>,
     val backgroundImageUrl: String,
     val backgroundImageId: Int = 0
 ) {
@@ -22,11 +21,6 @@ data class CatalogResponse(
         val sourceCellId: Int = 0
     )
 
-    data class Promotion(
-        val url: String,
-        val visualOrder: Int,
-        val id: Int
-    )
 }
 
 data class PaymentMethod(

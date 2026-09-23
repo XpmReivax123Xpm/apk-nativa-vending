@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -166,7 +167,7 @@ private fun CatalogContent(
         exit = fadeOut(tween(120))
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PromotionCarousel(promotions = state.promotions, cyan = cyan)
+            PromotionCarousel(promotions = LocalPromotions.items, cyan = cyan)
             ProductPager(
                 items = state.items,
                 cartQuantities = cartQuantities,
@@ -180,7 +181,7 @@ private fun CatalogContent(
 }
 
 @Composable
-private fun PromotionCarousel(promotions: List<String>, cyan: Color) {
+private fun PromotionCarousel(promotions: List<LocalPromotion>, cyan: Color) {
     var promotionIndex by remember { mutableIntStateOf(0) }
     val safePromotionIndex = promotionIndex.coerceIn(0, (promotions.size - 1).coerceAtLeast(0))
 
@@ -199,12 +200,22 @@ private fun PromotionCarousel(promotions: List<String>, cyan: Color) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(128.dp),
+            .height(320.dp),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF123A70))
     ) {
         if (promotions.isEmpty()) {
-            CatalogImageSource(source = null, label = "Promociones no disponibles", accent = cyan)
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Promociones locales no configuradas",
+                    color = cyan,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
         } else {
             AnimatedContent(
                 targetState = safePromotionIndex,
@@ -213,15 +224,26 @@ private fun PromotionCarousel(promotions: List<String>, cyan: Color) {
                 },
                 label = "promotionCarousel"
             ) { index ->
-                CatalogImageSource(
-                    source = promotions[index],
-                    label = "Promoción ${index + 1}",
-                    accent = cyan,
-                    contentScale = ContentScale.Crop
+                LocalPromotionImage(
+                    promotion = promotions[index],
+                    contentDescription = "Promoción local ${index + 1}"
                 )
             }
         }
     }
+}
+
+@Composable
+private fun LocalPromotionImage(
+    promotion: LocalPromotion,
+    contentDescription: String
+) {
+    Image(
+        painter = painterResource(id = promotion.imageRes),
+        contentDescription = contentDescription,
+        modifier = Modifier.fillMaxSize(),
+        contentScale = ContentScale.Crop
+    )
 }
 
 @Composable
@@ -548,8 +570,7 @@ private fun CatalogScreenEmptyCartPreview() {
         state = CatalogUiState(
             machineCode = "MQ-1001",
             machineLocation = "Edificio Central",
-            items = (1..6).map(::previewItem),
-            promotions = listOf("promo-1", "promo-2")
+            items = (1..6).map(::previewItem)
         )
     )
 }
@@ -561,8 +582,7 @@ private fun CatalogScreenSelectedProductsPaginationPreview() {
         state = CatalogUiState(
             machineCode = "MQ-1002",
             machineLocation = "Sucursal Norte",
-            items = (1..8).map(::previewItem),
-            promotions = listOf("promo-1")
+            items = (1..8).map(::previewItem)
         ),
         cartQuantities = mapOf(1 to 1, 3 to 2, 7 to 3),
         cartTotalUnits = 6,

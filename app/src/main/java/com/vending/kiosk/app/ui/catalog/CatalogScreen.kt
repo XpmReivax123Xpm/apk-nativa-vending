@@ -8,6 +8,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
@@ -40,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import com.vending.kiosk.R
 import com.vending.kiosk.app.domain.catalog.CatalogItem
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import android.graphics.BitmapFactory
 import java.io.File
 
@@ -259,6 +264,7 @@ private fun LocalPromotionImage(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProductPager(
     modifier: Modifier = Modifier,
@@ -270,11 +276,14 @@ private fun ProductPager(
     orange: Color
 ) {
     val pageCount = ((items.size + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE).coerceAtLeast(1)
-    var currentPage by remember { mutableIntStateOf(0) }
-    val safePage = currentPage.coerceIn(0, pageCount - 1)
+    val pagerState = rememberPagerState(pageCount = { pageCount })
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(items, pageCount) {
-        currentPage = safePage
+        val lastPage = (pageCount - 1).coerceAtLeast(0)
+        if (pagerState.currentPage > lastPage) {
+            pagerState.scrollToPage(lastPage)
+        }
     }
 
     Row(
@@ -283,18 +292,19 @@ private fun ProductPager(
     ) {
         PageArrow(
             symbol = "‹",
-            enabled = safePage > 0,
-            onClick = { currentPage = safePage - 1 }
+            enabled = pagerState.currentPage > 0,
+            onClick = {
+                coroutineScope.launch {
+                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                }
+            }
         )
-        AnimatedContent(
-            targetState = safePage,
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
-            transitionSpec = {
-                fadeIn(tween(160)) togetherWith fadeOut(tween(120))
-            },
-            label = "catalogPage"
+            userScrollEnabled = pageCount > 1
         ) { page ->
             ProductGrid(
                 modifier = Modifier.fillMaxSize(),
@@ -308,8 +318,13 @@ private fun ProductPager(
         }
         PageArrow(
             symbol = "›",
-            enabled = safePage < pageCount - 1,
-            onClick = { currentPage = safePage + 1 }
+            enabled = pagerState.currentPage < pageCount - 1,
+            onClick = {
+                coroutineScope.launch {
+                    val nextPage = (pagerState.currentPage + 1).coerceAtMost(pageCount - 1)
+                    pagerState.animateScrollToPage(nextPage)
+                }
+            }
         )
     }
 }

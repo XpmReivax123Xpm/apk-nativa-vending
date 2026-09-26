@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,15 +24,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,7 +51,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vending.kiosk.app.domain.cart.CartItem
@@ -96,10 +101,9 @@ fun CartScreen(
     getCachedImageBitmap: (String) -> Bitmap? = { null },
     onPreloadImages: (Collection<String>) -> Unit = {}
 ) {
-    val panelBlue = Color(0xFFF8FBFF)
-    val darkBlue = Color(0xFF0E3B86)
-    val cyan = Color(0xFF42D7F5)
-    val orange = Color(0xFFF59E0B)
+    val panelBlue = Color.White
+    val darkBlue = Color(0xFF10184A)
+    val primaryBlue = Color(0xFF1768C5)
     val hasItems = state.items.isNotEmpty()
     val density = LocalDensity.current
     val minimumListHeightPx = with(density) { CART_MINIMUM_LIST_HEIGHT.toPx() }
@@ -123,7 +127,7 @@ fun CartScreen(
         modifier = Modifier
             .fillMaxWidth()
             .background(panelBlue, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
             .widthIn(max = 760.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -172,15 +176,16 @@ fun CartScreen(
                 modifier = Modifier
                     .width(42.dp)
                     .height(4.dp)
-                    .background(Color(0xFFB5C5D9), RoundedCornerShape(2.dp))
+                    .background(Color(0xFFA5A4DC), RoundedCornerShape(2.dp))
             )
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
-            text = "CARRITO",
+            text = "Carrito",
             modifier = Modifier.fillMaxWidth(),
             color = darkBlue,
-            style = MaterialTheme.typography.headlineSmall,
+            fontSize = 32.sp,
+            lineHeight = 38.sp,
             fontWeight = FontWeight.Black
         )
         if (state.operationNotApplied) {
@@ -214,12 +219,7 @@ fun CartScreen(
                                 onUserInteraction()
                                 onDecrement(item.planogramCellId)
                             },
-                            onRemove = {
-                                onUserInteraction()
-                                onRemove(item.planogramCellId)
-                            },
-                            accent = cyan,
-                            priceColor = orange,
+                            primaryBlue = primaryBlue,
                             imageCacheVersion = imageCacheVersion,
                             getCachedImageBitmap = getCachedImageBitmap
                         )
@@ -237,6 +237,7 @@ fun CartScreen(
 
         Spacer(Modifier.height(12.dp))
         CartFooter(
+            subtotalAmount = state.totalAmount,
             totalAmount = state.totalAmount,
             hasItems = hasItems,
             onBuy = {
@@ -252,7 +253,7 @@ fun CartScreen(
                 onClear()
             },
             darkBlue = darkBlue,
-            accent = cyan
+            primaryBlue = primaryBlue
         )
     }
 }
@@ -262,9 +263,7 @@ private fun CartLine(
     item: CartItem,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
-    onRemove: () -> Unit,
-    accent: Color,
-    priceColor: Color,
+    primaryBlue: Color,
     imageCacheVersion: Int,
     getCachedImageBitmap: (String) -> Bitmap?
 ) {
@@ -272,111 +271,244 @@ private fun CartLine(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, Color(0xFFDDE8F5))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(10.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             CartImageSource(
                 source = item.primaryImageUrl,
                 label = "Imagen no disponible",
-                accent = accent,
+                accent = primaryBlue,
                 imageCacheVersion = imageCacheVersion,
                 getCachedImageBitmap = getCachedImageBitmap,
-                modifier = Modifier.size(74.dp)
+                modifier = Modifier.size(width = 88.dp, height = 62.dp)
             )
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.name,
-                    color = Color(0xFF17427A),
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    style = MaterialTheme.typography.bodyLarge
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = item.name,
+                modifier = Modifier.weight(1f),
+                color = Color(0xFF10184A),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontSize = 18.sp
+            )
+            Spacer(Modifier.width(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                QuantityButton(
+                    symbol = "−",
+                    onClick = onDecrement,
+                    color = primaryBlue
                 )
                 Text(
-                    text = price(item.unitPrice),
-                    color = priceColor,
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.bodyMedium
+                    text = item.quantity.toString(),
+                    modifier = Modifier.width(28.dp),
+                    color = Color(0xFF10184A),
+                    textAlign = TextAlign.Center,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onDecrement, modifier = Modifier.size(32.dp)) {
-                        Text("−", color = Color(0xFF17427A), fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Text(
-                        text = item.quantity.toString(),
-                        modifier = Modifier.width(28.dp),
-                        color = Color(0xFF17427A),
-                        textAlign = TextAlign.Center,
-                        fontWeight = FontWeight.Black
-                    )
-                    IconButton(onClick = onIncrement, modifier = Modifier.size(32.dp)) {
-                        Text("+", color = accent, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                    }
-                }
+                QuantityButton(
+                    symbol = "+",
+                    onClick = onIncrement,
+                    color = primaryBlue
+                )
             }
-            Column(horizontalAlignment = Alignment.End) {
+            Spacer(Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(50.dp)
+                    .background(Color(0xFFDDE2F1))
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(
+                modifier = Modifier.width(78.dp),
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = "Total",
+                    color = Color(0xFF7C78B6),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Text(
                     text = price(item.unitPrice * item.quantity),
-                    color = Color(0xFF17427A),
+                    color = Color(0xFF10184A),
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Black,
-                    style = MaterialTheme.typography.bodyMedium
+                    maxLines = 1
                 )
-                TextButton(onClick = onRemove, contentPadding = ButtonDefaults.TextButtonContentPadding) {
-                    Text("ELIMINAR", color = Color(0xFF9A3A3A), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
             }
         }
     }
 }
 
 @Composable
+private fun QuantityButton(
+    symbol: String,
+    onClick: () -> Unit,
+    color: Color
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier
+            .size(44.dp)
+            .background(color, CircleShape)
+    ) {
+        Text(
+            text = symbol,
+            color = Color.White,
+            fontSize = 28.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.Normal
+        )
+    }
+}
+
+@Composable
 private fun CartFooter(
+    subtotalAmount: Double,
     totalAmount: Double,
     hasItems: Boolean,
     onBuy: () -> Unit,
     onClose: () -> Unit,
     onClear: () -> Unit,
     darkBlue: Color,
-    accent: Color
+    primaryBlue: Color
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Total", color = darkBlue, fontWeight = FontWeight.Bold)
-            Text(price(totalAmount), color = darkBlue, fontSize = 22.sp, fontWeight = FontWeight.Black)
-        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SummaryDivider()
+        SummaryRow(
+            label = "Subtotal",
+            amount = subtotalAmount,
+            color = Color(0xFF7C78B6),
+            amountSize = 20.sp
+        )
+        SummaryDivider()
+        SummaryRow(
+            label = "Total",
+            amount = totalAmount,
+            color = darkBlue,
+            amountSize = 30.sp,
+            emphasize = true
+        )
         Button(
             onClick = onBuy,
             enabled = hasItems,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
             shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = darkBlue, disabledContainerColor = Color(0xFFB5C5D9))
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF20BC6B),
+                disabledContainerColor = Color(0xFFB9DCC8)
+            )
         ) {
-            Text("COMPRAR", fontWeight = FontWeight.Black)
+            Icon(
+                painter = painterResource(com.vending.kiosk.R.drawable.ic_shopping_cart),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text("Comprar", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TextButton(onClick = onClose) {
-                Text("VOLVER", color = darkBlue, fontWeight = FontWeight.Bold)
+            OutlinedButton(
+                onClick = onClose,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                border = BorderStroke(1.dp, primaryBlue),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = primaryBlue),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    painter = painterResource(com.vending.kiosk.R.drawable.ic_arrow_back),
+                    contentDescription = null,
+                    modifier = Modifier.size(25.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Volver", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
-            TextButton(onClick = onClear, enabled = hasItems) {
-                Text("LIMPIAR", color = if (hasItems) Color(0xFF9A3A3A) else Color(0xFF9BAABD), fontWeight = FontWeight.Bold)
+            OutlinedButton(
+                onClick = onClear,
+                enabled = hasItems,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                border = BorderStroke(1.dp, Color(0xFFE33B5B)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color(0xFFFFF1F4),
+                    contentColor = Color(0xFFE33B5B),
+                    disabledContentColor = Color(0xFFC9A9B0),
+                    disabledContainerColor = Color(0xFFFFF7F8)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    painter = painterResource(com.vending.kiosk.R.drawable.ic_delete),
+                    contentDescription = null,
+                    modifier = Modifier.size(25.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Limpiar", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
+}
+
+@Composable
+private fun SummaryRow(
+    label: String,
+    amount: Double,
+    color: Color,
+    amountSize: androidx.compose.ui.unit.TextUnit,
+    emphasize: Boolean = false
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontSize = if (emphasize) 24.sp else 18.sp,
+            fontWeight = if (emphasize) FontWeight.Black else FontWeight.Medium
+        )
+        Text(
+            text = price(amount),
+            color = color,
+            fontSize = amountSize,
+            fontWeight = if (emphasize) FontWeight.Black else FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun SummaryDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Color(0xFFD5DCF0))
+    )
 }
 
 @Composable
@@ -401,7 +533,7 @@ private fun CartImageSource(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = label,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+                contentScale = ContentScale.Fit
             )
         } else {
             Text(

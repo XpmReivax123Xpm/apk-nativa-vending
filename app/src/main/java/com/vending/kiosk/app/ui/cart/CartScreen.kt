@@ -1,8 +1,11 @@
 package com.vending.kiosk.app.ui.cart
 
-import android.graphics.BitmapFactory
+import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,20 +30,28 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vending.kiosk.app.domain.cart.CartItem
-import java.io.File
 import java.util.Locale
+
+private val CART_MINIMUM_LIST_HEIGHT = 180.dp
+private val CART_BASE_LIST_HEIGHT = 360.dp
+private val CART_MAXIMUM_LIST_HEIGHT = 620.dp
 
 @Composable
 fun CartScreen(
@@ -51,13 +62,28 @@ fun CartScreen(
     onClear: () -> Unit,
     onBuy: () -> Unit,
     onClose: () -> Unit,
-    onUserInteraction: () -> Unit = {}
+    onUserInteraction: () -> Unit = {},
+    imageCacheVersion: Int = 0,
+    getCachedImageBitmap: (String) -> Bitmap? = { null },
+    onPreloadImages: (Collection<String>) -> Unit = {}
 ) {
     val panelBlue = Color(0xFFF8FBFF)
     val darkBlue = Color(0xFF0E3B86)
     val cyan = Color(0xFF42D7F5)
     val orange = Color(0xFFF59E0B)
     val hasItems = state.items.isNotEmpty()
+    val density = LocalDensity.current
+    val minimumListHeightPx = with(density) { CART_MINIMUM_LIST_HEIGHT.toPx() }
+    val baseListHeightPx = with(density) { CART_BASE_LIST_HEIGHT.toPx() }
+    val maximumListHeightPx = with(density) { CART_MAXIMUM_LIST_HEIGHT.toPx() }
+    var listHeightPx by remember(density) {
+        mutableFloatStateOf(baseListHeightPx)
+    }
+    val listHeight = with(density) { listHeightPx.toDp() }
+
+    LaunchedEffect(state.items) {
+        onPreloadImages(state.items.map { it.primaryImageUrl })
+    }
 
     Column(
         modifier = Modifier
@@ -69,10 +95,25 @@ fun CartScreen(
     ) {
         Box(
             modifier = Modifier
-                .width(42.dp)
-                .height(4.dp)
-                .background(Color(0xFFB5C5D9), RoundedCornerShape(2.dp))
-        )
+                .width(72.dp)
+                .height(24.dp)
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState { dragAmount ->
+                        listHeightPx = (listHeightPx - dragAmount)
+                            .coerceIn(minimumListHeightPx, maximumListHeightPx)
+                    },
+                    onDragStarted = { onUserInteraction() }
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(42.dp)
+                    .height(4.dp)
+                    .background(Color(0xFFB5C5D9), RoundedCornerShape(2.dp))
+            )
+        }
         Spacer(Modifier.height(12.dp))
         Text(
             text = "CARRITO",
@@ -97,7 +138,7 @@ fun CartScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = false)
-                .height(360.dp)
+                .height(listHeight)
         ) {
             if (hasItems) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -117,7 +158,9 @@ fun CartScreen(
                                 onRemove(item.planogramCellId)
                             },
                             accent = cyan,
-                            priceColor = orange
+                            priceColor = orange,
+                            imageCacheVersion = imageCacheVersion,
+                            getCachedImageBitmap = getCachedImageBitmap
                         )
                     }
                 }
@@ -160,7 +203,9 @@ private fun CartLine(
     onDecrement: () -> Unit,
     onRemove: () -> Unit,
     accent: Color,
-    priceColor: Color
+    priceColor: Color,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -178,6 +223,8 @@ private fun CartLine(
                 source = item.primaryImageUrl,
                 label = "Imagen no disponible",
                 accent = accent,
+                imageCacheVersion = imageCacheVersion,
+                getCachedImageBitmap = getCachedImageBitmap,
                 modifier = Modifier.size(74.dp)
             )
             Spacer(Modifier.width(12.dp))
@@ -272,13 +319,16 @@ private fun CartFooter(
 }
 
 @Composable
-private fun CartImageSource(source: String, label: String, accent: Color, modifier: Modifier = Modifier) {
-    val bitmap = remember(source) {
-        source
-            .takeIf { it.isNotBlank() }
-            ?.let(::File)
-            ?.takeIf { it.isAbsolute && it.isFile }
-            ?.let { file -> runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull() }
+private fun CartImageSource(
+    source: String,
+    label: String,
+    accent: Color,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?,
+    modifier: Modifier = Modifier
+) {
+    val bitmap = remember(source, imageCacheVersion) {
+        getCachedImageBitmap(source)
     }
 
     Box(

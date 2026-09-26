@@ -19,6 +19,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
 private const val CATALOG_BITMAP_TARGET_SIZE_PX = 720
+private const val CART_THUMBNAIL_TARGET_SIZE_PX = 192
 
 data class CatalogUiState(
     val machineId: Int = 0,
@@ -40,6 +41,7 @@ class CatalogViewModel(
     private val _uiState = MutableStateFlow(CatalogUiState())
     val uiState: StateFlow<CatalogUiState> = _uiState.asStateFlow()
     private val imagesBeingPreloaded = ConcurrentHashMap.newKeySet<String>()
+    private val cartImagesBeingPreloaded = ConcurrentHashMap.newKeySet<String>()
 
     fun configureMachine(machineId: Int, machineCode: String, machineLocation: String) {
         _uiState.value = _uiState.value.copy(
@@ -95,6 +97,39 @@ class CatalogViewModel(
     }
 
     fun getCachedImageBitmap(localPath: String) = catalogImageCache.getCachedBitmap(localPath)
+
+    fun getCachedCartImageBitmap(localPath: String) =
+        catalogImageCache.getCachedCartThumbnail(localPath, CART_THUMBNAIL_TARGET_SIZE_PX)
+
+    fun preloadCartImages(localPaths: Collection<String>) {
+        val pathsToPreload = localPaths
+            .filter { it.isNotBlank() && catalogImageCache.isLocalImagePath(it) }
+            .distinct()
+            .filter { path ->
+                catalogImageCache.getCachedCartThumbnail(path, CART_THUMBNAIL_TARGET_SIZE_PX) == null &&
+                    cartImagesBeingPreloaded.add(path)
+            }
+        if (pathsToPreload.isEmpty()) return
+
+        viewModelScope.launch {
+            try {
+                val loadedPaths = withContext(Dispatchers.IO) {
+                    catalogImageCache.preloadLocalCartThumbnails(
+                        localPaths = pathsToPreload,
+                        targetSizePx = CART_THUMBNAIL_TARGET_SIZE_PX
+                    )
+                }
+                if (loadedPaths.isNotEmpty()) {
+                    val currentState = _uiState.value
+                    _uiState.value = currentState.copy(
+                        imageCacheVersion = currentState.imageCacheVersion + 1
+                    )
+                }
+            } finally {
+                pathsToPreload.forEach { path -> cartImagesBeingPreloaded.remove(path) }
+            }
+        }
+    }
 
     fun onCatalogPageChanged(pageIndex: Int) {
         val items = _uiState.value.items

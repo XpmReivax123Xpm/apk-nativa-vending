@@ -15,6 +15,9 @@ class CatalogImageCache(context: Context) {
     private val imageCache = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
+    private val cartThumbnailCache = object : LruCache<String, Bitmap>(4 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+    }
     private val localImageCacheDir = File(context.cacheDir, "planograma_images").apply { mkdirs() }
     private val localImageCachePrefs = context.getSharedPreferences(
         "planograma_image_cache",
@@ -75,6 +78,13 @@ class CatalogImageCache(context: Context) {
         return imageCache.get(localBitmapKey(file.absolutePath))
     }
 
+    fun getCachedCartThumbnail(localPath: String, targetSizePx: Int): Bitmap? {
+        if (!isLocalImagePath(localPath) || targetSizePx <= 0) return null
+        val file = File(localPath)
+        if (!file.isAbsolute) return null
+        return cartThumbnailCache.get(cartThumbnailKey(file.absolutePath, targetSizePx))
+    }
+
     fun isBitmapPrepared(localPath: String, targetSizePx: Int): Boolean {
         val bitmap = getCachedBitmap(localPath) ?: return false
         return bitmap.width <= targetSizePx &&
@@ -102,6 +112,26 @@ class CatalogImageCache(context: Context) {
             val bitmap = decodeSampledBitmap(file, targetSizePx) ?: return@forEach
             imageCache.put(cacheKey, bitmap)
             loadedPaths += cacheKey
+        }
+
+        return loadedPaths
+    }
+
+    /** Call from Dispatchers.IO; prepares small cart thumbnails without evicting catalog bitmaps. */
+    fun preloadLocalCartThumbnails(localPaths: Collection<String>, targetSizePx: Int): Set<String> {
+        require(targetSizePx > 0)
+        val loadedPaths = linkedSetOf<String>()
+
+        localPaths.distinct().forEach { localPath ->
+            val file = File(localPath)
+            if (!file.isAbsolute || !file.isFile) return@forEach
+
+            val cacheKey = cartThumbnailKey(file.absolutePath, targetSizePx)
+            if (cartThumbnailCache.get(cacheKey) != null) return@forEach
+
+            val bitmap = decodeSampledBitmap(file, targetSizePx) ?: return@forEach
+            cartThumbnailCache.put(cacheKey, bitmap)
+            loadedPaths += file.absolutePath
         }
 
         return loadedPaths
@@ -160,6 +190,9 @@ class CatalogImageCache(context: Context) {
     }
 
     private fun localBitmapKey(path: String): String = File(path).absoluteFile.path
+
+    private fun cartThumbnailKey(path: String, targetSizePx: Int): String =
+        "$targetSizePx:${File(path).absoluteFile.path}"
 
     private fun writeBitmapToFile(bitmap: Bitmap, targetFile: File): Boolean {
         return runCatching {

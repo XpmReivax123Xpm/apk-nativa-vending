@@ -658,6 +658,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         } else {
                             cartViewModel.addProduct(item)
                         }
+                        catalogViewModel.preloadCartImages(listOf(item.primaryImageUrl))
                     },
                     onDecrementProduct = { item -> cartViewModel.decrement(item.planogramCellId) },
                     onCartClick = { cartViewModel.openCart() },
@@ -694,7 +695,10 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onClear = { cartViewModel.clear() },
                         onBuy = ::buyCartFromCompose,
                         onClose = ::closeCartFromCompose,
-                        onUserInteraction = ::restartCartTimeout
+                        onUserInteraction = ::restartCartTimeout,
+                        imageCacheVersion = catalogComposeState.imageCacheVersion,
+                        getCachedImageBitmap = catalogViewModel::getCachedCartImageBitmap,
+                        onPreloadImages = catalogViewModel::preloadCartImages
                     )
                 }
 

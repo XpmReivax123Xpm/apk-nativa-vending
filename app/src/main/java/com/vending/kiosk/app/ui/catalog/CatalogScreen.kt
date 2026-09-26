@@ -1,6 +1,12 @@
 package com.vending.kiosk.app.ui.catalog
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -51,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -316,6 +323,7 @@ private fun ProductPager(
         PageArrow(
             symbol = "‹",
             enabled = pagerState.currentPage > 0,
+            direction = -1f,
             onClick = {
                 coroutineScope.launch {
                     pagerState.animateScrollToPage(pagerState.currentPage - 1)
@@ -344,6 +352,7 @@ private fun ProductPager(
         PageArrow(
             symbol = "›",
             enabled = pagerState.currentPage < pageCount - 1,
+            direction = 1f,
             onClick = {
                 coroutineScope.launch {
                     val nextPage = (pagerState.currentPage + 1).coerceAtMost(pageCount - 1)
@@ -355,13 +364,34 @@ private fun ProductPager(
 }
 
 @Composable
-private fun PageArrow(symbol: String, enabled: Boolean, onClick: () -> Unit) {
+private fun PageArrow(
+    symbol: String,
+    enabled: Boolean,
+    direction: Float,
+    onClick: () -> Unit
+) {
+    val transition = rememberInfiniteTransition(label = "pageArrow$symbol")
+    val nudge by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (enabled) direction * 6f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pageArrowNudge$symbol"
+    )
+
     IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(36.dp)) {
         Text(
             text = symbol,
-            color = if (enabled) Color.White else Color.White.copy(alpha = 0.28f),
+            modifier = Modifier.graphicsLayer {
+                translationX = nudge
+                scaleX = 1.35f
+                scaleY = 1.35f
+            },
+            color = if (enabled) Color(0xFFFFB000) else Color.White.copy(alpha = 0.28f),
             fontSize = 30.sp,
-            fontWeight = FontWeight.Light
+            fontWeight = FontWeight.Black
         )
     }
 }
@@ -431,9 +461,29 @@ private fun ProductCard(
     modifier: Modifier = Modifier
 ) {
     val isSelected = quantity > 0
+    val pulseScale = remember { Animatable(1f) }
+    val coroutineScope = rememberCoroutineScope()
 
     Card(
-        modifier = modifier.clickable(onClick = onIncrement),
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = pulseScale.value
+                scaleY = pulseScale.value
+            }
+            .clickable {
+                onIncrement()
+                coroutineScope.launch {
+                    pulseScale.snapTo(1f)
+                    pulseScale.animateTo(
+                        targetValue = 0.96f,
+                        animationSpec = tween(80, easing = FastOutSlowInEasing)
+                    )
+                    pulseScale.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(140, easing = FastOutSlowInEasing)
+                    )
+                }
+            },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) Color(0xFFFFF4E5) else Color(0xFFF8FBFF)

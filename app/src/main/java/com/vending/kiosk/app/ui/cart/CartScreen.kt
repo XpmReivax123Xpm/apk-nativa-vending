@@ -1,6 +1,9 @@
 package com.vending.kiosk.app.ui.cart
 
 import android.graphics.Bitmap
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
@@ -33,7 +36,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,11 +52,35 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vending.kiosk.app.domain.cart.CartItem
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import java.util.Locale
 
 private val CART_MINIMUM_LIST_HEIGHT = 180.dp
 private val CART_BASE_LIST_HEIGHT = 360.dp
 private val CART_MAXIMUM_LIST_HEIGHT = 620.dp
+
+private fun snapCartHeight(
+    currentHeightPx: Float,
+    velocity: Float,
+    minimumHeightPx: Float,
+    baseHeightPx: Float,
+    maximumHeightPx: Float
+): Float {
+    val snapPoints = listOf(minimumHeightPx, baseHeightPx, maximumHeightPx)
+    val velocityThresholdPx = 900f
+
+    return when {
+        velocity < -velocityThresholdPx -> {
+            snapPoints.firstOrNull { it > currentHeightPx + 1f } ?: maximumHeightPx
+        }
+        velocity > velocityThresholdPx -> {
+            snapPoints.lastOrNull { it < currentHeightPx - 1f } ?: minimumHeightPx
+        }
+        else -> snapPoints.minByOrNull { abs(it - currentHeightPx) } ?: baseHeightPx
+    }
+}
 
 @Composable
 fun CartScreen(
@@ -76,9 +105,14 @@ fun CartScreen(
     val minimumListHeightPx = with(density) { CART_MINIMUM_LIST_HEIGHT.toPx() }
     val baseListHeightPx = with(density) { CART_BASE_LIST_HEIGHT.toPx() }
     val maximumListHeightPx = with(density) { CART_MAXIMUM_LIST_HEIGHT.toPx() }
-    var listHeightPx by remember(density) {
+    val scope = rememberCoroutineScope()
+    val heightAnimation = remember(density) { Animatable(baseListHeightPx) }
+    var dragHeightPx by remember(density) {
         mutableFloatStateOf(baseListHeightPx)
     }
+    var isDragging by remember { mutableStateOf(false) }
+    var snapJob by remember { mutableStateOf<Job?>(null) }
+    val listHeightPx = if (isDragging) dragHeightPx else heightAnimation.value
     val listHeight = with(density) { listHeightPx.toDp() }
 
     LaunchedEffect(state.items) {
@@ -100,10 +134,37 @@ fun CartScreen(
                 .draggable(
                     orientation = Orientation.Vertical,
                     state = rememberDraggableState { dragAmount ->
-                        listHeightPx = (listHeightPx - dragAmount)
+                        dragHeightPx = (dragHeightPx - dragAmount)
                             .coerceIn(minimumListHeightPx, maximumListHeightPx)
                     },
-                    onDragStarted = { onUserInteraction() }
+                    onDragStarted = {
+                        snapJob?.cancel()
+                        dragHeightPx = heightAnimation.value
+                        isDragging = true
+                        onUserInteraction()
+                    },
+                    onDragStopped = { velocity ->
+                        val currentHeightPx = dragHeightPx
+                        val targetHeightPx = snapCartHeight(
+                            currentHeightPx = currentHeightPx,
+                            velocity = velocity,
+                            minimumHeightPx = minimumListHeightPx,
+                            baseHeightPx = baseListHeightPx,
+                            maximumHeightPx = maximumListHeightPx
+                        )
+                        snapJob = scope.launch {
+                            heightAnimation.snapTo(currentHeightPx)
+                            isDragging = false
+                            heightAnimation.animateTo(
+                                targetValue = targetHeightPx,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                            snapJob = null
+                        }
+                    }
                 ),
             contentAlignment = Alignment.Center
         ) {

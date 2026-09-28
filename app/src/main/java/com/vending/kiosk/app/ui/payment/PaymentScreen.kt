@@ -6,11 +6,14 @@ import android.util.Base64
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -62,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import com.vending.kiosk.app.domain.cart.CartItem
 import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.PaymentMethod
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 @Composable
@@ -82,6 +86,11 @@ fun PaymentScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.48f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { }
+            )
     ) {
         when (state.step) {
             PaymentStep.Qr -> Box(
@@ -185,7 +194,7 @@ private fun DraggableQrPaymentPanel(
             panelOffset = if (isPositionInitialized) {
                 IntOffset(panelOffset.x.coerceIn(0, maxX), panelOffset.y.coerceIn(0, maxY))
             } else {
-                IntOffset(maxX / 2, maxY)
+                IntOffset(maxX / 2, maxY / 2)
             }
             isPositionInitialized = true
         }
@@ -197,22 +206,22 @@ private fun DraggableQrPaymentPanel(
             .onSizeChanged { containerSize = it }
     ) {
         val qrSize = minOf(maxWidth, maxHeight)
-            .times(0.72f)
-            .coerceIn(260.dp, 520.dp)
+            .times(0.80f)
+            .coerceIn(320.dp, 480.dp)
 
         Card(
             modifier = Modifier
                 .offset { panelOffset }
                 .onSizeChanged { panelSize = it }
-                .widthIn(max = 680.dp)
+                .widthIn(max = 560.dp)
                 .fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFF)),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
                 QrDragHandle { dragAmount ->
                     val maxX = (containerSize.width - panelSize.width).coerceAtLeast(0)
@@ -752,7 +761,7 @@ private fun CheckoutSummary(subtotalAmount: Double, totalAmount: Double) {
 }
 
 @Composable
-private fun QrContent(state: PaymentUiState, qrSize: Dp, onCancel: () -> Unit) {
+private fun ColumnScope.QrContent(state: PaymentUiState, qrSize: Dp, onCancel: () -> Unit) {
     val qrBase64 = state.qrOrder?.qrBase64.orEmpty()
     val bitmap = remember(qrBase64) {
         qrBase64.takeIf { it.isNotBlank() }?.let { encoded ->
@@ -764,39 +773,148 @@ private fun QrContent(state: PaymentUiState, qrSize: Dp, onCancel: () -> Unit) {
         }
     }
 
-    PaymentTitle("Pago con QR", "Escanee el código para completar el pago.")
+    Text(
+        text = "Pagar con QR",
+        color = Color(0xFF10184A),
+        fontSize = 32.sp,
+        lineHeight = 36.sp,
+        fontWeight = FontWeight.Black
+    )
+    Text(
+        text = "Escanee el código para completar su pago.",
+        color = Color(0xFF60738C),
+        fontSize = 18.sp,
+        lineHeight = 22.sp
+    )
     Box(
         modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.White, RoundedCornerShape(16.dp)),
+            .align(Alignment.CenterHorizontally)
+            .size(qrSize + 32.dp)
+            .background(Color.White, RoundedCornerShape(22.dp))
+            .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         if (bitmap != null) {
             Image(
                 bitmap = bitmap.asImageBitmap(),
                 contentDescription = "Código QR de pago",
-                modifier = Modifier
-                    .size(qrSize)
-                    .padding(8.dp),
+                modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit
             )
         } else {
-            PaymentStatus("No se pudo mostrar el código QR")
+            PaymentError("No se pudo mostrar el código QR")
         }
     }
-    state.statusMessage?.let { PaymentStatus(it) }
-    state.qrOrder?.expiration?.takeIf { it.isNotBlank() }?.let { expiration ->
-        Text("Expira: $expiration", color = Color(0xFF60738C), style = MaterialTheme.typography.bodyMedium)
+
+    val expirationAtMs = state.qrExpiresAtMs
+    var remainingSeconds by remember(state.qrOrder?.orderId, expirationAtMs) {
+        mutableStateOf(calculateRemainingSeconds(expirationAtMs))
+    }
+    LaunchedEffect(state.qrOrder?.orderId, expirationAtMs) {
+        while (expirationAtMs != null) {
+            remainingSeconds = calculateRemainingSeconds(expirationAtMs)
+            if (remainingSeconds == 0L) break
+            delay(1_000L)
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(30.dp),
+            color = Color(0xFF2F80ED),
+            trackColor = Color(0xFFD9E9FF),
+            strokeWidth = 4.dp
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = if (remainingSeconds == 0L) {
+                "QR vencido. Cancelando pedido..."
+            } else {
+                "Esperando confirmación de pago..."
+            },
+            color = Color(0xFF10184A),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+
+    if (remainingSeconds != null) {
+        Text(
+            text = "Expira en ${formatRemainingTime(remainingSeconds ?: 0L)}",
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF60738C),
+            textAlign = TextAlign.Center,
+            fontSize = 16.sp
+        )
     }
     state.error?.let { PaymentError(it) }
     if (state.isCancellingOrder) PaymentLoading("Cancelando pedido...")
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-        TextButton(
-            onClick = onCancel,
-            enabled = !state.isCancellingOrder
-        ) {
-            Text("CANCELAR", color = Color(0xFF9A3A3A), fontWeight = FontWeight.Bold)
-        }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Color(0xFFE2E7EF))
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "ⓘ",
+            color = Color(0xFF7774B8),
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = "No cierre esta pantalla hasta confirmar el pago.",
+            color = Color(0xFF7774B8),
+            fontSize = 14.sp
+        )
+    }
+
+    OutlinedButton(
+        onClick = onCancel,
+        enabled = !state.isCancellingOrder,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        border = BorderStroke(1.5.dp, Color(0xFFF06A6A)),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Color(0xFFFFF1F1),
+            contentColor = Color(0xFFD92D36)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Icon(
+            painter = painterResource(com.vending.kiosk.R.drawable.ic_close),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.width(10.dp))
+        Text("Cancelar", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+private fun calculateRemainingSeconds(expirationAtMs: Long?): Long? {
+    expirationAtMs ?: return null
+    val remainingMs = expirationAtMs - System.currentTimeMillis()
+    return if (remainingMs <= 0L) 0L else (remainingMs + 999L) / 1_000L
+}
+
+private fun formatRemainingTime(totalSeconds: Long): String {
+    val hours = totalSeconds / 3_600L
+    val minutes = (totalSeconds % 3_600L) / 60L
+    val seconds = totalSeconds % 60L
+    return if (hours > 0L) {
+        String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 }
 

@@ -27,6 +27,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 sealed interface PaymentStep {
     data object Closed : PaymentStep
@@ -56,6 +59,7 @@ data class PaymentUiState(
     val paymentMethods: List<PaymentMethod> = emptyList(),
     val selectedPaymentMethod: PaymentMethod? = null,
     val qrOrder: CreateOrderQrResponse? = null,
+    val qrExpiresAtMs: Long? = null,
     val isLoadingPaymentMethods: Boolean = false,
     val isCreatingQr: Boolean = false,
     val isCancellingOrder: Boolean = false,
@@ -209,14 +213,19 @@ class PaymentViewModel(
             }
             when (result) {
                 is CreateQrResult.Success -> {
+                    val qrExpiresAtMs = resolveQrExpirationMs(
+                        rawExpiration = result.order.expiration,
+                        serverNowMs = result.order.serverNowMs
+                    )
                     _uiState.value = _uiState.value.copy(
                         step = PaymentStep.Qr,
                         qrOrder = result.order,
+                        qrExpiresAtMs = qrExpiresAtMs,
                         isCreatingQr = false,
                         statusMessage = "Esperando confirmacion de pago...",
                         error = null
                     )
-                    startPaymentPolling(result.order.orderId)
+                    startPaymentPolling(result.order.orderId, qrExpiresAtMs)
                 }
 
                 is CreateQrResult.Error -> {
@@ -256,7 +265,7 @@ class PaymentViewModel(
                     if (isUnauthorizedMessage(result.message)) {
                         publishSessionLost()
                     } else {
-                        startPaymentPolling(order.orderId)
+                        startPaymentPolling(order.orderId, _uiState.value.qrExpiresAtMs)
                     }
                 }
             }
@@ -273,11 +282,11 @@ class PaymentViewModel(
         super.onCleared()
     }
 
-    private fun startPaymentPolling(orderId: Int) {
+    private fun startPaymentPolling(orderId: Int, qrExpiresAtMs: Long?) {
         paymentPollingJob?.cancel()
         paymentPollingJob = viewModelScope.launch {
-            val startedAtMs = System.currentTimeMillis()
-            while (isActive && System.currentTimeMillis() - startedAtMs <= PAYMENT_TIMEOUT_MS) {
+            val expiresAtMs = qrExpiresAtMs ?: (System.currentTimeMillis() + PAYMENT_TIMEOUT_MS)
+            while (isActive && System.currentTimeMillis() <= expiresAtMs) {
                 when (val result = withContext(Dispatchers.IO) { fetchPaymentStatusWithSingleRefresh(orderId) }) {
                     PaymentPollResult.Paid -> {
                         val order = _uiState.value.qrOrder ?: return@launch
@@ -318,6 +327,77 @@ class PaymentViewModel(
 
             if (isActive) cancelAfterTimeout(orderId)
         }
+    }
+
+    private fun resolveQrExpirationMs(rawExpiration: String, serverNowMs: Long?): Long {
+        val deviceNowMs = System.currentTimeMillis()
+        val referenceNowMs = serverNowMs ?: deviceNowMs
+        val parsedExpirationMs = parseQrExpirationMs(rawExpiration, referenceNowMs)
+            ?: return deviceNowMs + PAYMENT_TIMEOUT_MS
+
+        val remainingMs = parsedExpirationMs - referenceNowMs
+        return deviceNowMs + remainingMs
+    }
+
+    private fun parseQrExpirationMs(rawExpiration: String, nowMs: Long): Long? {
+        val value = rawExpiration.trim()
+        if (value.isBlank()) return null
+
+        value.toLongOrNull()?.let { numericValue ->
+            return when {
+                numericValue >= 100_000_000_000L -> numericValue
+                numericValue >= 1_000_000_000L -> numericValue * 1_000L
+                numericValue >= 10_000L -> nowMs + numericValue
+                else -> nowMs + (numericValue * 1_000L)
+            }
+        }
+
+        val normalizedValue = value.replace(
+            Regex("\\.(\\d{3})\\d+(?=(Z|[+-]\\d{2}:?\\d{2})?$)"),
+            ".$1"
+        )
+
+        val formats = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+            "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+            "yyyy-MM-dd'T'HH:mm:ssX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm",
+            "dd/MM/yyyy HH:mm:ss",
+            "dd/MM/yyyy HH:mm"
+        )
+
+        formats.forEach { pattern ->
+            runCatching {
+                SimpleDateFormat(pattern, Locale.US).apply {
+                    isLenient = false
+                    if (!pattern.contains('X')) {
+                        timeZone = TimeZone.getTimeZone(BACKEND_TIME_ZONE_ID)
+                    }
+                }.parse(normalizedValue)?.time
+            }.getOrNull()?.let { return it }
+        }
+
+        val durationMatch = Regex("^(\\d{1,3}):(\\d{2})(?::(\\d{2}))?$").matchEntire(normalizedValue)
+        if (durationMatch != null) {
+            val hasHours = durationMatch.groupValues[3].isNotBlank()
+            val hours = if (hasHours) durationMatch.groupValues[1].toLong() else 0L
+            val minutes = if (hasHours) durationMatch.groupValues[2].toLong() else durationMatch.groupValues[1].toLong()
+            val seconds = if (hasHours) {
+                durationMatch.groupValues[3].toLong()
+            } else {
+                durationMatch.groupValues[2].toLong()
+            }
+            return nowMs + ((hours * 3600L + minutes * 60L + seconds) * 1000L)
+        }
+
+        return null
     }
 
     private suspend fun cancelAfterTimeout(orderId: Int) {
@@ -541,6 +621,7 @@ class PaymentViewModel(
         const val PAYMENT_POLL_INTERVAL_MS = 5_000L
         const val PAYMENT_TIMEOUT_MS = 120_000L
         const val PAYMENT_METHODS_CACHE_TTL_MS = 120_000L
+        const val BACKEND_TIME_ZONE_ID = "America/La_Paz"
         const val DEFAULT_CUSTOMER_NAME = "Sin nombre"
         const val DEFAULT_CUSTOMER_PHONE = "9999999"
         const val DEFAULT_CUSTOMER_CI_NIT = "9999999"

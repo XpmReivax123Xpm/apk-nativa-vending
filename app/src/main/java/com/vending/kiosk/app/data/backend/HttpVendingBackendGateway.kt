@@ -242,6 +242,7 @@ class HttpVendingBackendGateway(
             }
 
             val statusCode = connection.responseCode
+            val serverNowMs = connection.date.takeIf { it > 0L }
             val rawBody = runCatching {
                 if (statusCode in 200..299) {
                     connection.inputStream.bufferedReader().use { it.readText() }
@@ -327,6 +328,7 @@ class HttpVendingBackendGateway(
                 orderId = orderId,
                 qrBase64 = qrBase64,
                 expiration = expiration,
+                serverNowMs = serverNowMs,
                 details = extractOrderDetails(values)
             )
         } catch (ex: CreateOrderQrGatewayException) {

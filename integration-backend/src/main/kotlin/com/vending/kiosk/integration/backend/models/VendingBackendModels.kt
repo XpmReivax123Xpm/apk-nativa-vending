@@ -47,7 +47,8 @@ data class CreateOrderQrResponse(
     val orderId: Int,
     val qrBase64: String,
     val expiration: String,
-    val details: List<OrderDetail>
+    val details: List<OrderDetail>,
+    val serverNowMs: Long? = null
 ) {
     data class OrderDetail(
         val orderDetailId: Int,

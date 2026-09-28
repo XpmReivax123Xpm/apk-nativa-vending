@@ -1,5 +1,6 @@
 package com.vending.kiosk.app.ui.payment
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.BorderStroke
@@ -15,13 +16,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,6 +52,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -69,7 +72,9 @@ fun PaymentScreen(
     onReturnToMethodSelection: () -> Unit,
     onConfirmCheckout: () -> Unit,
     onCancel: () -> Unit,
-    onInteraction: () -> Unit
+    onInteraction: () -> Unit,
+    imageCacheVersion: Int = 0,
+    getCachedImageBitmap: (String) -> Bitmap? = { null }
 ) {
     if (state.step == PaymentStep.Closed) return
 
@@ -128,7 +133,9 @@ fun PaymentScreen(
                             onCancel = {
                                 onInteraction()
                                 onCancel()
-                            }
+                            },
+                            imageCacheVersion = imageCacheVersion,
+                            getCachedImageBitmap = getCachedImageBitmap
                         )
 
                         PaymentStep.MethodSelection -> Unit
@@ -146,7 +153,7 @@ private fun PaymentPanel(content: @Composable () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(max = 680.dp),
+            .widthIn(max = 760.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFF)),
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
@@ -384,68 +391,362 @@ private fun CheckoutContent(
     state: PaymentUiState,
     onReturn: () -> Unit,
     onConfirm: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?
 ) {
-    PaymentTitle("Confirmar compra", "Revise su pedido antes de generar el código QR.")
-    Text(
-        text = "Método: ${state.selectedPaymentMethod?.label ?: "No seleccionado"}",
-        color = Color(0xFF17427A),
-        fontWeight = FontWeight.Bold
-    )
-    LazyColumn(modifier = Modifier.height(220.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(state.items, key = { it.planogramCellId }) { item -> CheckoutLine(item) }
-        if (state.items.isEmpty()) {
-            item { PaymentStatus("No hay productos en el pedido") }
-        }
-    }
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Total", color = Color(0xFF17427A), fontWeight = FontWeight.Bold)
+    val subtotalAmount = state.items.sumOf { it.unitPrice * it.quantity }
+    val totalAmount = state.total
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = money(state.total),
-            color = Color(0xFFF59E0B),
-            fontWeight = FontWeight.Black,
-            style = MaterialTheme.typography.titleLarge
+            text = "Confirmar compra",
+            color = Color(0xFF10184A),
+            fontSize = 34.sp,
+            lineHeight = 40.sp,
+            fontWeight = FontWeight.Black
         )
-    }
-    state.error?.let { PaymentError(it) }
-    if (state.isCreatingQr) {
-        PaymentLoading("Generando código QR...")
-    }
-    Button(
-        onClick = onConfirm,
-        enabled = !state.isCreatingQr,
-        modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0E3B86))
-    ) {
-        Text(if (state.isCreatingQr) "GENERANDO..." else "GENERAR QR", fontWeight = FontWeight.Black)
-    }
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = onReturn, enabled = !state.isCreatingQr) {
-            Text("VOLVER", color = Color(0xFF0E3B86), fontWeight = FontWeight.Bold)
+        Text(
+            text = "Revise su pedido antes de generar el código QR.",
+            color = Color(0xFF7C78B6),
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium
+        )
+        CheckoutPaymentMethodCard(
+            methodLabel = state.selectedPaymentMethod?.label ?: "Pago QR"
+        )
+        CheckoutItemsCard(
+            items = state.items,
+            imageCacheVersion = imageCacheVersion,
+            getCachedImageBitmap = getCachedImageBitmap
+        )
+        CheckoutSummary(
+            subtotalAmount = subtotalAmount,
+            totalAmount = totalAmount
+        )
+        state.error?.let { PaymentError(it) }
+        if (state.isCreatingQr) {
+            PaymentLoading("Generando código QR...")
         }
-        TextButton(onClick = onCancel, enabled = !state.isCreatingQr) {
-            Text("CANCELAR", color = Color(0xFF9A3A3A), fontWeight = FontWeight.Bold)
+        Button(
+            onClick = onConfirm,
+            enabled = !state.isCreatingQr,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF3155F5),
+                disabledContainerColor = Color(0xFFAFB9E8)
+            )
+        ) {
+            Icon(
+                painter = painterResource(com.vending.kiosk.R.drawable.ic_qr_payment),
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = if (state.isCreatingQr) "GENERANDO..." else "GENERAR QR",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = onReturn,
+                enabled = !state.isCreatingQr,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                border = BorderStroke(1.dp, Color(0xFF1768C5)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color(0xFF1768C5),
+                    disabledContentColor = Color(0xFFA8B7D1)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    painter = painterResource(com.vending.kiosk.R.drawable.ic_arrow_back),
+                    contentDescription = null,
+                    modifier = Modifier.size(25.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("VOLVER", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(
+                onClick = onCancel,
+                enabled = !state.isCreatingQr,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(56.dp),
+                border = BorderStroke(1.dp, Color(0xFFE33B5B)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color(0xFFFFF1F4),
+                    contentColor = Color(0xFFE33B5B),
+                    disabledContentColor = Color(0xFFC9A9B0),
+                    disabledContainerColor = Color(0xFFFFF7F8)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(
+                    painter = painterResource(com.vending.kiosk.R.drawable.ic_close),
+                    contentDescription = null,
+                    modifier = Modifier.size(25.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("CANCELAR", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
 
 @Composable
-private fun CheckoutLine(item: CartItem) {
+private fun CheckoutPaymentMethodCard(methodLabel: String) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFEAF4FF)),
+        border = BorderStroke(1.dp, Color(0xFFB6D5F5))
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(item.name, color = Color(0xFF17427A), fontWeight = FontWeight.Bold, maxLines = 2)
-                Text("Cantidad: ${item.quantity}", color = Color(0xFF60738C), style = MaterialTheme.typography.bodySmall)
+            Box(
+                modifier = Modifier
+                    .size(86.dp)
+                    .background(Color(0xFFDCEEFF), RoundedCornerShape(100.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(com.vending.kiosk.R.drawable.ic_qr_payment),
+                    contentDescription = "Pago con QR",
+                    modifier = Modifier.size(68.dp)
+                )
             }
-            Text(money(item.unitPrice * item.quantity), color = Color(0xFFF59E0B), fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "Método de pago",
+                    color = Color(0xFF7C78B6),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFD7E8FF), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = methodLabel,
+                        color = Color(0xFF10184A),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckoutItemsCard(
+    items: List<CartItem>,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 92.dp, max = 320.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFC9DEF5))
+    ) {
+        if (items.isEmpty()) {
+            PaymentStatus("No hay productos en el pedido")
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 320.dp)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                itemsIndexed(items, key = { _, item -> item.planogramCellId }) { index, item ->
+                    CheckoutLine(
+                        item = item,
+                        imageCacheVersion = imageCacheVersion,
+                        getCachedImageBitmap = getCachedImageBitmap,
+                        showDivider = index < items.lastIndex
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckoutLine(
+    item: CartItem,
+    imageCacheVersion: Int,
+    getCachedImageBitmap: (String) -> Bitmap?,
+    showDivider: Boolean
+) {
+    val bitmap = remember(item.primaryImageUrl, imageCacheVersion) {
+        getCachedImageBitmap(item.primaryImageUrl)
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CheckoutThumbnail(bitmap = bitmap, label = item.name)
+            Spacer(Modifier.width(10.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
+                Text(
+                    text = item.name,
+                    color = Color(0xFF10184A),
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.cellCode.ifBlank { "Celda ${item.physicalCell}" },
+                    color = Color(0xFF7C78B6),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            CheckoutMetricDivider()
+            CheckoutMetric("Precio unit.", money(item.unitPrice), 88.dp)
+            CheckoutMetricDivider()
+            CheckoutMetric("Cantidad", item.quantity.toString(), 64.dp)
+            CheckoutMetricDivider()
+            CheckoutMetric(
+                label = "Total",
+                value = money(item.unitPrice * item.quantity),
+                width = 88.dp,
+                emphasize = true
+            )
+        }
+        if (showDivider) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0xFFDCE6F5))
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckoutThumbnail(bitmap: Bitmap?, label: String) {
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .background(Color(0xFFEAF2FC), RoundedCornerShape(10.dp)),
+        contentAlignment = Alignment.Center
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = label,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(4.dp),
+                contentScale = ContentScale.Fit
+            )
+        } else {
+            Text("—", color = Color(0xFF7C78B6), fontSize = 20.sp)
+        }
+    }
+}
+
+@Composable
+private fun CheckoutMetricDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(48.dp)
+            .background(Color(0xFFDCE6F5))
+    )
+}
+
+@Composable
+private fun CheckoutMetric(
+    label: String,
+    value: String,
+    width: Dp,
+    emphasize: Boolean = false
+) {
+    Column(
+        modifier = Modifier.width(width),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF7C78B6),
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = value,
+            color = Color(0xFF10184A),
+            fontSize = if (emphasize) 18.sp else 16.sp,
+            fontWeight = if (emphasize) FontWeight.Black else FontWeight.Medium,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun CheckoutSummary(subtotalAmount: Double, totalAmount: Double) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFC9DEF5))
+    ) {
+        Column(modifier = Modifier.padding(6.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Subtotal", color = Color(0xFF7C78B6), fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                Text(money(subtotalAmount), color = Color(0xFF7C78B6), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFFDFF3FF), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Total", color = Color(0xFF10184A), fontSize = 24.sp, fontWeight = FontWeight.Black)
+                Text(money(totalAmount), color = Color(0xFF3155F5), fontSize = 30.sp, fontWeight = FontWeight.Black)
+            }
         }
     }
 }

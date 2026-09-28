@@ -710,7 +710,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onReturnToMethodSelection = paymentViewModel::returnToMethodSelection,
                         onConfirmCheckout = paymentViewModel::confirmCheckout,
                         onCancel = ::cancelPaymentFromCompose,
-                        onInteraction = ::restartPaymentTimeout
+                        onInteraction = ::restartPaymentTimeout,
+                        imageCacheVersion = catalogComposeState.imageCacheVersion,
+                        getCachedImageBitmap = catalogViewModel::getCachedCartImageBitmap
                     )
                 }
 

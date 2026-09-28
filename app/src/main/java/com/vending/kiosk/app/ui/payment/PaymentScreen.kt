@@ -2,6 +2,7 @@ package com.vending.kiosk.app.ui.payment
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -27,8 +28,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,6 +47,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -52,6 +55,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.vending.kiosk.app.domain.cart.CartItem
 import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.PaymentMethod
@@ -73,11 +77,30 @@ fun PaymentScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.48f))
-            .padding(20.dp)
     ) {
         when (state.step) {
-            PaymentStep.Qr -> DraggableQrPaymentPanel(
+            PaymentStep.Qr -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+            ) {
+                DraggableQrPaymentPanel(
+                    state = state,
+                    onCancel = {
+                        onInteraction()
+                        onCancel()
+                    }
+                )
+            }
+
+            PaymentStep.MethodSelection -> PaymentMethodSheet(
                 state = state,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                onMethodSelected = { methodId ->
+                    onInteraction()
+                    onSelectPaymentMethod(methodId)
+                    onContinueToCheckout()
+                },
                 onCancel = {
                     onInteraction()
                     onCancel()
@@ -85,27 +108,13 @@ fun PaymentScreen(
             )
 
             else -> Box(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp),
                 contentAlignment = Alignment.Center
             ) {
                 PaymentPanel {
                     when (state.step) {
-                        PaymentStep.MethodSelection -> MethodSelectionContent(
-                            state = state,
-                            onSelectPaymentMethod = { methodId ->
-                                onInteraction()
-                                onSelectPaymentMethod(methodId)
-                            },
-                            onContinue = {
-                                onInteraction()
-                                onContinueToCheckout()
-                            },
-                            onCancel = {
-                                onInteraction()
-                                onCancel()
-                            }
-                        )
-
                         PaymentStep.Checkout -> CheckoutContent(
                             state = state,
                             onReturn = {
@@ -122,6 +131,7 @@ fun PaymentScreen(
                             }
                         )
 
+                        PaymentStep.MethodSelection -> Unit
                         PaymentStep.Qr, PaymentStep.Closed -> Unit
                         PaymentStep.Completed -> CompletedContent(state, onCancel)
                     }
@@ -235,79 +245,137 @@ private fun QrDragHandle(onDrag: (Offset) -> Unit) {
 }
 
 @Composable
-private fun MethodSelectionContent(
+private fun PaymentMethodSheet(
     state: PaymentUiState,
-    onSelectPaymentMethod: (Int) -> Unit,
-    onContinue: () -> Unit,
-    onCancel: () -> Unit
+    onMethodSelected: (Int) -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    PaymentTitle("Método de pago", "Seleccione cómo desea realizar el pago.")
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = 760.dp),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FBFF)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(64.dp)
+                    .height(6.dp)
+                    .background(Color(0xFFA5A4DC), RoundedCornerShape(3.dp))
+            )
+            Text(
+                text = "Elija el método de pago",
+                modifier = Modifier.fillMaxWidth(),
+                color = Color(0xFF10184A),
+                fontSize = 32.sp,
+                lineHeight = 38.sp,
+                fontWeight = FontWeight.Black
+            )
 
-    when {
-        state.isLoadingPaymentMethods && state.paymentMethods.isEmpty() -> PaymentLoading("Cargando métodos de pago...")
-        state.paymentMethods.isEmpty() -> PaymentStatus(state.error ?: "No hay métodos de pago disponibles")
-        else -> {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                state.paymentMethods.forEach { method ->
-                    PaymentMethodRow(
-                        method = method,
-                        selected = method.id == state.selectedPaymentMethod?.id,
-                        onClick = { onSelectPaymentMethod(method.id) }
-                    )
+            when {
+                state.isLoadingPaymentMethods && state.paymentMethods.isEmpty() -> {
+                    PaymentLoading("Cargando métodos de pago...")
+                }
+
+                state.paymentMethods.isEmpty() -> {
+                    PaymentStatus(state.error ?: "No hay métodos de pago disponibles")
+                }
+
+                else -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        state.paymentMethods.forEach { method ->
+                            PaymentMethodCard(
+                                method = method,
+                                selected = method.id == state.selectedPaymentMethod?.id,
+                                onClick = { onMethodSelected(method.id) }
+                            )
+                        }
+                    }
+                    if (state.isLoadingPaymentMethods) {
+                        PaymentLoading("Actualizando métodos de pago...")
+                    }
                 }
             }
-            if (state.isLoadingPaymentMethods) {
-                PaymentLoading("Actualizando métodos de pago...")
-            }
+
+            if (state.paymentMethods.isNotEmpty()) state.error?.let { PaymentError(it) }
+            PaymentMethodActions(onBack = onCancel)
         }
     }
-
-    if (state.paymentMethods.isNotEmpty()) state.error?.let { PaymentError(it) }
-    MethodSelectionActions(onContinue = onContinue, onCancel = onCancel)
 }
 
 @Composable
-private fun PaymentMethodRow(method: PaymentMethod, selected: Boolean, onClick: () -> Unit) {
+private fun PaymentMethodCard(method: PaymentMethod, selected: Boolean, onClick: () -> Unit) {
+    val isQrMethod = method.label.contains("qr", ignoreCase = true)
+    val borderColor = if (selected) Color(0xFF3B82F6) else Color(0xFFB6D5F5)
+    val containerColor = if (selected) Color(0xFFEAF4FF) else Color.White
+
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) Color(0xFFE2F6FC) else Color.White
-        ),
+        modifier = Modifier
+            .width(280.dp)
+            .height(220.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(if (selected) 2.dp else 1.dp, borderColor),
         onClick = onClick
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically)
         ) {
-            RadioButton(selected = selected, onClick = onClick)
-            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(118.dp)
+                    .background(Color(0xFFE2F1FF), RoundedCornerShape(100.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(com.vending.kiosk.R.drawable.ic_qr_payment),
+                    contentDescription = "Pago con QR",
+                    modifier = Modifier.size(98.dp)
+                )
+            }
             Text(
-                text = method.label,
-                color = Color(0xFF17427A),
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.bodyLarge
+                text = if (isQrMethod) "QR" else method.label,
+                color = Color(0xFF10184A),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black
             )
         }
     }
 }
 
 @Composable
-private fun MethodSelectionActions(onContinue: () -> Unit, onCancel: () -> Unit) {
-    Button(
-        onClick = onContinue,
-        modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0E3B86))
+private fun PaymentMethodActions(onBack: () -> Unit) {
+    OutlinedButton(
+        onClick = onBack,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        border = BorderStroke(1.dp, Color(0xFF1768C5)),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF1768C5)),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Text("CONTINUAR", fontWeight = FontWeight.Black)
-    }
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        TextButton(onClick = onCancel) {
-            Text("VOLVER", color = Color(0xFF0E3B86), fontWeight = FontWeight.Bold)
-        }
-        TextButton(onClick = onCancel) {
-            Text("CANCELAR", color = Color(0xFF9A3A3A), fontWeight = FontWeight.Bold)
-        }
+        Icon(
+            painter = painterResource(com.vending.kiosk.R.drawable.ic_arrow_back),
+            contentDescription = null,
+            modifier = Modifier.size(25.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Text("VOLVER", fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -480,7 +548,7 @@ private fun previewCartItem(index: Int, quantity: Int) = CartItem(
     quantity = quantity
 )
 
-private val previewMethods = listOf(PaymentMethod(1, "Pago QR"), PaymentMethod(2, "Billetera móvil"))
+private val previewMethods = listOf(PaymentMethod(1, "Pago QR"))
 
 @Preview(showBackground = true, widthDp = 540, heightDp = 760)
 @Composable

@@ -219,6 +219,10 @@ fun CartScreen(
                                 onUserInteraction()
                                 onDecrement(item.planogramCellId)
                             },
+                            onRemove = {
+                                onUserInteraction()
+                                onRemove(item.planogramCellId)
+                            },
                             primaryBlue = primaryBlue,
                             imageCacheVersion = imageCacheVersion,
                             getCachedImageBitmap = getCachedImageBitmap
@@ -263,6 +267,7 @@ private fun CartLine(
     item: CartItem,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
+    onRemove: () -> Unit,
     primaryBlue: Color,
     imageCacheVersion: Int,
     getCachedImageBitmap: (String) -> Bitmap?
@@ -345,6 +350,18 @@ private fun CartLine(
                     maxLines = 1
                 )
             }
+            Spacer(Modifier.width(6.dp))
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(
+                    painter = painterResource(com.vending.kiosk.R.drawable.ic_delete),
+                    contentDescription = "Eliminar ${item.name}",
+                    tint = Color(0xFFE33B5B),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
@@ -420,7 +437,7 @@ private fun CartFooter(
                 modifier = Modifier.size(28.dp)
             )
             Spacer(Modifier.width(10.dp))
-            Text("Comprar", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("COMPRAR", fontSize = 22.sp, fontWeight = FontWeight.Bold)
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -442,7 +459,7 @@ private fun CartFooter(
                     modifier = Modifier.size(25.dp)
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Volver", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("VOLVER", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
             OutlinedButton(
                 onClick = onClear,
@@ -465,7 +482,7 @@ private fun CartFooter(
                     modifier = Modifier.size(25.dp)
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Limpiar", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("LIMPIAR", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }

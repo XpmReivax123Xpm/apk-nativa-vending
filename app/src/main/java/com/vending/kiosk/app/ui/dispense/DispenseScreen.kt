@@ -16,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -57,7 +59,11 @@ fun DispenseScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.52f))
-            .clickable { }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { }
+            )
             .padding(20.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -71,8 +77,7 @@ fun DispenseScreen(
                 DispenseSurface.PlatformRecovering -> PlatformRecoveringContent(state)
                 DispenseSurface.Success -> SuccessContent(
                     state = state,
-                    onClose = onSuccessCloseRequested,
-                    onViewRawBitacora = onRawBitacoraRequested
+                    onClose = onSuccessCloseRequested
                 )
                 DispenseSurface.Error -> ErrorContent(
                     error = state.error,
@@ -161,11 +166,41 @@ private fun DispensingContent(state: DispenseUiState) {
 
 @Composable
 private fun RetrieveContent(state: DispenseUiState) {
-    SurfaceTitle(state.retrieveTitle.ifBlank { "RETIRE SU PRODUCTO" })
-    Text(state.retrieveMessage, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
-    if (state.productName.isNotBlank()) {
-        ProductImage(state.productImageSource, state.productName, 160.dp)
-        Text(state.productName, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = state.retrieveTitle.ifBlank { "RETIRE SU PRODUCTO" },
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF0E3B86),
+            fontSize = 34.sp,
+            lineHeight = 40.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = state.retrieveMessage.ifBlank { "Por favor, retire su producto." },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            color = Color(0xFF304D71),
+            fontSize = 20.sp,
+            lineHeight = 26.sp,
+            textAlign = TextAlign.Center
+        )
+        if (state.productName.isNotBlank()) {
+            ProductImage(state.productImageSource, state.productName, 280.dp)
+            Text(
+                text = state.productName,
+                color = Color(0xFF102F63),
+                fontSize = 26.sp,
+                lineHeight = 32.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
@@ -209,20 +244,65 @@ private fun PlatformRecoveringContent(state: DispenseUiState) {
 @Composable
 private fun SuccessContent(
     state: DispenseUiState,
-    onClose: () -> Unit,
-    onViewRawBitacora: () -> Unit
+    onClose: () -> Unit
 ) {
-    SurfaceIcon("✓", Color(0xFF16803C))
-    SurfaceTitle("GRACIAS POR SU COMPRA")
-    StatusText(state.modalMessage.ifBlank { "Dispensado completado correctamente." })
-    state.successSecondsLeft?.let { secondsLeft ->
-        Text("${secondsLeft}s", color = Color(0xFF60738C), fontWeight = FontWeight.Bold)
-    }
-    Button(onClick = onViewRawBitacora, modifier = Modifier.fillMaxWidth()) {
-        Text("Ver bitácora en crudo")
-    }
-    Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
-        Text("CERRAR")
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .background(Color(0xFF12C96B), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "✓",
+                color = Color.White,
+                fontSize = 86.sp,
+                lineHeight = 92.sp,
+                fontWeight = FontWeight.Black
+            )
+        }
+        Text(
+            text = "GRACIAS POR SU\nCOMPRA",
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF0E3B86),
+            fontSize = 34.sp,
+            lineHeight = 40.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = state.modalMessage.ifBlank { "Dispensado completado correctamente." },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            color = Color(0xFF304D71),
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            textAlign = TextAlign.Center
+        )
+        state.successSecondsLeft?.let { secondsLeft ->
+            Text(
+                text = "${secondsLeft}s",
+                color = Color(0xFF60738C),
+                fontSize = 22.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Button(
+            onClick = onClose,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F75E5))
+        ) {
+            Text("CERRAR", fontSize = 20.sp, fontWeight = FontWeight.Black)
+        }
     }
 }
 

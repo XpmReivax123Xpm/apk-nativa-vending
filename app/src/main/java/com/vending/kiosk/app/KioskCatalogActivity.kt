@@ -1351,13 +1351,8 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showRetrieveDialogForCurrentItem() {
-        val currentNumber = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
-        val total = dispensingQueue.size.coerceAtLeast(1)
-        val currentProduct = dispensingQueue.getOrNull(dispensingCursor)?.item?.producto
-            ?.takeIf { it.isNotBlank() }
-            ?: "producto"
-        val title = "Producto listo! $currentNumber de $total"
-        val message = "Por favor, retira tu $currentProduct"
+        val title = "RETIRE SU PRODUCTO"
+        val message = "Por favor, retire su producto."
 
         val currentItem = dispensingQueue.getOrNull(dispensingCursor)?.item
         dispenseViewModel.showRetrieve(

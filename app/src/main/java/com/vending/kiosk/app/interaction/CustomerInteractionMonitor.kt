@@ -13,12 +13,14 @@ class CustomerInteractionMonitor(private val context: Context) {
     private data class PersistenceSnapshot(
         val sessionId: String,
         val logsText: String,
-        val bitacoraText: String
+        val bitacoraText: String,
+        val rawBitacoraText: String
     )
 
     data class SavedArtifacts(
         val logsFile: File,
-        val bitacoraFile: File
+        val bitacoraFile: File,
+        val rawBitacoraFile: File?
     )
 
     private val timeFormat = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
@@ -26,10 +28,12 @@ class CustomerInteractionMonitor(private val context: Context) {
 
     private val logsBuffer = StringBuilder()
     private val bitacoraBuffer = StringBuilder()
+    private val rawBitacoraBuffer = StringBuilder()
     private var sessionId: String? = null
     private var active = false
     private var lastLogsText: String = ""
     private var lastBitacoraText: String = ""
+    private var lastRawBitacoraText: String = ""
     private var lastSavedArtifacts: SavedArtifacts? = null
 
     fun startSession(
@@ -41,6 +45,7 @@ class CustomerInteractionMonitor(private val context: Context) {
         synchronized(lock) {
             logsBuffer.clear()
             bitacoraBuffer.clear()
+            rawBitacoraBuffer.clear()
             sessionId = fileFormat.format(Date())
             active = true
             lastSavedArtifacts = null
@@ -57,6 +62,7 @@ class CustomerInteractionMonitor(private val context: Context) {
             }
             appendBitacoraLocked("SESSION START | maquina=$safeMachine | pedido=$safePedido | metodo=$paymentMethodLabel")
             selectedCellsSummary.forEach { appendBitacoraLocked("ITEM | $it") }
+            appendRawLocked("RAW SESSION START | maquina=$safeMachine | pedido=$safePedido")
         }
     }
 
@@ -74,6 +80,12 @@ class CustomerInteractionMonitor(private val context: Context) {
         }
     }
 
+    fun appendRaw(message: String) {
+        synchronized(lock) {
+            appendRawLocked(message)
+        }
+    }
+
     fun appendBoth(message: String) {
         synchronized(lock) {
             appendBothLocked(message)
@@ -84,11 +96,25 @@ class CustomerInteractionMonitor(private val context: Context) {
 
     fun getCurrentBitacoraText(): String = synchronized(lock) { bitacoraBuffer.toString() }
 
+    fun getCurrentRawBitacoraText(): String = synchronized(lock) { rawBitacoraBuffer.toString() }
+
     fun getLastLogsText(): String = synchronized(lock) { lastLogsText }
 
     fun getLastBitacoraText(): String = synchronized(lock) { lastBitacoraText }
 
-    fun finalizeAndSave(): SavedArtifacts? {
+    fun getLastRawBitacoraText(): String = synchronized(lock) {
+        if (lastRawBitacoraText.isNotBlank()) {
+            lastRawBitacoraText
+        } else {
+            latestRawBitacoraFileLocked()?.runCatching { readText() }?.getOrDefault("").orEmpty()
+        }
+    }
+
+    fun hasSavedRawBitacora(): Boolean = synchronized(lock) {
+        latestRawBitacoraFileLocked() != null
+    }
+
+    fun finalizeAndSave(saveRawBitacora: Boolean = false): SavedArtifacts? {
         val snapshot = synchronized(lock) {
             if (!active) {
                 null
@@ -97,7 +123,8 @@ class CustomerInteractionMonitor(private val context: Context) {
                 PersistenceSnapshot(
                     sessionId = sessionId ?: fileFormat.format(Date()),
                     logsText = logsBuffer.toString(),
-                    bitacoraText = bitacoraBuffer.toString()
+                    bitacoraText = bitacoraBuffer.toString(),
+                    rawBitacoraText = rawBitacoraBuffer.toString()
                 )
             }
         }
@@ -106,17 +133,22 @@ class CustomerInteractionMonitor(private val context: Context) {
             return synchronized(lock) { lastSavedArtifacts }
         }
 
-        val saved = persistCurrentBuffers(snapshot) ?: return null
+        val saved = persistCurrentBuffers(snapshot, saveRawBitacora) ?: return null
         synchronized(lock) {
             lastLogsText = snapshot.logsText
             lastBitacoraText = snapshot.bitacoraText
+            lastRawBitacoraText = snapshot.rawBitacoraText
             lastSavedArtifacts = saved
             active = false
+            rawBitacoraBuffer.clear()
         }
         return saved
     }
 
-    private fun persistCurrentBuffers(snapshot: PersistenceSnapshot): SavedArtifacts? {
+    private fun persistCurrentBuffers(
+        snapshot: PersistenceSnapshot,
+        saveRawBitacora: Boolean
+    ): SavedArtifacts? {
         return try {
             val baseDir = getBaseDir()
             if (!baseDir.exists()) baseDir.mkdirs()
@@ -126,7 +158,22 @@ class CustomerInteractionMonitor(private val context: Context) {
 
             logsFile.writeText(snapshot.logsText)
             bitacoraFile.writeText(snapshot.bitacoraText)
-            SavedArtifacts(logsFile = logsFile, bitacoraFile = bitacoraFile)
+            val rawBitacoraFile = if (saveRawBitacora) {
+                snapshot.rawBitacoraText
+                    .takeIf { it.isNotBlank() }
+                    ?.let {
+                        File(baseDir, "bitacora cruda_${snapshot.sessionId}.txt").also { file ->
+                            file.writeText(it)
+                        }
+                    }
+            } else {
+                null
+            }
+            SavedArtifacts(
+                logsFile = logsFile,
+                bitacoraFile = bitacoraFile,
+                rawBitacoraFile = rawBitacoraFile
+            )
         } catch (_: Exception) {
             null
         }
@@ -147,6 +194,11 @@ class CustomerInteractionMonitor(private val context: Context) {
         bitacoraBuffer.append("${timestampLocked()} | $message\n")
     }
 
+    private fun appendRawLocked(message: String) {
+        if (!active) return
+        rawBitacoraBuffer.append("${timestampLocked()} | $message\n")
+    }
+
     private fun appendBothLocked(message: String) {
         if (!active) return
         appendLogLocked(message)
@@ -154,5 +206,17 @@ class CustomerInteractionMonitor(private val context: Context) {
     }
 
     private fun timestampLocked(): String = timeFormat.format(Date())
+
+    private fun latestRawBitacoraFileLocked(): File? {
+        val baseDir = getBaseDir()
+        return baseDir.listFiles()
+            ?.asSequence()
+            ?.filter { file ->
+                file.isFile &&
+                    file.name.startsWith("bitacora cruda_") &&
+                    file.name.endsWith(".txt")
+            }
+            ?.maxByOrNull(File::lastModified)
+    }
 }
 

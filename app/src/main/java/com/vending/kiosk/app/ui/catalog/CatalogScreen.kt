@@ -90,7 +90,8 @@ fun CatalogScreen(
     onPayClick: () -> Unit = {},
     imageCacheVersion: Int = 0,
     getCachedImageBitmap: (String) -> Bitmap? = { null },
-    onCatalogPageChanged: (Int) -> Unit = {}
+    onCatalogPageChanged: (Int) -> Unit = {},
+    hasSavedRawBitacora: Boolean = false
 ) {
     val primaryBlue = Color(0xFF0E3B86)
     val backgroundBlue = Color(0xFF071D3B)
@@ -113,7 +114,8 @@ fun CatalogScreen(
             CatalogHeader(
                 machineCode = state.machineCode,
                 machineLocation = state.machineLocation,
-                cyan = cyan
+                cyan = cyan,
+                hasSavedRawBitacora = hasSavedRawBitacora
             )
 
             Box(modifier = Modifier.weight(1f)) {
@@ -146,7 +148,29 @@ fun CatalogScreen(
 }
 
 @Composable
-private fun CatalogHeader(machineCode: String, machineLocation: String, cyan: Color) {
+private fun CatalogHeader(
+    machineCode: String,
+    machineLocation: String,
+    cyan: Color,
+    hasSavedRawBitacora: Boolean
+) {
+    val blinkAlpha = if (hasSavedRawBitacora) {
+        val transition = rememberInfiniteTransition(label = "rawBitacoraAlert")
+        val alpha by transition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.35f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(550),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "rawBitacoraAlertAlpha"
+        )
+        alpha
+    } else {
+        1f
+    }
+    val machineLabel = if (hasSavedRawBitacora) "● $machineCode" else machineCode
+
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xCC1E4FA9))
@@ -159,9 +183,13 @@ private fun CatalogHeader(machineCode: String, machineLocation: String, cyan: Co
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = machineCode,
+                text = machineLabel,
                 modifier = Modifier.weight(1f),
-                color = cyan,
+                color = if (hasSavedRawBitacora) {
+                    Color(0xFFFF3B30).copy(alpha = blinkAlpha)
+                } else {
+                    cyan
+                },
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black
             )

@@ -102,6 +102,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var cartComposeState by mutableStateOf(CartUiState())
     private var paymentComposeState by mutableStateOf(PaymentUiState())
     private var dispenseComposeState by mutableStateOf(DispenseUiState())
+    private var hasSavedRawBitacora by mutableStateOf(false)
     private var screenInitialized = false
     private var cartTimeoutTimer: CountDownTimer? = null
     private var paymentTimeoutTimer: CountDownTimer? = null
@@ -115,6 +116,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var btnKioskBackToMain: Button? = null
     private var btnKioskViewLogs: Button? = null
     private var btnKioskViewBitacora: Button? = null
+    private var btnKioskViewRawBitacora: Button? = null
     private var btnDisableAutoResumeKiosk: Button? = null
     private var kioskUnlockedByPin = false
 
@@ -146,6 +148,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private val serialListener = object : SerialManager.Listener {
         override fun onRx(data: ByteArray, size: Int) {
             val rx = HexUtil.bytesToHex(data, size).replace(" ", "").uppercase()
+            interactionMonitor.appendRaw("RX_RAW size=$size | $rx")
             interactionMonitor.appendBitacora("RX: $rx")
             if (::vendFlow.isInitialized) {
                 vendFlow.onRx(data, size)
@@ -153,6 +156,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         override fun onError(e: Exception) {
+            interactionMonitor.appendRaw("SERIAL_ERROR: ${e.message ?: e.javaClass.simpleName}")
             if (dispensingInProgress) {
                 runOnUiThread {
                     onDispenseError("Error serial: ${e.message ?: "sin detalle"}", "DRIVER_0000")
@@ -161,6 +165,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
 
         override fun onStatus(msg: String) {
+            interactionMonitor.appendRaw("SERIAL_STATUS: $msg")
             interactionMonitor.appendBitacora(msg)
             if (dispensingInProgress && msg.startsWith("TX:")) {
                 runOnUiThread {
@@ -254,7 +259,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnKioskBackToMain = findViewById(R.id.btnKioskBackToMain)
         btnKioskViewLogs = findViewById(R.id.btnKioskViewLogs)
         btnKioskViewBitacora = findViewById(R.id.btnKioskViewBitacora)
+        btnKioskViewRawBitacora = findViewById(R.id.btnKioskViewRawBitacora)
         screenRootView = (findViewById<View>(android.R.id.content) as ViewGroup).getChildAt(0)
+        hasSavedRawBitacora = interactionMonitor.hasSavedRawBitacora()
         setupDispenseRuntime()
         setupBackToMainButton()
         setupMonitoringButtons()
@@ -400,6 +407,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         btnKioskBackToMain?.visibility = visibility
         btnKioskViewLogs?.visibility = visibility
         btnKioskViewBitacora?.visibility = visibility
+        btnKioskViewRawBitacora?.visibility = visibility
         btnDisableAutoResumeKiosk?.visibility = visibility
     }
 
@@ -431,6 +439,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                 onShown = ::onModalShown,
                 onDismissed = ::onModalDismissed
             )
+        }
+        btnKioskViewRawBitacora?.setOnClickListener {
+            showDispenseRawBitacora()
         }
     }
 
@@ -649,6 +660,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             Box(modifier = Modifier.fillMaxSize()) {
                 CatalogScreen(
                     state = catalogComposeState,
+                    hasSavedRawBitacora = hasSavedRawBitacora,
                     cartQuantities = cartComposeState.items.associate { it.planogramCellId to it.quantity },
                     cartTotalUnits = cartComposeState.totalUnits,
                     cartTotalAmount = cartComposeState.totalAmount,
@@ -724,6 +736,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onSuccessCloseRequested = ::closeDispenseSuccessSurface,
                         onErrorViewLogsRequested = ::showDispenseErrorLogs,
                         onErrorViewBitacoraRequested = ::showDispenseErrorBitacora,
+                        onRawBitacoraRequested = ::showDispenseRawBitacora,
                         onErrorSaveMonitoringRequested = ::saveDispenseErrorMonitoring
                     )
                 }
@@ -1170,8 +1183,19 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
         dispensingInProgress = false
         runCatching { vendFlow.stop() }
+        if (isTerminalDispenseTimeout(errorCode)) {
+            interactionMonitor.appendRaw("TIMEOUT_TRIGGERED | code=$errorCode | message=$message")
+            val saved = interactionMonitor.finalizeAndSave(saveRawBitacora = true)
+            if (saved?.rawBitacoraFile != null) {
+                hasSavedRawBitacora = true
+            }
+        }
         stopDispenseSuccessCountdown()
         showDispenseError(message, errorCode)
+    }
+
+    private fun isTerminalDispenseTimeout(errorCode: String): Boolean {
+        return errorCode.contains("TIMEOUT", ignoreCase = true) && errorCode != "IO_TIMEOUT"
     }
 
     private fun onDispenseFinished() {
@@ -1356,6 +1380,32 @@ class KioskCatalogActivity : AppCompatActivity() {
                     interactionMonitor.getCurrentBitacoraText()
                 } else {
                     interactionMonitor.getLastBitacoraText()
+                }
+            },
+            onShown = ::onModalShown,
+            onDismissed = ::onModalDismissed
+        )
+    }
+
+    private fun showDispenseRawBitacora() {
+        val isLive = interactionMonitor.isActive()
+        val text = if (isLive) {
+            interactionMonitor.getCurrentRawBitacoraText()
+        } else {
+            interactionMonitor.getLastRawBitacoraText()
+        }
+        if (text.isBlank()) {
+            Toast.makeText(this, "Aun no hay captura cruda disponible.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        monitoringViewerController.show(
+            title = if (isLive) "Bitacora en crudo - en vivo" else "Bitacora en crudo - ultima captura",
+            live = isLive,
+            contentProvider = {
+                if (interactionMonitor.isActive()) {
+                    interactionMonitor.getCurrentRawBitacoraText()
+                } else {
+                    interactionMonitor.getLastRawBitacoraText()
                 }
             },
             onShown = ::onModalShown,

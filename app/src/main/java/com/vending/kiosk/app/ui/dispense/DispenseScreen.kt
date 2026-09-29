@@ -47,6 +47,7 @@ fun DispenseScreen(
     onSuccessCloseRequested: () -> Unit,
     onErrorViewLogsRequested: () -> Unit,
     onErrorViewBitacoraRequested: () -> Unit,
+    onRawBitacoraRequested: () -> Unit,
     onErrorSaveMonitoringRequested: () -> Unit
 ) {
     if (state.surface == DispenseSurface.Hidden) return
@@ -61,17 +62,22 @@ fun DispenseScreen(
     ) {
         DispensePanel(scrollable = state.surface == DispenseSurface.Error) {
             when (state.surface) {
-                DispenseSurface.Dispensing -> DispensingContent(state)
+                DispenseSurface.Dispensing -> DispensingContent(state, onRawBitacoraRequested)
                 DispenseSurface.Retrieve -> RetrieveContent(state)
                 DispenseSurface.IoTimeout -> IoTimeoutContent(state)
                 DispenseSurface.ProlongedWait -> ProlongedWaitContent(state, onManualPickupRetry)
                 DispenseSurface.PlatformStuck -> PlatformStuckContent(state, onPlatformRecoveryRequested)
                 DispenseSurface.PlatformRecovering -> PlatformRecoveringContent(state)
-                DispenseSurface.Success -> SuccessContent(state, onSuccessCloseRequested)
+                DispenseSurface.Success -> SuccessContent(
+                    state = state,
+                    onClose = onSuccessCloseRequested,
+                    onViewRawBitacora = onRawBitacoraRequested
+                )
                 DispenseSurface.Error -> ErrorContent(
                     error = state.error,
                     onViewLogs = onErrorViewLogsRequested,
                     onViewBitacora = onErrorViewBitacoraRequested,
+                    onViewRawBitacora = onRawBitacoraRequested,
                     onSaveMonitoring = onErrorSaveMonitoringRequested
                 )
                 DispenseSurface.Hidden -> Unit
@@ -101,7 +107,7 @@ private fun DispensePanel(scrollable: Boolean, content: @Composable () -> Unit) 
 }
 
 @Composable
-private fun DispensingContent(state: DispenseUiState) {
+private fun DispensingContent(state: DispenseUiState, onViewRawBitacora: () -> Unit) {
     SurfaceTitle("DISPENSANDO...")
     Text(
         text = "${state.currentIndex} de ${state.totalItems}",
@@ -112,6 +118,9 @@ private fun DispensingContent(state: DispenseUiState) {
     ProductImage(state.productImageSource, state.productName, 240.dp)
     Text(state.productName.ifBlank { "Producto" }, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
     StatusText(state.statusText)
+    Button(onClick = onViewRawBitacora, modifier = Modifier.fillMaxWidth()) {
+        Text("Bitácora en crudo")
+    }
 }
 
 @Composable
@@ -162,14 +171,21 @@ private fun PlatformRecoveringContent(state: DispenseUiState) {
 }
 
 @Composable
-private fun SuccessContent(state: DispenseUiState, onSuccessCloseRequested: () -> Unit) {
+private fun SuccessContent(
+    state: DispenseUiState,
+    onClose: () -> Unit,
+    onViewRawBitacora: () -> Unit
+) {
     SurfaceIcon("✓", Color(0xFF16803C))
     SurfaceTitle("GRACIAS POR SU COMPRA")
     StatusText(state.modalMessage.ifBlank { "Dispensado completado correctamente." })
     state.successSecondsLeft?.let { secondsLeft ->
         Text("${secondsLeft}s", color = Color(0xFF60738C), fontWeight = FontWeight.Bold)
     }
-    Button(onClick = onSuccessCloseRequested, modifier = Modifier.fillMaxWidth()) {
+    Button(onClick = onViewRawBitacora, modifier = Modifier.fillMaxWidth()) {
+        Text("Ver bitácora en crudo")
+    }
+    Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
         Text("CERRAR")
     }
 }
@@ -179,6 +195,7 @@ private fun ErrorContent(
     error: DispenseErrorUi?,
     onViewLogs: () -> Unit,
     onViewBitacora: () -> Unit,
+    onViewRawBitacora: () -> Unit,
     onSaveMonitoring: () -> Unit
 ) {
     val displayError = error ?: DispenseErrorUi("No se pudo completar la dispensacion.")
@@ -191,6 +208,7 @@ private fun ErrorContent(
     ProductSection("Productos en Revisión:", displayError.reviewProducts)
     Button(onClick = onViewLogs, modifier = Modifier.fillMaxWidth()) { Text("Ver logs") }
     Button(onClick = onViewBitacora, modifier = Modifier.fillMaxWidth()) { Text("Ver bitácora") }
+    Button(onClick = onViewRawBitacora, modifier = Modifier.fillMaxWidth()) { Text("Bitácora en crudo") }
     Button(
         onClick = onSaveMonitoring,
         modifier = Modifier.fillMaxWidth(),
@@ -308,5 +326,5 @@ private fun ErrorPreview() = PreviewScreen(DispenseUiState(DispenseSurface.Error
 
 @Composable
 private fun PreviewScreen(state: DispenseUiState) {
-    DispenseScreen(state, {}, {}, {}, {}, {}, {})
+    DispenseScreen(state, {}, {}, {}, {}, {}, {}, {})
 }

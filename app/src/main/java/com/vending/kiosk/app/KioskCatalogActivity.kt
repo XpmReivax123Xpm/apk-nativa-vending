@@ -855,7 +855,10 @@ class KioskCatalogActivity : AppCompatActivity() {
         val snapshot = cartViewModel.uiState.value.items.map { it.copy() }
         if (snapshot.isEmpty()) return
         cartViewModel.closeCart()
-        paymentViewModel.startPayment(snapshot)
+        paymentViewModel.startPayment(
+            items = snapshot,
+            allowDispenseTest = kioskUnlockedByPin
+        )
     }
 
     private fun refreshCatalogAndClearCart() {
@@ -914,6 +917,9 @@ class KioskCatalogActivity : AppCompatActivity() {
                 paymentViewModel.events.collect { event ->
                     when (event) {
                         is PaymentEvent.Terminal -> handlePaymentTerminal(event.result)
+                        is PaymentEvent.DispenseTestRequested -> {
+                            showTestDispenseAndStart(event.items, event.paymentMethodLabel)
+                        }
                         PaymentEvent.RefreshCatalogRequested -> {
                             paymentViewModel.closePayment()
                             refreshCatalogAndClearCart()
@@ -1004,7 +1010,35 @@ class KioskCatalogActivity : AppCompatActivity() {
         qrResult: CreateOrderQrResponse,
         paymentMethodLabel: String
     ) {
-        val queue = when (val result = buildDispenseQueue(selections, qrResult.details)) {
+        startDispenseForSelections(
+            selections = selections,
+            orderDetails = qrResult.details,
+            orderId = qrResult.orderId,
+            paymentMethodLabel = paymentMethodLabel
+        )
+    }
+
+    private fun showTestDispenseAndStart(
+        items: List<CartItem>,
+        paymentMethodLabel: String
+    ) {
+        val selections = items.toPurchaseSelections()
+        if (selections.isEmpty()) return
+        startDispenseForSelections(
+            selections = selections,
+            orderDetails = emptyList(),
+            orderId = 0,
+            paymentMethodLabel = paymentMethodLabel
+        )
+    }
+
+    private fun startDispenseForSelections(
+        selections: List<PurchaseSelection>,
+        orderDetails: List<CreateOrderQrResponse.OrderDetail>,
+        orderId: Int,
+        paymentMethodLabel: String
+    ) {
+        val queue = when (val result = buildDispenseQueue(selections, orderDetails)) {
             is DispenseQueueBuildResult.InvalidCell -> {
                 Toast.makeText(this, "No se pudo mapear la celda ${result.cellCode}", Toast.LENGTH_LONG).show()
                 return
@@ -1027,17 +1061,20 @@ class KioskCatalogActivity : AppCompatActivity() {
         dispensingCursor = 0
         dispensingInProgress = true
         clearCartOnDispenseFinish = true
-        activeDispensePedidoId = qrResult.orderId
+        activeDispensePedidoId = orderId
 
         interactionMonitor.startSession(
             machineCode = machineCode,
-            pedidoId = qrResult.orderId,
+            pedidoId = orderId,
             paymentMethodLabel = paymentMethodLabel,
             selectedCellsSummary = selections.map {
                 "${it.item.codigoCelda} - ${it.item.producto} x${it.quantity}"
             }
         )
         interactionMonitor.appendBoth("Dispensacion iniciada para ${dispensingQueue.size} item(s)")
+        if (orderId <= 0) {
+            interactionMonitor.appendBoth("Modo dispensacion de prueba: sin pedido backend ni QR")
+        }
 
         val firstItem = dispensingQueue.firstOrNull()
         dispenseViewModel.showDispensing(

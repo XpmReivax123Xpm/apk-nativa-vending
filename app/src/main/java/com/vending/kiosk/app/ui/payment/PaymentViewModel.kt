@@ -48,6 +48,10 @@ sealed interface PaymentTerminalResult {
 
 sealed interface PaymentEvent {
     data class Terminal(val result: PaymentTerminalResult) : PaymentEvent
+    data class DispenseTestRequested(
+        val items: List<CartItem>,
+        val paymentMethodLabel: String
+    ) : PaymentEvent
     data object SessionLost : PaymentEvent
     data object RefreshCatalogRequested : PaymentEvent
 }
@@ -57,6 +61,7 @@ data class PaymentUiState(
     val items: List<CartItem> = emptyList(),
     val total: Double = 0.0,
     val paymentMethods: List<PaymentMethod> = emptyList(),
+    val allowDispenseTest: Boolean = false,
     val selectedPaymentMethod: PaymentMethod? = null,
     val qrOrder: CreateOrderQrResponse? = null,
     val qrExpiresAtMs: Long? = null,
@@ -87,7 +92,7 @@ class PaymentViewModel(
     private var paymentMethodsLoadJob: Job? = null
     private var paymentPollingJob: Job? = null
 
-    fun startPayment(items: List<CartItem>) {
+    fun startPayment(items: List<CartItem>, allowDispenseTest: Boolean = false) {
         if (items.isEmpty()) return
 
         paymentPollingJob?.cancel()
@@ -95,7 +100,9 @@ class PaymentViewModel(
         _uiState.value = PaymentUiState(
             step = PaymentStep.MethodSelection,
             items = snapshot,
-            total = snapshot.sumOf { it.unitPrice * it.quantity }
+            total = snapshot.sumOf { it.unitPrice * it.quantity },
+            paymentMethods = if (allowDispenseTest) listOf(dispenseTestPaymentMethod) else emptyList(),
+            allowDispenseTest = allowDispenseTest
         )
         loadPaymentMethods()
     }
@@ -108,7 +115,10 @@ class PaymentViewModel(
         if (!forceRefresh && cachedPaymentMethods.isNotEmpty() &&
             now - cachedPaymentMethodsAtMs < PAYMENT_METHODS_CACHE_TTL_MS
         ) {
-            _uiState.value = state.copy(paymentMethods = cachedPaymentMethods, error = null)
+            _uiState.value = state.copy(
+                paymentMethods = withDispenseTestMethod(cachedPaymentMethods, state.allowDispenseTest),
+                error = null
+            )
             return
         }
 
@@ -122,7 +132,10 @@ class PaymentViewModel(
                     cachedPaymentMethodsAtMs = System.currentTimeMillis()
                     if (_uiState.value.step == PaymentStep.MethodSelection) {
                         _uiState.value = _uiState.value.copy(
-                            paymentMethods = result.methods,
+                            paymentMethods = withDispenseTestMethod(
+                                result.methods,
+                                _uiState.value.allowDispenseTest
+                            ),
                             isLoadingPaymentMethods = false,
                             error = null
                         )
@@ -155,7 +168,10 @@ class PaymentViewModel(
                     cachedPaymentMethodsAtMs = System.currentTimeMillis()
                     if (_uiState.value.step == PaymentStep.MethodSelection) {
                         _uiState.value = _uiState.value.copy(
-                            paymentMethods = result.methods,
+                            paymentMethods = withDispenseTestMethod(
+                                result.methods,
+                                _uiState.value.allowDispenseTest
+                            ),
                             isLoadingPaymentMethods = false,
                             error = null
                         )
@@ -205,6 +221,19 @@ class PaymentViewModel(
         val state = _uiState.value
         val method = state.selectedPaymentMethod ?: return
         if (state.step != PaymentStep.Checkout || state.items.isEmpty() || state.isCreatingQr) return
+
+        if (method.isDispenseTest) {
+            paymentPollingJob?.cancel()
+            val testItems = state.items.map { it.copy() }
+            _uiState.value = PaymentUiState()
+            _events.tryEmit(
+                PaymentEvent.DispenseTestRequested(
+                    items = testItems,
+                    paymentMethodLabel = method.label
+                )
+            )
+            return
+        }
 
         _uiState.value = state.copy(isCreatingQr = true, error = null)
         viewModelScope.launch {
@@ -584,6 +613,14 @@ class PaymentViewModel(
         _events.tryEmit(PaymentEvent.SessionLost)
     }
 
+    private fun withDispenseTestMethod(
+        methods: List<PaymentMethod>,
+        enabled: Boolean
+    ): List<PaymentMethod> {
+        if (!enabled || methods.any { it.isDispenseTest }) return methods
+        return methods + dispenseTestPaymentMethod
+    }
+
     private fun isUnauthorizedMessage(message: String): Boolean =
         message.contains("HTTP 401", ignoreCase = true)
 
@@ -618,6 +655,11 @@ class PaymentViewModel(
     }
 
     private companion object {
+        val dispenseTestPaymentMethod = PaymentMethod(
+            id = -1,
+            label = "Dispensación de prueba",
+            isDispenseTest = true
+        )
         const val PAYMENT_POLL_INTERVAL_MS = 5_000L
         const val PAYMENT_TIMEOUT_MS = 120_000L
         const val PAYMENT_METHODS_CACHE_TTL_MS = 120_000L

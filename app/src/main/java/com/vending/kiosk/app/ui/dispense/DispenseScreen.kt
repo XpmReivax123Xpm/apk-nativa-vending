@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.io.File
 
 @Composable
@@ -62,7 +63,7 @@ fun DispenseScreen(
     ) {
         DispensePanel(scrollable = state.surface == DispenseSurface.Error) {
             when (state.surface) {
-                DispenseSurface.Dispensing -> DispensingContent(state, onRawBitacoraRequested)
+                DispenseSurface.Dispensing -> DispensingContent(state)
                 DispenseSurface.Retrieve -> RetrieveContent(state)
                 DispenseSurface.IoTimeout -> IoTimeoutContent(state)
                 DispenseSurface.ProlongedWait -> ProlongedWaitContent(state, onManualPickupRetry)
@@ -107,19 +108,54 @@ private fun DispensePanel(scrollable: Boolean, content: @Composable () -> Unit) 
 }
 
 @Composable
-private fun DispensingContent(state: DispenseUiState, onViewRawBitacora: () -> Unit) {
-    SurfaceTitle("DISPENSANDO...")
-    Text(
-        text = "${state.currentIndex} de ${state.totalItems}",
-        color = Color(0xFF17427A),
-        fontWeight = FontWeight.Bold,
-        style = MaterialTheme.typography.titleLarge
-    )
-    ProductImage(state.productImageSource, state.productName, 240.dp)
-    Text(state.productName.ifBlank { "Producto" }, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-    StatusText(state.statusText)
-    Button(onClick = onViewRawBitacora, modifier = Modifier.fillMaxWidth()) {
-        Text("Bitácora en crudo")
+private fun DispensingContent(state: DispenseUiState) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "DISPENSANDO...",
+            modifier = Modifier.fillMaxWidth(),
+            color = Color(0xFF0E3B86),
+            fontSize = 34.sp,
+            lineHeight = 40.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center
+        )
+        Box(
+            modifier = Modifier
+                .background(Color(0xFFD9ECFF), RoundedCornerShape(percent = 50))
+                .padding(horizontal = 28.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = "${state.currentIndex} de ${state.totalItems}",
+                color = Color(0xFF17427A),
+                fontSize = 22.sp,
+                lineHeight = 26.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+        }
+        ProductImage(state.productImageSource, state.productName, 280.dp)
+        Text(
+            text = state.productName.ifBlank { "Producto" },
+            color = Color(0xFF102F63),
+            fontSize = 26.sp,
+            lineHeight = 32.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = state.statusText.ifBlank { "Espere un momento, por favor..." },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            color = Color(0xFF304D71),
+            fontSize = 20.sp,
+            lineHeight = 26.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

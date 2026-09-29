@@ -25,7 +25,8 @@ data class CatalogResponse(
 
 data class PaymentMethod(
     val id: Int,
-    val label: String
+    val label: String,
+    val isDispenseTest: Boolean = false
 )
 
 data class CreateOrderQrRequest(

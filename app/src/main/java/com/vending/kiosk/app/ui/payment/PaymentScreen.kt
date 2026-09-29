@@ -332,9 +332,14 @@ private fun PaymentMethodSheet(
 
 @Composable
 private fun PaymentMethodCard(method: PaymentMethod, selected: Boolean, onClick: () -> Unit) {
-    val isQrMethod = method.label.contains("qr", ignoreCase = true)
+    val isQrMethod = !method.isDispenseTest && method.label.contains("qr", ignoreCase = true)
     val borderColor = if (selected) Color(0xFF3B82F6) else Color(0xFFB6D5F5)
     val containerColor = if (selected) Color(0xFFEAF4FF) else Color.White
+    val iconResource = if (method.isDispenseTest) {
+        com.vending.kiosk.R.drawable.ic_shopping_cart
+    } else {
+        com.vending.kiosk.R.drawable.ic_qr_payment
+    }
 
     Card(
         modifier = Modifier
@@ -359,16 +364,24 @@ private fun PaymentMethodCard(method: PaymentMethod, selected: Boolean, onClick:
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(com.vending.kiosk.R.drawable.ic_qr_payment),
-                    contentDescription = "Pago con QR",
-                    modifier = Modifier.size(98.dp)
+                    painter = painterResource(iconResource),
+                    contentDescription = if (method.isDispenseTest) {
+                        "Dispensación de prueba"
+                    } else {
+                        "Pago con QR"
+                    },
+                    modifier = Modifier.size(if (method.isDispenseTest) 78.dp else 98.dp)
                 )
             }
             Text(
                 text = if (isQrMethod) "QR" else method.label,
                 color = Color(0xFF10184A),
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Black
+                fontSize = if (method.isDispenseTest) 19.sp else 22.sp,
+                lineHeight = if (method.isDispenseTest) 23.sp else 26.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -406,6 +419,7 @@ private fun CheckoutContent(
 ) {
     val subtotalAmount = state.items.sumOf { it.unitPrice * it.quantity }
     val totalAmount = state.total
+    val isDispenseTest = state.selectedPaymentMethod?.isDispenseTest == true
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -416,13 +430,17 @@ private fun CheckoutContent(
             fontWeight = FontWeight.Black
         )
         Text(
-            text = "Revise su pedido antes de generar el código QR.",
+            text = if (isDispenseTest) {
+                "Revise su pedido antes de iniciar la dispensación de prueba."
+            } else {
+                "Revise su pedido antes de generar el código QR."
+            },
             color = Color(0xFF7C78B6),
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium
         )
         CheckoutPaymentMethodCard(
-            methodLabel = state.selectedPaymentMethod?.label ?: "Pago QR"
+            method = state.selectedPaymentMethod
         )
         CheckoutItemsCard(
             items = state.items,
@@ -450,14 +468,28 @@ private fun CheckoutContent(
             )
         ) {
             Icon(
-                painter = painterResource(com.vending.kiosk.R.drawable.ic_qr_payment),
-                contentDescription = null,
+                painter = painterResource(
+                    if (isDispenseTest) {
+                        com.vending.kiosk.R.drawable.ic_shopping_cart
+                    } else {
+                        com.vending.kiosk.R.drawable.ic_qr_payment
+                    }
+                ),
+                contentDescription = if (isDispenseTest) {
+                    "Iniciar dispensación de prueba"
+                } else {
+                    null
+                },
                 tint = Color.White,
                 modifier = Modifier.size(28.dp)
             )
             Spacer(Modifier.width(10.dp))
             Text(
-                text = if (state.isCreatingQr) "GENERANDO..." else "GENERAR QR",
+                text = when {
+                    state.isCreatingQr -> "GENERANDO..."
+                    isDispenseTest -> "INICIAR DISPENSACIÓN"
+                    else -> "GENERAR QR"
+                },
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Black
             )
@@ -516,7 +548,14 @@ private fun CheckoutContent(
 }
 
 @Composable
-private fun CheckoutPaymentMethodCard(methodLabel: String) {
+private fun CheckoutPaymentMethodCard(method: PaymentMethod?) {
+    val isDispenseTest = method?.isDispenseTest == true
+    val iconResource = if (isDispenseTest) {
+        com.vending.kiosk.R.drawable.ic_shopping_cart
+    } else {
+        com.vending.kiosk.R.drawable.ic_qr_payment
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -534,9 +573,13 @@ private fun CheckoutPaymentMethodCard(methodLabel: String) {
                 contentAlignment = Alignment.Center
             ) {
                 Image(
-                    painter = painterResource(com.vending.kiosk.R.drawable.ic_qr_payment),
-                    contentDescription = "Pago con QR",
-                    modifier = Modifier.size(68.dp)
+                    painter = painterResource(iconResource),
+                    contentDescription = if (isDispenseTest) {
+                        "Dispensación de prueba"
+                    } else {
+                        "Pago con QR"
+                    },
+                    modifier = Modifier.size(if (isDispenseTest) 54.dp else 68.dp)
                 )
             }
             Spacer(Modifier.width(14.dp))
@@ -554,10 +597,13 @@ private fun CheckoutPaymentMethodCard(methodLabel: String) {
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        text = methodLabel,
+                        text = method?.label ?: "Pago QR",
                         color = Color(0xFF10184A),
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Black
+                        fontSize = if (isDispenseTest) 19.sp else 22.sp,
+                        lineHeight = if (isDispenseTest) 23.sp else 26.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

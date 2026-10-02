@@ -536,7 +536,8 @@ private fun ProductCard(
                     imageCacheVersion = imageCacheVersion,
                     getCachedImageBitmap = getCachedImageBitmap,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
+                    contentScale = ContentScale.Fit,
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 18.dp)
                 )
                 Text(
                     text = item.cellCode,
@@ -749,7 +750,8 @@ private fun CatalogImageSource(
     imageCacheVersion: Int,
     getCachedImageBitmap: (String) -> Bitmap?,
     modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    contentPadding: PaddingValues = PaddingValues(0.dp)
 ) {
     val bitmap = remember(source, imageCacheVersion) {
         source
@@ -762,12 +764,19 @@ private fun CatalogImageSource(
         contentAlignment = Alignment.Center
     ) {
         if (bitmap != null) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = label,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = contentScale
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(contentPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = label,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = contentScale
+                )
+            }
         } else {
             Text(
                 text = if (source.isNullOrBlank()) label else "$label\nVista previa no disponible",

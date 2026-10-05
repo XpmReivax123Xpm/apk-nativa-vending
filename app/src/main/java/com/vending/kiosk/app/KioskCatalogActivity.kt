@@ -708,7 +708,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onBuy = ::buyCartFromCompose,
                         onClose = ::closeCartFromCompose,
                         onUserInteraction = ::restartCartTimeout,
-                        imageCacheVersion = catalogComposeState.imageCacheVersion,
+                        imageCacheVersion = catalogComposeState.cartImageCacheVersion,
                         getCachedImageBitmap = catalogViewModel::getCachedCartImageBitmap,
                         onPreloadImages = catalogViewModel::preloadCartImages
                     )
@@ -723,7 +723,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onConfirmCheckout = paymentViewModel::confirmCheckout,
                         onCancel = ::cancelPaymentFromCompose,
                         onInteraction = ::restartPaymentTimeout,
-                        imageCacheVersion = catalogComposeState.imageCacheVersion,
+                        imageCacheVersion = catalogComposeState.cartImageCacheVersion,
                         getCachedImageBitmap = catalogViewModel::getCachedCartImageBitmap
                     )
                 }

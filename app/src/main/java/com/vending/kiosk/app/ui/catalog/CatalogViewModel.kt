@@ -11,6 +11,9 @@ import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.domain.catalog.CatalogItem
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,7 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
-private const val CATALOG_BITMAP_TARGET_SIZE_PX = 720
+private const val CATALOG_BITMAP_TARGET_SIZE_PX = 480
 private const val CART_THUMBNAIL_TARGET_SIZE_PX = 192
 
 data class CatalogUiState(
@@ -29,7 +32,8 @@ data class CatalogUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val sessionLost: Boolean = false,
-    val imageCacheVersion: Int = 0
+    val imageCacheVersion: Int = 0,
+    val cartImageCacheVersion: Int = 0
 )
 
 class CatalogViewModel(
@@ -40,8 +44,9 @@ class CatalogViewModel(
 
     private val _uiState = MutableStateFlow(CatalogUiState())
     val uiState: StateFlow<CatalogUiState> = _uiState.asStateFlow()
-    private val imagesBeingPreloaded = ConcurrentHashMap.newKeySet<String>()
     private val cartImagesBeingPreloaded = ConcurrentHashMap.newKeySet<String>()
+    private var catalogPreloadJob: Job? = null
+    private var lastCatalogPage: Int? = null
 
     fun configureMachine(machineId: Int, machineCode: String, machineLocation: String) {
         _uiState.value = _uiState.value.copy(
@@ -67,6 +72,9 @@ class CatalogViewModel(
             try {
                 when (val result = withContext(Dispatchers.IO) { loadCatalogData(machineId) }) {
                     is CatalogLoadResult.Success -> {
+                        catalogPreloadJob?.cancel()
+                        catalogPreloadJob = null
+                        lastCatalogPage = null
                         _uiState.value = _uiState.value.copy(
                             items = result.items,
                             error = null,
@@ -122,7 +130,7 @@ class CatalogViewModel(
                 if (loadedPaths.isNotEmpty()) {
                     val currentState = _uiState.value
                     _uiState.value = currentState.copy(
-                        imageCacheVersion = currentState.imageCacheVersion + 1
+                        cartImageCacheVersion = currentState.cartImageCacheVersion + 1
                     )
                 }
             } finally {
@@ -137,10 +145,21 @@ class CatalogViewModel(
 
         val pageCount = (items.size + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE
         val currentPage = pageIndex.coerceIn(0, pageCount - 1)
-        // Keep current-page bitmaps newest in the 8 MiB LRU if neighbors cause eviction.
+        val previousPage = lastCatalogPage
+        if (previousPage == currentPage && catalogPreloadJob?.isActive == true) return
+
+        catalogPreloadJob?.cancel()
+        lastCatalogPage = currentPage
+
+        // Keep only the current page and the page in the swipe direction hot.
+        val adjacentPage = when {
+            previousPage == null -> currentPage + 1
+            currentPage > previousPage -> currentPage + 1
+            currentPage < previousPage -> currentPage - 1
+            else -> null
+        }?.takeIf { it in 0 until pageCount }
         val pagesToPreload = buildList {
-            if (currentPage > 0) add(currentPage - 1)
-            if (currentPage < pageCount - 1) add(currentPage + 1)
+            adjacentPage?.let(::add)
             add(currentPage)
         }
         val localImagePaths = pagesToPreload
@@ -151,27 +170,23 @@ class CatalogViewModel(
             .filter { it.isNotBlank() && catalogImageCache.isLocalImagePath(it) }
             .distinct()
         val pathsToPreload = localImagePaths.filter { path ->
-            !catalogImageCache.isBitmapPrepared(path, CATALOG_BITMAP_TARGET_SIZE_PX) &&
-                imagesBeingPreloaded.add(path)
+            !catalogImageCache.isBitmapPrepared(path, CATALOG_BITMAP_TARGET_SIZE_PX)
         }
         if (pathsToPreload.isEmpty()) return
 
-        viewModelScope.launch {
-            try {
-                val loadedPaths = withContext(Dispatchers.IO) {
-                    catalogImageCache.preloadLocalImages(
-                        localPaths = pathsToPreload,
-                        targetSizePx = CATALOG_BITMAP_TARGET_SIZE_PX
-                    )
-                }
-                if (loadedPaths.isNotEmpty()) {
-                    val currentState = _uiState.value
-                    _uiState.value = currentState.copy(
-                        imageCacheVersion = currentState.imageCacheVersion + 1
-                    )
-                }
-            } finally {
-                pathsToPreload.forEach { path -> imagesBeingPreloaded.remove(path) }
+        catalogPreloadJob = viewModelScope.launch {
+            val loadedPaths = withContext(Dispatchers.IO) {
+                catalogImageCache.preloadLocalImages(
+                    localPaths = pathsToPreload,
+                    targetSizePx = CATALOG_BITMAP_TARGET_SIZE_PX
+                )
+            }
+            currentCoroutineContext().ensureActive()
+            if (loadedPaths.isNotEmpty()) {
+                val currentState = _uiState.value
+                _uiState.value = currentState.copy(
+                    imageCacheVersion = currentState.imageCacheVersion + 1
+                )
             }
         }
     }

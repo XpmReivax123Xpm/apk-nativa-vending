@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -12,7 +14,7 @@ import java.net.URL
 
 class CatalogImageCache(context: Context) {
 
-    private val imageCache = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
+    private val imageCache = object : LruCache<String, Bitmap>(12 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
     }
     private val cartThumbnailCache = object : LruCache<String, Bitmap>(4 * 1024 * 1024) {
@@ -92,13 +94,14 @@ class CatalogImageCache(context: Context) {
     }
 
     /** Call from Dispatchers.IO; this method checks local files and decodes cache misses. */
-    fun preloadLocalImages(localPaths: Collection<String>, targetSizePx: Int): Set<String> {
+    suspend fun preloadLocalImages(localPaths: Collection<String>, targetSizePx: Int): Set<String> {
         require(targetSizePx > 0)
         val loadedPaths = linkedSetOf<String>()
 
-        localPaths.distinct().forEach { localPath ->
+        for (localPath in localPaths.distinct()) {
+            currentCoroutineContext().ensureActive()
             val file = File(localPath)
-            if (!file.isAbsolute || !file.isFile) return@forEach
+            if (!file.isAbsolute || !file.isFile) continue
 
             val cacheKey = localBitmapKey(file.absolutePath)
             val cachedBitmap = imageCache.get(cacheKey)
@@ -106,10 +109,11 @@ class CatalogImageCache(context: Context) {
                 cachedBitmap.width <= targetSizePx &&
                 cachedBitmap.height <= targetSizePx
             ) {
-                return@forEach
+                continue
             }
 
-            val bitmap = decodeSampledBitmap(file, targetSizePx) ?: return@forEach
+            val bitmap = decodeSampledBitmap(file, targetSizePx) ?: continue
+            currentCoroutineContext().ensureActive()
             imageCache.put(cacheKey, bitmap)
             loadedPaths += cacheKey
         }
@@ -212,7 +216,9 @@ class CatalogImageCache(context: Context) {
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
         var inSampleSize = 1
-        while (bounds.outWidth / inSampleSize > targetSizePx * 2 || bounds.outHeight / inSampleSize > targetSizePx * 2) {
+        while (bounds.outWidth / inSampleSize > targetSizePx ||
+            bounds.outHeight / inSampleSize > targetSizePx
+        ) {
             inSampleSize *= 2
         }
 

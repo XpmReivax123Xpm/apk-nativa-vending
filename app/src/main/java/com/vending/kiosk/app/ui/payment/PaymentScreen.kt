@@ -27,7 +27,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -306,7 +308,13 @@ private fun PaymentMethodSheet(
 
                 else -> {
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        // La lista se desplaza y el encabezado y el boton de volver quedan fijos:
+                        // con varios metodos las tarjetas no entran en la pantalla y el ultimo
+                        // quedaba fuera del alcance del dedo.
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp)
+                            .verticalScroll(rememberScrollState()),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {

@@ -215,6 +215,8 @@ class State:
         self.next_token = 0
         self.payment_mode = "paid"
         self.polls_until_paid = 2
+        self.qr_valid_seconds = QR_VALID_SECONDS
+        self.escenario = "normal"
         self.requests = 0
         self.log_file = None
 
@@ -239,6 +241,23 @@ class State:
         token = header.removeprefix("Bearer ").strip()
         return bool(token) and token in self.tokens
 
+    def invalidar_tokens(self) -> None:
+        with self.lock:
+            self.tokens.clear()
+
+    def aplicar_escenario(self, nombre: str) -> None:
+        """Celdas de la segunda pagina para probar lo que NO debe ofrecerse: B4 sin unidades, B5 sin
+        producto y B6 desactivada."""
+        with self.lock:
+            self.escenario = nombre
+            self.cells = build_cells()
+            if nombre != "especiales":
+                return
+            self.cells[12]["tnCantidadActual"] = 0      # B4: sin unidades
+            self.cells[13]["tlOcupada"] = False         # B5: celda vacia
+            self.cells[13]["producto"] = None
+            self.cells[14]["tlEstado"] = False          # B6: celda fuera de servicio
+
     # -- celdas ------------------------------------------------------------
 
     def cell_by_id(self, maquina_celda: int) -> dict | None:
@@ -252,10 +271,12 @@ class State:
 
     # -- pedidos -----------------------------------------------------------
 
-    def crear_pedido(self, maquina_celda: int, producto: int, clave: str | None) -> tuple[dict, bool]:
+    def crear_pedido(self, lineas: list[tuple[int, int, int]], clave: str | None) -> tuple[dict, bool]:
         """Devuelve (pedido, es_nuevo). Con la misma clave devuelve el pedido que ya existe.
 
-        Cada linea es UNA unidad, como en el backend: la maquina reporta la dispensacion de cada una.
+        `lineas` son (MaquinaCelda, Producto, Cantidad) tal como las manda el kiosko, y se abre UNA
+        linea por UNIDAD, como hace el backend: la maquina reporta la dispensacion de cada unidad, y de
+        ahi sale la cola que acciona la placa.
         """
         with self.lock:
             if clave and clave in self.idempotency:
@@ -263,7 +284,19 @@ class State:
 
             self.next_order += 1
             pedido_id = self.next_order
-            detalle_id = pedido_id * 100 + 1
+            detalle_id = pedido_id * 100
+
+            detalles = []
+            for maquina_celda, producto, cantidad in lineas:
+                for _ in range(cantidad):
+                    detalle_id += 1
+                    detalles.append({
+                        "tnPedidoDetalle": detalle_id,
+                        "tnPlanogramaCelda": maquina_celda,
+                        "tnProducto": producto,
+                        "tnCantidad": 1,
+                        "tnEstadoDispensacion": 1,
+                    })
 
             pedido = {
                 "tnPedido": pedido_id,
@@ -272,13 +305,7 @@ class State:
                 "tcCodigoMaquina": MACHINE_CODE,
                 "tnEstadoPedido": PEDIDO_PENDIENTE,
                 "ttFechaCreacion": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "taDetalles": [{
-                    "tnPedidoDetalle": detalle_id,
-                    "tnPlanogramaCelda": maquina_celda,
-                    "tnProducto": producto,
-                    "tnCantidad": 1,
-                    "tnEstadoDispensacion": 1,
-                }],
+                "taDetalles": detalles,
                 "pago": None,
                 "descontado": False,
             }
@@ -308,7 +335,7 @@ class State:
                 "tnMetodoPago": metodo,
                 "tnEstadoPago": PAGO_PENDIENTE,
                 "tcQrBase64": base64.b64encode(png_qr_like(pago_id)).decode("ascii"),
-                "ttExpira": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + QR_VALID_SECONDS)),
+                "ttExpira": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + self.qr_valid_seconds)),
                 "polls": 0,
             }
             self.payments[pago_id] = pago
@@ -346,8 +373,9 @@ class State:
             pago["tnEstadoPago"] = estado
             pedido = self.orders[pago["tnPedido"]]
             if estado == PAGO_PAGADO:
+                # El cobro no mueve el inventario: la unidad se descuenta cuando la MAQUINA reporta que
+                # la entrego (igual que el backend).
                 pedido["tnEstadoPedido"] = PEDIDO_PAGADO
-                self.descontar_stock(pedido)
             elif estado == PAGO_CANCELADO:
                 pedido["tnEstadoPedido"] = PEDIDO_CANCELADO
                 self.liberar_stock(pedido)
@@ -364,17 +392,14 @@ class State:
             if cell is not None:
                 cell["tnCantidadReservada"] += 1
 
-    def descontar_stock(self, pedido: dict) -> None:
-        """La unidad salio: se libera su reserva y baja lo cargado (una sola vez por pedido)."""
-        if pedido.get("descontado"):
+    def descontar_unidad(self, detalle: dict) -> None:
+        """La unidad salio: se libera SU reserva y baja lo cargado (una sola vez por unidad)."""
+        cell = self.cell_by_id(detalle["tnPlanogramaCelda"])
+        if cell is None or detalle.get("descontada"):
             return
-        pedido["descontado"] = True
-        for detalle in pedido["taDetalles"]:
-            cell = self.cell_by_id(detalle["tnPlanogramaCelda"])
-            if cell is None:
-                continue
-            cell["tnCantidadReservada"] = max(0, cell["tnCantidadReservada"] - 1)
-            cell["tnCantidadActual"] = max(0, cell["tnCantidadActual"] - 1)
+        detalle["descontada"] = True
+        cell["tnCantidadReservada"] = max(0, cell["tnCantidadReservada"] - 1)
+        cell["tnCantidadActual"] = max(0, cell["tnCantidadActual"] - 1)
 
     def liberar_stock(self, pedido: dict) -> None:
         for detalle in pedido["taDetalles"]:
@@ -460,8 +485,12 @@ class Handler(BaseHTTPRequestHandler):
     def planograma(self) -> dict:
         celdas = []
         for cell in STATE.cells:
-            producto = json.loads(json.dumps(cell["producto"]))
-            producto["archivoPrincipal"]["tcUrl"] = self.url_imagen(producto["archivoPrincipal"]["tcUrl"])
+            # Una celda vacia viaja con `producto: null` (asi la manda el backend): el kiosko la
+            # descarta sola.
+            producto = None
+            if cell["producto"] is not None:
+                producto = json.loads(json.dumps(cell["producto"]))
+                producto["archivoPrincipal"]["tcUrl"] = self.url_imagen(producto["archivoPrincipal"]["tcUrl"])
             celdas.append({
                 "tnMaquinaCelda": cell["tnMaquinaCelda"],
                 "tcCodigoCelda": cell["tcCodigoCelda"],
@@ -533,6 +562,15 @@ class Handler(BaseHTTPRequestHandler):
     # -- GET ---------------------------------------------------------------
 
     def do_GET(self) -> None:
+        try:
+            self._atender_get()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as ex:  # un error del simulador no tiene que parecer una red cortada
+            STATE.log(f"ERROR en GET {self.path}: {ex!r}")
+            self.enviar(error(f"error interno del simulador: {ex}", 500))
+
+    def _atender_get(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path
         STATE.requests += 1
@@ -555,6 +593,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(json.dumps({
                 "payment_mode": STATE.payment_mode,
                 "polls_until_paid": STATE.polls_until_paid,
+                "escenario": STATE.escenario,
+                "qr_valid_seconds": STATE.qr_valid_seconds,
                 "pedidos": {str(k): v["tnEstadoPedido"] for k, v in STATE.orders.items()},
                 "pagos": {str(k): v["tnEstadoPago"] for k, v in STATE.payments.items()},
                 "claves_idempotencia": STATE.idempotency,
@@ -582,8 +622,23 @@ class Handler(BaseHTTPRequestHandler):
             if "polls" in query:
                 STATE.polls_until_paid = int(query["polls"][0])
                 STATE.log(f"sondeos hasta pago = {STATE.polls_until_paid}")
+            if "escenario" in query:
+                nombre = query["escenario"][0]
+                if nombre not in ("normal", "especiales"):
+                    self.send_json(json.dumps({"error": f"escenario invalido: {nombre}"}).encode("utf-8"), 400)
+                    return
+                STATE.aplicar_escenario(nombre)
+                STATE.log(f"escenario de celdas = {nombre}")
+            if "qr" in query:
+                STATE.qr_valid_seconds = int(query["qr"][0])
+                STATE.log(f"vigencia del QR = {STATE.qr_valid_seconds}s")
+            if "token" in query and query["token"][0] == "invalidar":
+                STATE.invalidar_tokens()
+                STATE.log("tokens de maquina invalidados (la APK tiene que reautenticarse sola)")
             self.send_json(json.dumps({"ok": True, "payment_mode": STATE.payment_mode,
-                                       "polls_until_paid": STATE.polls_until_paid}).encode("utf-8"))
+                                       "polls_until_paid": STATE.polls_until_paid,
+                                       "escenario": STATE.escenario,
+                                       "qr_valid_seconds": STATE.qr_valid_seconds}).encode("utf-8"))
             return
 
         if path == f"{API}/maquina/planograma":
@@ -626,6 +681,15 @@ class Handler(BaseHTTPRequestHandler):
     # -- POST --------------------------------------------------------------
 
     def do_POST(self) -> None:
+        try:
+            self._atender_post()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as ex:
+            STATE.log(f"ERROR en POST {self.path}: {ex!r}")
+            self.enviar(error(f"error interno del simulador: {ex}", 500))
+
+    def _atender_post(self) -> None:
         path = urlparse(self.path).path
         STATE.requests += 1
         payload = self.body_json()
@@ -679,19 +743,28 @@ class Handler(BaseHTTPRequestHandler):
                                   {"Detalles": ["El pedido no trae lineas."]}))
                 return
             clave = (payload.get("ClaveIdempotencia") or "").strip() or None
-            celda = int(detalles[0].get("MaquinaCelda") or 0)
-            producto = int(detalles[0].get("Producto") or 0)
-            cell = STATE.cell_by_id(celda)
-            if cell is None or STATE.disponible(cell) <= 0:
-                self.enviar(error("La celda no tiene unidades para vender.", 422,
-                                  {"Detalles": ["Celda sin stock."]}))
-                STATE.log(f"POST pedidos -> 422 (celda {celda} sin stock)")
-                return
-            pedido, es_nuevo = STATE.crear_pedido(celda, producto, clave)
+
+            # Cada linea pide unidades de una celda: todas se validan ANTES de abrir el pedido.
+            lineas: list[tuple[int, int, int]] = []
+            for detalle in detalles:
+                maquina_celda = int(detalle.get("MaquinaCelda") or 0)
+                producto = int(detalle.get("Producto") or 0)
+                cantidad = max(1, int(detalle.get("Cantidad") or 1))
+                cell = STATE.cell_by_id(maquina_celda)
+                if cell is None or STATE.disponible(cell) < cantidad:
+                    self.enviar(error("La celda no tiene unidades para vender.", 422,
+                                      {"Detalles": [f"Celda {maquina_celda} sin stock para {cantidad}."]}))
+                    STATE.log(f"POST pedidos -> 422 (celda {maquina_celda} sin stock para {cantidad})")
+                    return
+                lineas.append((maquina_celda, producto, cantidad))
+
+            pedido, es_nuevo = STATE.crear_pedido(lineas, clave)
             cliente = payload.get("tcNombreCliente") or "(anonimo)"
             self.enviar(envoltura(self.vista_pedido(pedido), 201 if es_nuevo else 200))
-            STATE.log(f"POST pedidos -> {pedido['tnPedido']} celda {celda} "
-                      f"({'nuevo' if es_nuevo else 'REPETIDO'}; clave {clave or 'sin clave'}) cliente {cliente}")
+            unidades = sum(d["tnCantidad"] for d in pedido["taDetalles"])
+            STATE.log(f"POST pedidos -> {pedido['tnPedido']} ({unidades} unidad(es) en "
+                      f"{len(pedido['taDetalles'])} linea(s); {'nuevo' if es_nuevo else 'REPETIDO'}; "
+                      f"clave {clave or 'sin clave'}) cliente {cliente}")
             return
 
         if path.endswith("/cancelar"):
@@ -728,8 +801,10 @@ class Handler(BaseHTTPRequestHandler):
             detalle["tnEstadoDispensacion"] = estado
             if estado == DISPENSACION_COMPLETADO:
                 with STATE.lock:
-                    pedido["tnEstadoPedido"] = PEDIDO_ENTREGADO
-                STATE.descontar_stock(pedido)
+                    STATE.descontar_unidad(detalle)
+                    # El pedido esta entregado recien cuando salieron TODAS sus unidades.
+                    if all(d["tnEstadoDispensacion"] == DISPENSACION_COMPLETADO for d in pedido["taDetalles"]):
+                        pedido["tnEstadoPedido"] = PEDIDO_ENTREGADO
             self.enviar(envoltura(self.vista_pedido(pedido)))
             STATE.log(f"POST pedido {pedido_id}/dispensacion -> detalle {detalle_id} "
                       f"{ETIQUETA_DISPENSACION.get(estado, estado)} "

@@ -611,8 +611,11 @@ class KioskCatalogActivity : AppCompatActivity() {
             setLoading(true)
             tvError.visibility = View.GONE
             lifecycleScope.launch {
+                // La salida del kiosko se valida con el MISMO login de maquina: su PIN es el de esta
+                // maquina y el identificador es el del equipo configurado.
+                val equipo = authSessionManager.getEquipo()
                 val result = withContext(Dispatchers.IO) {
-                    AdminAccessGateway.validateAccess(machineCode, pin)
+                    AdminAccessGateway.validateAccess(equipo?.direccionMac.orEmpty(), pin)
                 }
                 setLoading(false)
                 when (result) {

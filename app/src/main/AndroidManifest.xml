@@ -13,10 +13,7 @@
             android:name=".app.KioskCatalogActivity"
             android:exported="false" />
         <activity
-            android:name=".app.KioskMachinesActivity"
-            android:exported="false" />
-        <activity
-            android:name=".app.KioskLoginActivity"
+            android:name=".app.KioskAccessActivity"
             android:exported="false" />
         <activity
             android:name=".app.VendingTesterActivity"

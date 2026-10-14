@@ -36,12 +36,17 @@ require(vendingSerialTransport == "native" || vendingSerialTransport == "tcp") {
 }
 val vendingSerialEndpoint = vendingProperty("vendingSimEndpoint", "10.0.2.2:9100")
 
-// Backend base URL. Empty means automatic: production for a native build, the local
-// mock backend for a simulator build (so the whole kiosk flow is testable without
-// touching the real server nor any real payment gateway).
-val vendingProductionBackend = "https://boxipagobackend.pagofacil.com.bo"
+// Backend base URL. Empty means automatic: the DEVELOPMENT backend below for a native build, and the
+// local mock backend for a simulator build (so the kiosk flow stays testable offline).
+//
+// MIENTRAS SE INTEGRA, LOS DOS APUNTAN AL BACKEND LOCAL: la URL vieja
+// (boxipagobackend.pagofacil.com.bo) NO se usa desde esta APK —es otro flujo, en produccion, y no se
+// lo puede interferir—. Cuando exista el VPS se cambian ESTAS DOS constantes (y el default de
+// `BackendConfig`).
+val vendingDevelopmentBackend = "http://10.0.2.2:8000"
+val vendingDeployBackend = "http://10.0.2.2:8000"
 val vendingBackendUrl = vendingProperty("vendingBackendUrl", "").ifEmpty {
-    if (vendingSerialTransport == "tcp") "http://10.0.2.2:9200" else vendingProductionBackend
+    if (vendingSerialTransport == "tcp") "http://10.0.2.2:9200" else vendingDevelopmentBackend
 }
 
 android {
@@ -75,9 +80,10 @@ android {
             // modo simulador no puede terminar en una release.
             buildConfigField("String", "SERIAL_TRANSPORT", "\"native\"")
             buildConfigField("String", "SERIAL_SIM_ENDPOINT", "\"10.0.2.2:9100\"")
-            // Cerrojo 3: y siempre contra el backend de produccion, nunca contra el
-            // simulador local, aunque la propiedad quede seteada en la maquina.
-            buildConfigField("String", "BACKEND_BASE_URL", "\"https://boxipagobackend.pagofacil.com.bo\"")
+            // Cerrojo 3: y siempre contra el backend de DESPLIEGUE, nunca contra el simulador
+            // local, aunque la propiedad quede seteada en la maquina. Hoy el de despliegue es el
+            // backend de desarrollo (todavia no hay VPS): cuando exista, se cambia arriba.
+            buildConfigField("String", "BACKEND_BASE_URL", "\"$vendingDeployBackend\"")
         }
     }
 

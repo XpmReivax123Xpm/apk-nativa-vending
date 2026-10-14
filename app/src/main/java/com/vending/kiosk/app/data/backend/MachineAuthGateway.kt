@@ -1,103 +1,86 @@
-﻿package com.vending.kiosk.app.data.backend
+package com.vending.kiosk.app.data.backend
 
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
+/**
+ * Session of the machine that runs this kiosk.
+ *
+ * The machine authenticates with the identifier of ITS OWN device —read from the equipment, or typed
+ * once by whoever installs the kiosk— and the PIN an operator types. The CODE printed on the front of
+ * the machine does NOT authenticate: anybody who knew it would enter the planogram of another machine
+ * and charge against it.
+ */
 object MachineAuthGateway {
 
-    private val MACHINE_LOGIN_ENDPOINT = "${BackendConfig.baseUrl}/api/maquinas/login"
+    private const val LOGIN_PATH = "/maquina-auth/login"
 
-    fun loginMachine(machineCode: String, pin: String): MachineLoginResult {
-        if (machineCode.isBlank() || pin.isBlank()) {
-            return MachineLoginResult.Error("Codigo/PIN de maquina invalido")
+    fun loginMachine(direccionMac: String, pin: String): MachineLoginResult {
+        val mac = direccionMac.trim()
+        if (mac.isBlank() || pin.isBlank()) {
+            return MachineLoginResult.Error("Identificador del equipo o PIN invalido")
         }
 
-        var connection: HttpURLConnection? = null
+        val payload = JSONObject().apply {
+            put("tcDireccionMac", mac)
+            put("tcPin", pin)
+        }
+
         return try {
-            connection = (URL(MACHINE_LOGIN_ENDPOINT).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                doOutput = true
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("Content-Type", "application/json")
+            val response = BackendHttp.request("POST", LOGIN_PATH, body = payload)
+
+            if (!response.isSuccess) {
+                return MachineLoginResult.Error(response.errorMessage("No se pudo autenticar la maquina"))
             }
 
-            val payload = JSONObject().apply {
-                put("tcCodigoMaquina", machineCode)
-                put("tcPin", pin)
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return MachineLoginResult.Error("Respuesta vacia login maquina (HTTP $statusCode)")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val message = json.optString("message", "No se pudo autenticar maquina")
-
-            if (statusCode !in 200..299 || backendError != 0 || backendStatus != 1) {
-                return MachineLoginResult.Error("$message (HTTP $statusCode)")
-            }
-
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val accessToken = values.optString("accessToken", "").trim()
-            val tokenType = values.optString("tokenType", "bearer").trim().ifBlank { "bearer" }
-            val expiresInMinutes = values.optLong("expiresInMinutes", 0L)
-            val machineId = values.optInt("tnMaquina", 0)
-            val machineCodeResolved = values.optString("tcCodigoMaquina", machineCode).trim().ifBlank { machineCode }
+            val json = JSONObject(response.body)
+            val accessToken = json.optString("access_token", "").trim()
+            val tokenType = json.optString("token_type", "Bearer").trim().ifBlank { "Bearer" }
+            // El backend dice cuantos MINUTOS dura el token de acceso: el kiosko no usa el refresh
+            // token, se vuelve a autenticar cuando el suyo vence.
+            val expiresInMinutes = json.optLong("expires_in", 0L)
 
             if (accessToken.isBlank() || expiresInMinutes <= 0L) {
-                return MachineLoginResult.Error("Login maquina sin token valido")
+                return MachineLoginResult.Error("Login de maquina sin token valido")
             }
+
+            val maquina = json.optJSONObject("Maquina") ?: JSONObject()
 
             MachineLoginResult.Success(
                 accessToken = accessToken,
                 tokenType = tokenType,
                 expiresInMinutes = expiresInMinutes,
-                machineId = machineId,
-                machineCode = machineCodeResolved
+                machineId = maquina.optInt("tnMaquina", 0),
+                machineCode = maquina.optString("tcCodigoMaquina", "").trim(),
+                machineLocation = if (maquina.isNull("tcUbicacion")) "" else maquina.optString("tcUbicacion", "").trim()
             )
         } catch (ex: Exception) {
-            MachineLoginResult.Error("Fallo login maquina: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
+            MachineLoginResult.Error("Fallo de conexion al autenticar la maquina: ${ex.message ?: "sin detalle"}")
         }
     }
 
+    /**
+     * Se vuelve a autenticar con el identificador de equipo y el PIN que el kiosko ya tiene, y renueva
+     * la sesion guardada. Es lo que usan el arranque automatico y la recuperacion de una sesion vencida.
+     */
     fun refreshSessionWithStoredMachineCredentials(authSessionManager: AuthSessionManager): MachineLoginResult {
-        val credentials = authSessionManager.getMachineCredentials()
-            ?: return MachineLoginResult.Error("No hay credenciales de maquina guardadas")
+        val equipo = authSessionManager.getEquipo()
+            ?: return MachineLoginResult.Error("El kiosko no tiene configurado su identificador de equipo")
 
-        val loginResult = loginMachine(credentials.machineCode, credentials.machinePin)
+        val loginResult = loginMachine(equipo.direccionMac, equipo.pin)
+
         if (loginResult is MachineLoginResult.Success) {
             authSessionManager.saveSession(
                 accessToken = loginResult.accessToken,
                 tokenType = loginResult.tokenType,
                 expiresInMinutes = loginResult.expiresInMinutes
             )
-            authSessionManager.saveMachineCredentials(
-                machineId = if (loginResult.machineId > 0) loginResult.machineId else credentials.machineId,
-                machineCode = loginResult.machineCode,
-                machinePin = credentials.machinePin
+            authSessionManager.saveMaquina(
+                machineId = if (loginResult.machineId > 0) loginResult.machineId else equipo.machineId,
+                machineCode = loginResult.machineCode.ifBlank { equipo.machineCode }
             )
         }
+
         return loginResult
     }
 }
@@ -108,7 +91,8 @@ sealed interface MachineLoginResult {
         val tokenType: String,
         val expiresInMinutes: Long,
         val machineId: Int,
-        val machineCode: String
+        val machineCode: String,
+        val machineLocation: String = ""
     ) : MachineLoginResult
 
     data class Error(val message: String) : MachineLoginResult

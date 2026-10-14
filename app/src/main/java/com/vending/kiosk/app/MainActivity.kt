@@ -35,31 +35,25 @@ class MainActivity : AppCompatActivity() {
             mainMenuContent.visibility = View.VISIBLE
         }
 
-        val credentials = authSessionManager.getMachineCredentials()
+        val equipo = authSessionManager.getEquipo()
         val autoResumeEnabled = authSessionManager.isKioskAutoResumeEnabled()
-        val hasMachineData = credentials != null &&
-            credentials.machineId > 0 &&
-            credentials.machineCode.isNotBlank() &&
-            credentials.machinePin.isNotBlank()
+        val hasKioskAccess = equipo != null && equipo.machineId > 0
 
         val job = lifecycleScope.launch {
             delay(AUTO_RESUME_BOOT_DELAY_MS)
 
-            if (autoResumeEnabled && hasMachineData) {
+            if (autoResumeEnabled && hasKioskAccess) {
                 if (userSelectedMainMenuAction) {
                     Log.d(TAG, "Auto-resume aborted: user selected a main menu action")
                     showMainMenu()
                     return@launch
                 }
 
-                val delayedCredentials = authSessionManager.getMachineCredentials()
+                val delayedEquipo = authSessionManager.getEquipo()
                 val delayedAutoResumeEnabled = authSessionManager.isKioskAutoResumeEnabled()
-                val delayedHasMachineData = delayedCredentials != null &&
-                    delayedCredentials.machineId > 0 &&
-                    delayedCredentials.machineCode.isNotBlank() &&
-                    delayedCredentials.machinePin.isNotBlank()
+                val delayedHasKioskAccess = delayedEquipo != null && delayedEquipo.machineId > 0
 
-                if (!delayedAutoResumeEnabled || !delayedHasMachineData) {
+                if (!delayedAutoResumeEnabled || !delayedHasKioskAccess) {
                     Log.d(TAG, "Auto-resume aborted after boot delay: saved machine data changed")
                     showMainMenu()
                     return@launch
@@ -77,9 +71,10 @@ class MainActivity : AppCompatActivity() {
 
                 when (refresh) {
                     is MachineLoginResult.Success -> {
-                        val refreshedCredentials = authSessionManager.getMachineCredentials()
-                        val targetMachineId = refreshedCredentials?.machineId ?: refresh.machineId
-                        val targetMachineCode = refreshedCredentials?.machineCode ?: refresh.machineCode
+                        val refreshedEquipo = authSessionManager.getEquipo()
+                        val targetMachineId = refreshedEquipo?.machineId?.takeIf { it > 0 } ?: refresh.machineId
+                        val targetMachineCode = refreshedEquipo?.machineCode?.ifBlank { refresh.machineCode }
+                            ?: refresh.machineCode
                         if (targetMachineId <= 0 || targetMachineCode.isBlank()) {
                             Log.w(TAG, "Auto-resume aborted after refresh: invalid machine target data")
                             showMainMenu()
@@ -106,10 +101,8 @@ class MainActivity : AppCompatActivity() {
             } else {
                 val reason = when {
                     !autoResumeEnabled -> "auto-resume disabled"
-                    credentials == null -> "missing machine credentials"
-                    credentials.machineId <= 0 -> "invalid machine_id"
-                    credentials.machineCode.isBlank() -> "missing machine_code"
-                    credentials.machinePin.isBlank() -> "missing machine_pin"
+                    equipo == null -> "el kiosko no tiene equipo configurado"
+                    equipo.machineId <= 0 -> "sin datos de la maquina (sin login previo)"
                     else -> "unknown"
                 }
                 Log.d(TAG, "Auto-resume skipped after startup delay: $reason")
@@ -131,7 +124,7 @@ class MainActivity : AppCompatActivity() {
         btnVendingKiosk.setOnClickListener {
             autoResumeJob?.takeIf { it.isActive }?.cancel()
             userSelectedMainMenuAction = true
-            startActivity(Intent(this, KioskLoginActivity::class.java))
+            startActivity(Intent(this, KioskAccessActivity::class.java))
         }
         btnVendingTester.setOnClickListener {
             autoResumeJob?.takeIf { it.isActive }?.cancel()

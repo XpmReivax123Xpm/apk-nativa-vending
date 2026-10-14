@@ -60,17 +60,11 @@ class CatalogViewModel(
         val currentState = _uiState.value
         if (currentState.isLoading) return
 
-        if (currentState.machineId <= 0) {
-            _uiState.value = currentState.copy(error = "Identificador de maquina invalido")
-            return
-        }
-
-        val machineId = currentState.machineId
         _uiState.value = currentState.copy(isLoading = true, error = null, sessionLost = false)
 
         viewModelScope.launch {
             try {
-                when (val result = withContext(Dispatchers.IO) { loadCatalogData(machineId) }) {
+                when (val result = withContext(Dispatchers.IO) { loadCatalogData() }) {
                     is CatalogLoadResult.Success -> {
                         catalogPreloadJob?.cancel()
                         catalogPreloadJob = null
@@ -191,13 +185,16 @@ class CatalogViewModel(
         }
     }
 
-    private suspend fun loadCatalogData(machineId: Int): CatalogLoadResult {
+    /**
+     * El planograma lo pide el TOKEN, no la URL: la maquina del kiosko no manda su id.
+     */
+    private suspend fun loadCatalogData(): CatalogLoadResult {
         if (resolveValidAuthHeader().isNullOrBlank()) {
             return CatalogLoadResult.SessionLost
         }
 
         val catalogData = try {
-            vendingBackendGateway.fetchCatalogData(machineId.toLong())
+            vendingBackendGateway.fetchCatalogData()
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: CatalogGatewayException) {
@@ -210,7 +207,7 @@ class CatalogViewModel(
             }
 
             try {
-                vendingBackendGateway.fetchCatalogData(machineId.toLong())
+                vendingBackendGateway.fetchCatalogData()
             } catch (retryException: CancellationException) {
                 throw retryException
             } catch (retryException: CatalogGatewayException) {

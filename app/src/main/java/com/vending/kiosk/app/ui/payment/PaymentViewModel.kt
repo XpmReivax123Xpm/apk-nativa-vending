@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 
 sealed interface PaymentStep {
     data object Closed : PaymentStep
@@ -92,10 +93,23 @@ class PaymentViewModel(
     private var paymentMethodsLoadJob: Job? = null
     private var paymentPollingJob: Job? = null
 
+    /**
+     * La clave con la que se da de alta el pedido de ESTA pantalla de pago.
+     *
+     * El reintento tiene que volver con la MISMA clave: si el alta llego al backend y la respuesta se
+     * perdio (red lenta, intento que volvio con 401), el backend devuelve ese mismo pedido en vez de
+     * abrir otro —y de reservar el stock dos veces—. Se renueva cuando cambia la compra (otro carrito u
+     * otro metodo de pago) y en cada entrada nueva a la pantalla, que es una compra nueva.
+     */
+    private var checkoutKey: String = ""
+    private var checkoutSignature: String = ""
+
     fun startPayment(items: List<CartItem>, allowDispenseTest: Boolean = false) {
         if (items.isEmpty()) return
 
         paymentPollingJob?.cancel()
+        checkoutKey = ""
+        checkoutSignature = ""
         val snapshot = items.map { it.copy() }
         _uiState.value = PaymentUiState(
             step = PaymentStep.MethodSelection,
@@ -254,7 +268,7 @@ class PaymentViewModel(
                         statusMessage = "Esperando confirmacion de pago...",
                         error = null
                     )
-                    startPaymentPolling(result.order.orderId, qrExpiresAtMs)
+                    startPaymentPolling(result.order.paymentId, result.order.orderId, qrExpiresAtMs)
                 }
 
                 is CreateQrResult.Error -> {
@@ -294,7 +308,7 @@ class PaymentViewModel(
                     if (isUnauthorizedMessage(result.message)) {
                         publishSessionLost()
                     } else {
-                        startPaymentPolling(order.orderId, _uiState.value.qrExpiresAtMs)
+                        startPaymentPolling(order.paymentId, order.orderId, _uiState.value.qrExpiresAtMs)
                     }
                 }
             }
@@ -311,12 +325,16 @@ class PaymentViewModel(
         super.onCleared()
     }
 
-    private fun startPaymentPolling(orderId: Int, qrExpiresAtMs: Long?) {
+    /**
+     * Sondea el COBRO y, si el tiempo se agota, cancela el PEDIDO: son dos ids distintos —el pago
+     * tiene su propia fila— y el backend cancela pedidos, no pagos.
+     */
+    private fun startPaymentPolling(pagoId: Int, pedidoId: Int, qrExpiresAtMs: Long?) {
         paymentPollingJob?.cancel()
         paymentPollingJob = viewModelScope.launch {
             val expiresAtMs = qrExpiresAtMs ?: (System.currentTimeMillis() + PAYMENT_TIMEOUT_MS)
             while (isActive && System.currentTimeMillis() <= expiresAtMs) {
-                when (val result = withContext(Dispatchers.IO) { fetchPaymentStatusWithSingleRefresh(orderId) }) {
+                when (val result = withContext(Dispatchers.IO) { fetchPaymentStatusWithSingleRefresh(pagoId) }) {
                     PaymentPollResult.Paid -> {
                         val order = _uiState.value.qrOrder ?: return@launch
                         complete(PaymentTerminalResult.Paid(order))
@@ -331,7 +349,7 @@ class PaymentViewModel(
                     }
 
                     is PaymentPollResult.Cancelled -> {
-                        complete(PaymentTerminalResult.Cancelled(orderId, result.message))
+                        complete(PaymentTerminalResult.Cancelled(pedidoId, result.message))
                         return@launch
                     }
 
@@ -354,7 +372,7 @@ class PaymentViewModel(
                 delay(PAYMENT_POLL_INTERVAL_MS)
             }
 
-            if (isActive) cancelAfterTimeout(orderId)
+            if (isActive) cancelAfterTimeout(pedidoId)
         }
     }
 
@@ -492,12 +510,13 @@ class PaymentViewModel(
             return CreateQrResult.Error("Sesion de maquina expirada", sessionLost = true)
         }
 
-        var result = createOrderQr(items, paymentMethodId)
+        val clave = checkoutKeyFor(items, paymentMethodId)
+        var result = createOrderQr(items, paymentMethodId, clave)
         if (result is CreateQrResult.Error && result.unauthorized) {
             if (resolveValidSession(forceRefresh = true).isNullOrBlank()) {
                 return CreateQrResult.Error("Sesion de maquina expirada", sessionLost = true)
             }
-            result = createOrderQr(items, paymentMethodId)
+            result = createOrderQr(items, paymentMethodId, clave)
         }
         return if (result is CreateQrResult.Error && result.unauthorized) {
             result.copy(sessionLost = true)
@@ -506,12 +525,34 @@ class PaymentViewModel(
         }
     }
 
-    private suspend fun createOrderQr(items: List<CartItem>, paymentMethodId: Int): CreateQrResult = try {
+    /**
+     * La clave del alta: la misma mientras la compra sea la misma —mismo carrito y mismo metodo—, una
+     * nueva cuando cambia cualquiera de los dos (el pedido que ya existe en el backend es de OTRA
+     * compra y devolverlo cobraria lo que el cliente ya no esta pidiendo).
+     */
+    private fun checkoutKeyFor(items: List<CartItem>, paymentMethodId: Int): String {
+        val firma = items
+            .sortedWith(compareBy({ it.planogramCellId }, { it.productId }))
+            .joinToString("|") { "${it.planogramCellId}:${it.productId}:${it.quantity}" } + ">$paymentMethodId"
+
+        if (firma != checkoutSignature) {
+            checkoutSignature = firma
+            checkoutKey = "KIOSKO-${UUID.randomUUID()}"
+        }
+        return checkoutKey
+    }
+
+    private suspend fun createOrderQr(
+        items: List<CartItem>,
+        paymentMethodId: Int,
+        idempotencyKey: String
+    ): CreateQrResult = try {
         CreateQrResult.Success(
             vendingBackendGateway.createOrderQr(
                 CreateOrderQrRequest(
                     machineId = machineId,
                     paymentMethodId = paymentMethodId,
+                    idempotencyKey = idempotencyKey,
                     customerName = DEFAULT_CUSTOMER_NAME,
                     customerPhone = DEFAULT_CUSTOMER_PHONE,
                     customerCi = DEFAULT_CUSTOMER_CI_NIT,
@@ -534,17 +575,17 @@ class PaymentViewModel(
         CreateQrResult.Error(message, unauthorized = isUnauthorizedMessage(message))
     }
 
-    private suspend fun fetchPaymentStatusWithSingleRefresh(orderId: Int): PaymentPollResult {
+    private suspend fun fetchPaymentStatusWithSingleRefresh(pagoId: Int): PaymentPollResult {
         if (resolveValidSession().isNullOrBlank()) {
             return PaymentPollResult.Error("Sesion de maquina expirada", sessionLost = true)
         }
 
-        var result = fetchPaymentStatus(orderId)
+        var result = fetchPaymentStatus(pagoId)
         if (result is PaymentPollResult.Error && result.unauthorized) {
             if (resolveValidSession(forceRefresh = true).isNullOrBlank()) {
                 return PaymentPollResult.Error("Sesion de maquina expirada", sessionLost = true)
             }
-            result = fetchPaymentStatus(orderId)
+            result = fetchPaymentStatus(pagoId)
         }
         return if (result is PaymentPollResult.Error && result.unauthorized) {
             result.copy(sessionLost = true)
@@ -553,8 +594,8 @@ class PaymentViewModel(
         }
     }
 
-    private suspend fun fetchPaymentStatus(orderId: Int): PaymentPollResult = try {
-        when (val status = vendingBackendGateway.fetchPaymentStatus(orderId.toLong())) {
+    private suspend fun fetchPaymentStatus(pagoId: Int): PaymentPollResult = try {
+        when (val status = vendingBackendGateway.fetchPaymentStatus(pagoId.toLong())) {
             PaymentStatus.Paid -> PaymentPollResult.Paid
             is PaymentStatus.Pending -> PaymentPollResult.Pending(status.message)
             is PaymentStatus.Cancelled -> PaymentPollResult.Cancelled(status.message)

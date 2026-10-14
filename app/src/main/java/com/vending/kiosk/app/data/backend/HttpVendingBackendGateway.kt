@@ -14,91 +14,59 @@ import com.vending.kiosk.integration.backend.models.PaymentMethod
 import com.vending.kiosk.integration.backend.models.PaymentStatus
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 data class CatalogData(
     val items: List<CatalogItem>
 )
 
+/**
+ * The kiosk's backend: the Laravel API under `/api/v1`.
+ *
+ * Every call goes through [BackendHttp] with the machine's access token, and the machine NEVER travels
+ * in the URL: the token says which machine is asking, so one machine cannot read the planogram of
+ * another nor charge against it.
+ */
 class HttpVendingBackendGateway(
     private val sessionManager: AuthSessionManager
 ) : VendingBackendGateway {
 
-    override suspend fun fetchCatalog(machineId: Long): CatalogResponse {
-        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "${BackendConfig.baseUrl}/api/maquinas/$machineId/planograma"
-        var connection: HttpURLConnection? = null
+    /**
+     * Lo que la maquina tiene cargado, celda por celda, mas el fondo que tiene puesto.
+     *
+     * No lleva el id de la maquina —lo dice el token— y la celda trae el CODIGO con el que la maquina
+     * la acciona: es de ahi de donde sale la celda fisica que se le manda a la placa.
+     */
+    override suspend fun fetchCatalog(): CatalogResponse {
+        val response = BackendHttp.request("GET", PLANOGRAMA_PATH, sessionManager.getAuthorizationHeader())
 
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                throw CatalogGatewayException(
-                    message = "Respuesta vacia del backend (HTTP $statusCode)",
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val json = JSONObject(rawBody)
-            val error = json.optInt("error", -1)
-            val status = json.optInt("status", 0)
-            val message = json.optString("message", "Error consultando catalogo")
-
-            if (statusCode !in 200..299 || error != 0 || status != 1) {
-                throw CatalogGatewayException(
-                    message = "$message (HTTP $statusCode)",
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val celdasJson =
-                values.optJSONArray("celdas")
-                    ?: values.optJSONArray("celdasPlanograma")
-                    ?: values.optJSONObject("planograma")?.optJSONArray("celdas")
-
-            if (celdasJson == null) {
-                throw CatalogGatewayException("Respuesta sin celdas en values")
-            }
-
-            val cells = parseCatalogCells(celdasJson).sortedWith(
-                compareBy<CatalogResponse.Cell> { parseCellCode(it.cellCode).first }
-                    .thenBy { parseCellCode(it.cellCode).second }
-                    .thenBy { it.cellCode }
+        if (!response.isSuccess) {
+            throw CatalogGatewayException(
+                message = response.errorMessage("Error consultando el planograma"),
+                unauthorized = response.isUnauthorized
             )
-            val background = parseUiBackground(values)
-            CatalogResponse(
-                cells = cells,
-                backgroundImageUrl = background.second,
-                backgroundImageId = background.first
-            )
-        } catch (ex: CatalogGatewayException) {
-            throw ex
-        } catch (ex: Exception) {
-            throw CatalogGatewayException("Fallo de conexion: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
         }
+
+        val data = response.dataObject()
+        if (!data.has("celdas")) {
+            throw CatalogGatewayException("Respuesta sin celdas en el planograma")
+        }
+
+        val cells = parseCatalogCells(data.optJSONArray("celdas") ?: JSONArray()).sortedWith(
+            compareBy<CatalogResponse.Cell> { parseCellCode(it.cellCode).first }
+                .thenBy { parseCellCode(it.cellCode).second }
+                .thenBy { it.cellCode }
+        )
+        val background = parseBackground(data.optJSONObject("fondo"))
+
+        return CatalogResponse(
+            cells = cells,
+            backgroundImageUrl = background.second,
+            backgroundImageId = background.first
+        )
     }
 
-    suspend fun fetchCatalogData(machineId: Long): CatalogData {
-        val catalog = fetchCatalog(machineId)
+    suspend fun fetchCatalogData(): CatalogData {
+        val catalog = fetchCatalog()
 
         return CatalogData(
             items = catalog.cells.map { cell ->
@@ -123,471 +91,230 @@ class HttpVendingBackendGateway(
         )
     }
 
+    /**
+     * Los metodos de pago que ESTA maquina ofrece. La lista ya viene filtrada y normalizada por el
+     * backend (los dos interruptores de datos y la pasarela registrada), asi que lo unico que hace el
+     * kiosko es pintarla y mandar el id con el que se cobra.
+     */
     override suspend fun fetchEnabledPaymentMethods(): List<PaymentMethod> {
-        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "${BackendConfig.baseUrl}/api/maquina/pago/qr/servicios-habilitados"
-        var connection: HttpURLConnection? = null
+        val response = BackendHttp.request("GET", METODOS_PAGO_PATH, sessionManager.getAuthorizationHeader())
 
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                throw PaymentMethodsGatewayException(
-                    "Respuesta vacia de servicios de pago (HTTP $statusCode)",
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "No se pudo obtener servicios habilitados")
-            if (statusCode !in 200..299 || backendError != 0 || backendStatus != 1) {
-                throw PaymentMethodsGatewayException(
-                    buildBackendErrorMessage(statusCode, rawBody, backendMessage),
-                    unauthorized = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
-                )
-            }
-
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val providerResponse = values.optJSONObject("taProviderResponse") ?: JSONObject()
-            val providerError = providerResponse.optInt("error", -1)
-            val providerValues = providerResponse.optJSONArray("values") ?: JSONArray()
-            if (providerError != 0 || providerValues.length() <= 0) {
-                throw PaymentMethodsGatewayException("No hay servicios de pago habilitados para esta maquina.")
-            }
-
-            val methods = mutableListOf<PaymentMethod>()
-            for (i in 0 until providerValues.length()) {
-                val item = providerValues.optJSONObject(i) ?: continue
-                val id = when (val rawId = item.opt("paymentMethodId")) {
-                    is Number -> rawId.toInt()
-                    is String -> rawId.toIntOrNull() ?: 0
-                    else -> item.optInt("paymentMethodId", 0)
-                }
-                val label = item.optString("paymentMethodName", "").trim()
-                if (id > 0 && label.isNotBlank()) {
-                    methods += PaymentMethod(id = id, label = label)
-                }
-            }
-
-            val unique = methods.distinctBy { it.id }
-            if (unique.isEmpty()) {
-                throw PaymentMethodsGatewayException("No hay servicios de pago validos en la respuesta del proveedor.")
-            } else {
-                unique
-            }
-        } catch (ex: PaymentMethodsGatewayException) {
-            throw ex
-        } catch (ex: Exception) {
-            throw PaymentMethodsGatewayException("Fallo obteniendo servicios habilitados: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
+        if (!response.isSuccess) {
+            throw PaymentMethodsGatewayException(
+                response.errorMessage("No se pudo obtener los metodos de pago"),
+                unauthorized = response.isUnauthorized
+            )
         }
+
+        val methods = response.dataArray().mapNotNull { item ->
+            val id = item.optInt("tnMetodoPago", 0)
+            val label = textoDe(item, "tcNombreMetodoPago")
+            if (id > 0 && label.isNotBlank()) PaymentMethod(id = id, label = label) else null
+        }.distinctBy { it.id }
+
+        if (methods.isEmpty()) {
+            throw PaymentMethodsGatewayException("No hay metodos de pago habilitados para esta maquina.")
+        }
+
+        return methods
     }
 
+    /**
+     * La compra del kiosko son DOS llamadas del backend: el pedido (con una linea por unidad) y su
+     * cobro, que es el que devuelve la forma de pago. La APK las une aca porque su pantalla muestra una
+     * sola cosa —el QR— y necesita ademas el id del PAGO para saber como va el cobro.
+     */
     override suspend fun createOrderQr(request: CreateOrderQrRequest): CreateOrderQrResponse {
-        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "${BackendConfig.baseUrl}/api/pedido/crear-y-generar-qr"
-        var connection: HttpURLConnection? = null
+        val pedido = crearPedido(request)
+        val pago = iniciarCobro(pedido.id, request.paymentMethodId)
 
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 14_000
-                readTimeout = 14_000
-                doOutput = true
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-            }
+        return CreateOrderQrResponse(
+            orderId = pedido.id,
+            paymentId = pago.id,
+            qrBase64 = pago.qrBase64,
+            expiration = pago.expira,
+            details = pedido.detalles,
+            serverNowMs = pago.serverNowMs
+        )
+    }
 
-            val itemsJson = JSONArray()
-            request.items.forEach { item ->
-                itemsJson.put(
-                    JSONObject().apply {
-                        put("tnPlanogramaCelda", item.planogramCellId)
-                        put("tnProducto", item.productId)
-                        put("tnCantidad", item.quantity)
-                    }
-                )
-            }
-
-            val payload = JSONObject().apply {
-                put("tnMaquina", request.machineId)
-                put("tcNombreCliente", request.customerName)
-                put("tcTelefonoCliente", request.customerPhone)
-                put("tcNITCliente", request.customerCi)
-                put("tnPaymentMethodId", request.paymentMethodId)
-                put("taItems", itemsJson)
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val serverNowMs = connection.date.takeIf { it > 0L }
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                throw CreateOrderQrGatewayException("Respuesta vacia al generar QR (HTTP $statusCode)")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.opt("error")?.toString()?.toIntOrNull()
-            val backendStatus = json.opt("status")?.toString()?.toIntOrNull()
-
-            if (statusCode !in 200..299) {
-                throw CreateOrderQrGatewayException(
-                    buildCreateOrderQrBackendErrorMessage(
-                        statusCode = statusCode,
-                        rawBody = rawBody,
-                        fallbackMessage = "Fallo al generar QR"
-                    )
-                )
-            }
-
-            if (backendError != null && backendError != 0) {
-                throw CreateOrderQrGatewayException(
-                    buildCreateOrderQrBackendErrorMessage(
-                        statusCode = statusCode,
-                        rawBody = rawBody,
-                        fallbackMessage = "Backend reporto error al generar QR"
-                    )
-                )
-            }
-
-            if (backendStatus != null && backendStatus != 1) {
-                throw CreateOrderQrGatewayException(
-                    buildCreateOrderQrBackendErrorMessage(
-                        statusCode = statusCode,
-                        rawBody = rawBody,
-                        fallbackMessage = "Backend no confirmo estado exitoso al generar QR"
-                    )
-                )
-            }
-
-            val values = json.optJSONObject("values") ?: json
-            val orderId = extractIntFrom(
-                values,
-                "taPedido.tnPedido",
-                "pedido.tnPedido",
-                "tnPedido"
-            )
-
-            val qrBase64 = extractStringFrom(
-                values,
-                "taQr.tcQrBase64",
-                "taQr.qrBase64",
-                "qr.tcQrBase64",
-                "qr.qrBase64",
-                "tcQrBase64",
-                "qrBase64"
-            )
-
-            val expiration = extractStringFrom(
-                values,
-                "taQr.ltExpirationDate",
-                "taQr.expirationDate",
-                "qr.ltExpirationDate",
-                "qr.expirationDate",
-                "ltExpirationDate",
-                "expirationDate"
-            )
-
-            if (orderId <= 0) {
-                throw CreateOrderQrGatewayException("Respuesta sin tnPedido valido. Body: $rawBody")
-            }
-            if (qrBase64.isBlank()) {
-                throw CreateOrderQrGatewayException("Respuesta sin QR base64. Body: $rawBody")
-            }
-
-            CreateOrderQrResponse(
-                orderId = orderId,
-                qrBase64 = qrBase64,
-                expiration = expiration,
-                serverNowMs = serverNowMs,
-                details = extractOrderDetails(values)
-            )
-        } catch (ex: CreateOrderQrGatewayException) {
-            throw ex
+    /**
+     * El estado del COBRO: se sondea con el id del pago que devolvio [createOrderQr]. Los ids del
+     * catalogo del backend son los mismos que ya entendia el kiosko (2 pagado, 3 cancelado, 4 fallido).
+     */
+    override suspend fun fetchPaymentStatus(pagoId: Long): PaymentStatus {
+        val response = try {
+            BackendHttp.request("GET", "$PAGOS_PATH/$pagoId", sessionManager.getAuthorizationHeader())
         } catch (ex: Exception) {
-            throw CreateOrderQrGatewayException("Fallo de conexion al generar QR: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
+            return PaymentStatus.Error("Error consultando el estado del pago: ${ex.message ?: "sin detalle"}")
+        }
+
+        if (!response.isSuccess) {
+            return PaymentStatus.Error(response.errorMessage("Consultando el estado del pago"))
+        }
+
+        val data = response.dataObject()
+        val estado = data.optInt("tnEstadoPago", ESTADO_PAGO_PENDIENTE)
+
+        return when (estado) {
+            ESTADO_PAGO_PAGADO -> PaymentStatus.Paid
+            ESTADO_PAGO_CANCELADO -> PaymentStatus.Cancelled(textoDe(data, "tcEstadoPago", "Pago cancelado"))
+            ESTADO_PAGO_FALLIDO -> PaymentStatus.Failed(textoDe(data, "tcEstadoPago", "Pago fallido"))
+            else -> PaymentStatus.Pending("Esperando confirmacion de pago...")
         }
     }
 
-    override suspend fun fetchPaymentStatus(orderId: Long): PaymentStatus {
-        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "${BackendConfig.baseUrl}/api/pedido/$orderId/estado-pago"
-        var connection: HttpURLConnection? = null
-
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return PaymentStatus.Error("Sin respuesta de estado pago (HTTP $statusCode)")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "Consultando estado...")
-
-            if (statusCode !in 200..299 || backendError != 0 || backendStatus != 1) {
-                return PaymentStatus.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
-            }
-
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val tnEstadoPago = values.optInt("tnEstadoPago", Int.MIN_VALUE)
-            val tnEstadoPedido = values.optInt("tnEstadoPedido", Int.MIN_VALUE)
-            val estadoFallback = values.optInt("estado", 1)
-            val effectiveState = when {
-                tnEstadoPago != Int.MIN_VALUE -> tnEstadoPago
-                tnEstadoPedido != Int.MIN_VALUE -> tnEstadoPedido
-                else -> estadoFallback
-            }
-
-            when (effectiveState) {
-                2 -> PaymentStatus.Paid
-                3 -> PaymentStatus.Cancelled("Pago cancelado")
-                4 -> PaymentStatus.Failed("Pago fallido")
-                else -> PaymentStatus.Pending(backendMessage)
-            }
-        } catch (ex: Exception) {
-            PaymentStatus.Error("Error consultando estado de pago: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
-        }
-    }
-
+    /**
+     * Cancela el PEDIDO de la maquina. El backend solo cancela lo que todavia no se cobro: un pedido
+     * pagado responde 422 con el motivo (le toca una devolucion, no una cancelacion).
+     */
     override suspend fun cancelOrder(orderId: Long): CancelOrderResult {
-        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "${BackendConfig.baseUrl}/api/pedido/$orderId/cancelar"
-        var connection: HttpURLConnection? = null
+        val payload = JSONObject().apply { put("tcMotivo", MOTIVO_CANCELACION_KIOSKO) }
 
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                doOutput = true
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Accept", "application/json")
-                setRequestProperty("Content-Type", "application/json")
-            }
-
-            val payload = JSONObject().apply {
-                put("tcMotivo", "CANCELADO_CLIENTE_APK")
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return CancelOrderResult.Error("Sin respuesta al cancelar pedido (HTTP $statusCode)")
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "No se pudo cancelar el pedido.")
-            json.optJSONObject("values") ?: JSONObject()
-
-            return if (statusCode in 200..299 && backendError == 0 && backendStatus == 1) {
-                CancelOrderResult.Success(backendMessage)
-            } else {
-                CancelOrderResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
-            }
+        val response = try {
+            BackendHttp.request("POST", "$PEDIDOS_PATH/$orderId/cancelar", sessionManager.getAuthorizationHeader(), payload)
         } catch (ex: Exception) {
-            CancelOrderResult.Error("Error cancelando pedido: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
+            return CancelOrderResult.Error("Error cancelando el pedido: ${ex.message ?: "sin detalle"}")
+        }
+
+        return if (response.isSuccess) {
+            CancelOrderResult.Success("Pedido cancelado.")
+        } else {
+            CancelOrderResult.Error(response.errorMessage("No se pudo cancelar el pedido."))
         }
     }
 
+    /**
+     * Reporta lo que la maquina hizo con UNA unidad del pedido.
+     *
+     * Va fire-and-forget: el kiosko no bloquea la pantalla por un reporte. Lo que se pierda se cierra
+     * solo en el backend (el pedido colgado vence a las 24 h).
+     */
     override suspend fun reportDispenseStatus(request: DispenseStatusRequest): DispenseStatusResult {
-        val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        if (authHeader.isBlank()) {
-            return DispenseStatusResult.Error("Authorization header is blank")
+        val authorization = sessionManager.getAuthorizationHeader()
+        if (authorization.isNullOrBlank()) {
+            return DispenseStatusResult.Error("Sesion de maquina no disponible")
         }
 
-        val endpoint = "${BackendConfig.baseUrl}/api/maquina/pedido/dispensacion"
-        var connection: HttpURLConnection? = null
+        val payload = JSONObject().apply {
+            put("PedidoDetalle", request.orderDetailId)
+            put("DispensacionEstado", request.dispenseStatusId)
+            if (request.planogramCellId > 0) put("MaquinaCelda", request.planogramCellId)
+            if (request.dispenseStatus.isNotBlank()) put("CodigoEvento", request.dispenseStatus)
+        }
 
-        return try {
-            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                doOutput = true
-                setRequestProperty("Authorization", authHeader)
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val payload = JSONObject().apply {
-                put("tnPedido", request.orderId)
-                put("tnPedidoDetalle", request.orderDetailId)
-                put("tnPlanogramaCelda", request.planogramCellId)
-                put("tnEstadoDispensacion", request.dispenseStatusId)
-                put("tcEstadoDispensacion", request.dispenseStatus)
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return if (statusCode in 200..299) {
-                    DispenseStatusResult.Success
-                } else {
-                    DispenseStatusResult.Error("Sin respuesta al reportar dispensacion (HTTP $statusCode)")
-                }
-            }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "No se pudo reportar dispensacion.")
-            json.optJSONObject("values") ?: JSONObject()
-
-            if (statusCode in 200..299 && backendError == 0 && backendStatus == 1) {
-                DispenseStatusResult.Success
-            } else {
-                DispenseStatusResult.Error(buildBackendErrorMessage(statusCode, rawBody, backendMessage))
-            }
+        val response = try {
+            BackendHttp.request(
+                method = "POST",
+                path = "$PEDIDOS_PATH/${request.orderId}/dispensacion",
+                authorization = authorization,
+                body = payload
+            )
         } catch (ex: Exception) {
-            DispenseStatusResult.Error("Error reportando dispensacion: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
+            return DispenseStatusResult.Error("Error reportando la dispensacion: ${ex.message ?: "sin detalle"}")
+        }
+
+        return if (response.isSuccess) {
+            DispenseStatusResult.Success
+        } else {
+            DispenseStatusResult.Error(response.errorMessage("No se pudo reportar la dispensacion."))
         }
     }
 
-    private fun buildBackendErrorMessage(
-        statusCode: Int,
-        rawBody: String,
-        fallbackMessage: String
-    ): String {
-        val parsedMessage = runCatching {
-            val json = JSONObject(rawBody)
-            json.optString("message")
-                .ifBlank { json.optString("error") }
-                .ifBlank { fallbackMessage }
-        }.getOrDefault(fallbackMessage)
-        return "$parsedMessage (HTTP $statusCode)"
-    }
-
-    private fun extractIntFrom(source: JSONObject?, vararg paths: String): Int {
-        if (source == null) return 0
-        for (path in paths) {
-            val value = resolvePath(source, path)
-            when (value) {
-                is Number -> return value.toInt()
-                is String -> value.toIntOrNull()?.let { return it }
-            }
+    /** El alta del pedido: una linea por unidad, con la celda del planograma que la maquina dispensara. */
+    private fun crearPedido(request: CreateOrderQrRequest): LineasDelPedido {
+        val detalles = JSONArray()
+        request.items.forEach { item ->
+            detalles.put(
+                JSONObject().apply {
+                    put("MaquinaCelda", item.planogramCellId)
+                    put("Producto", item.productId)
+                    put("Cantidad", item.quantity)
+                }
+            )
         }
-        return 0
-    }
 
-    private fun extractStringFrom(source: JSONObject?, vararg paths: String): String {
-        if (source == null) return ""
-        for (path in paths) {
-            val value = resolvePath(source, path)
-            val text = value?.toString()?.trim().orEmpty()
-            if (text.isNotBlank()) return text
+        val payload = JSONObject().apply {
+            put("Detalles", detalles)
+            // El comprador es opcional: el backend busca al cliente que ya esta —por documento o por
+            // telefono— o lo crea con estos datos.
+            if (request.customerName.isNotBlank()) put("tcNombreCliente", request.customerName)
+            if (request.customerPhone.isNotBlank()) put("tcTelefonoCliente", request.customerPhone)
+            if (request.customerCi.isNotBlank()) put("tcNITCliente", request.customerCi)
+            // Con clave, un reintento del mismo alta devuelve el pedido que ya existe: la maquina no
+            // abre un segundo pedido —ni reserva dos veces— por una respuesta que se perdio.
+            if (request.idempotencyKey.isNotBlank()) put("ClaveIdempotencia", request.idempotencyKey)
         }
-        return ""
-    }
 
-    private fun extractOrderDetails(values: JSONObject): List<CreateOrderQrResponse.OrderDetail> {
-        val arrays = listOf(
-            values.optJSONArray("taPedidoDetalle"),
-            values.optJSONArray("taPedidoDetalles"),
-            values.optJSONObject("taPedido")?.optJSONArray("taPedidoDetalle"),
-            values.optJSONObject("pedido")?.optJSONArray("taPedidoDetalle")
+        val response = BackendHttp.request(
+            method = "POST",
+            path = PEDIDOS_PATH,
+            authorization = sessionManager.getAuthorizationHeader(),
+            body = payload,
+            timeoutMs = ORDER_TIMEOUT_MS
         )
 
-        val details = mutableListOf<CreateOrderQrResponse.OrderDetail>()
-        arrays.forEach { array ->
-            if (array == null) return@forEach
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                val orderDetailId = extractIntFrom(
-                    item,
-                    "tnPedidoDetalle",
-                    "tnPedidoDetalleId"
-                )
-                if (orderDetailId <= 0) continue
-                val planogramCellId = extractIntFrom(
-                    item,
-                    "tnPlanogramaCelda",
-                    "tnPlanogramaCeldaId"
-                )
-                details += CreateOrderQrResponse.OrderDetail(
-                    orderDetailId = orderDetailId,
-                    planogramCellId = planogramCellId
-                )
-            }
+        if (!response.isSuccess) {
+            throw CreateOrderQrGatewayException(response.errorMessage("No se pudo generar el pedido"))
         }
-        return details.distinctBy { it.orderDetailId }
+
+        val data = response.dataObject()
+        val pedidoId = data.optInt("tnPedido", 0)
+        if (pedidoId <= 0) {
+            throw CreateOrderQrGatewayException("Respuesta sin el id del pedido")
+        }
+
+        val lineas = data.optJSONArray("taDetalles") ?: JSONArray()
+        val detallesDelPedido = (0 until lineas.length()).mapNotNull { index ->
+            val linea = lineas.optJSONObject(index) ?: return@mapNotNull null
+            val id = linea.optInt("tnPedidoDetalle", 0)
+            if (id <= 0) return@mapNotNull null
+
+            CreateOrderQrResponse.OrderDetail(
+                orderDetailId = id,
+                planogramCellId = linea.optInt("tnPlanogramaCelda", 0)
+            )
+        }.distinctBy { it.orderDetailId }
+
+        return LineasDelPedido(id = pedidoId, detalles = detallesDelPedido)
+    }
+
+    /** El cobro del pedido: es el que devuelve la forma de pago que la pantalla muestra. */
+    private fun iniciarCobro(pedidoId: Int, metodoPago: Int): CobroDelPedido {
+        val payload = JSONObject().apply {
+            put("Pedido", pedidoId)
+            put("MetodoPago", metodoPago)
+        }
+
+        val response = BackendHttp.request(
+            method = "POST",
+            path = PAGOS_PATH,
+            authorization = sessionManager.getAuthorizationHeader(),
+            body = payload,
+            timeoutMs = ORDER_TIMEOUT_MS
+        )
+
+        if (!response.isSuccess) {
+            throw CreateOrderQrGatewayException(response.errorMessage("No se pudo iniciar el cobro"))
+        }
+
+        val data = response.dataObject()
+        val pagoId = data.optInt("tnPago", 0)
+        val qrBase64 = textoDe(data, "tcQrBase64")
+
+        if (pagoId <= 0) {
+            throw CreateOrderQrGatewayException("Respuesta sin el id del pago")
+        }
+        if (qrBase64.isBlank()) {
+            throw CreateOrderQrGatewayException("El metodo de pago no devolvio un codigo QR")
+        }
+
+        return CobroDelPedido(
+            id = pagoId,
+            qrBase64 = qrBase64,
+            expira = textoDe(data, "ttExpira"),
+            serverNowMs = response.serverNowMs
+        )
     }
 
     private fun parseCatalogCells(celdasJson: JSONArray): List<CatalogResponse.Cell> {
@@ -595,121 +322,89 @@ class HttpVendingBackendGateway(
 
         for (i in 0 until celdasJson.length()) {
             val celda = celdasJson.optJSONObject(i) ?: continue
-            val producto = celda.optJSONObject("taProducto") ?: celda.optJSONObject("producto")
-            val inventario = celda.optJSONObject("taInventario") ?: celda.optJSONObject("inventario")
+            val producto = celda.optJSONObject("producto")
 
-            val esActiva = celda.optInt("tnEsActiva", 0) == 1
-            val estadoCeldaActiva = celda.optInt("tnEstado", 0) == 1
-            val productoActivo = producto?.optInt("tnEstado", 0) == 1
-            val inventarioCantidad = inventario?.optInt("tnCantidad", 0) ?: 0
-            val reservadas = inventario?.optInt("tnCantidadReservada", 0) ?: 0
-            val stockDisponible = (inventarioCantidad - reservadas).coerceAtLeast(0)
+            val codigoCelda = textoDe(celda, "tcCodigoCelda")
+            val codigoProducto = textoDe(producto, "tcCodigoProducto")
+            val nombreProducto = textoDe(producto, "tcNombreProducto")
+                .ifBlank { codigoProducto }
+                .ifBlank { "Sin producto" }
 
-            val nombreProducto = producto?.optString("tcNombre", "")?.trim().orEmpty()
-            val precio = producto?.optDouble("tnPrecio", 0.0) ?: 0.0
-            val codigo = celda.optString("tcCodigo", "--")
-            val planogramaCeldaId = when {
-                celda.has("tnPlanogramaCelda") -> celda.optInt("tnPlanogramaCelda", 0)
-                celda.has("tnCelda") -> celda.optInt("tnCelda", 0)
-                else -> 0
-            }
-            val productoId = when {
-                producto?.has("tnProducto") == true -> producto.optInt("tnProducto", 0)
-                celda.has("tnProducto") -> celda.optInt("tnProducto", 0)
-                else -> 0
-            }
-            val (principalId, principalRemoteUrl) = extractPrimaryImage(producto)
-            val (secondaryId, secondaryRemoteUrl) = extractSecondaryImage(producto)
+            // El backend ya dice cuanto se puede VENDER de la celda: tiene lo cargado menos lo
+            // reservado por el otro sistema.
+            val disponible = celda.optInt("tnDisponible", 0)
+            val celdaOperativa = celda.optBoolean("tlEstado", false)
+            val celdaOcupada = celda.optBoolean("tlOcupada", false)
+            val productoActivo = producto?.optBoolean("tlEstado", false) == true
+
+            val imagenPrincipal = producto?.optJSONObject("archivoPrincipal")
+            val imagenSecundaria = producto?.optJSONObject("archivoSecundarioPrincipal")
 
             cells += CatalogResponse.Cell(
-                planogramCellId = planogramaCeldaId,
-                productId = productoId,
-                cellCode = codigo,
-                productName = if (nombreProducto.isBlank()) "Sin producto" else nombreProducto,
-                price = precio,
-                availableStock = stockDisponible,
-                vendible = esActiva && estadoCeldaActiva && producto != null && productoActivo,
-                physicalCell = mapCellCodeToPhysical(codigo) ?: 0,
-                imageUrl = principalRemoteUrl,
-                secondaryImageUrl = secondaryRemoteUrl,
-                imageId = principalId,
-                secondaryImageId = secondaryId,
-                sourceCellId = celda.optInt("tnCelda", i)
+                planogramCellId = celda.optInt("tnMaquinaCelda", 0),
+                productId = producto?.optInt("tnProducto", 0) ?: 0,
+                cellCode = codigoCelda.ifBlank { "--" },
+                productName = nombreProducto,
+                price = producto?.optDouble("tnPrecioVenta", 0.0) ?: 0.0,
+                availableStock = disponible,
+                vendible = celdaOperativa && celdaOcupada && producto != null && productoActivo,
+                physicalCell = mapCellCodeToPhysical(codigoCelda) ?: 0,
+                imageUrl = textoDe(imagenPrincipal, "tcUrl"),
+                secondaryImageUrl = textoDe(imagenSecundaria, "tcUrl"),
+                imageId = imagenPrincipal?.optInt("tnArchivo", 0) ?: 0,
+                secondaryImageId = imagenSecundaria?.optInt("tnArchivo", 0) ?: 0,
+                sourceCellId = celda.optInt("tnMaquinaCelda", i)
             )
         }
 
         return cells
     }
 
-    private fun parseUiBackground(values: JSONObject): Pair<Int, String> {
-        val source =
-            values.optJSONObject("taFondoUiPrincipal")
-                ?: values.optJSONObject("presentacion")?.optJSONObject("taFondoUiPrincipal")
-                ?: values.optJSONObject("planograma")?.optJSONObject("taFondoUiPrincipal")
-                ?: return 0 to ""
+    /**
+     * Reads a text field the backend may send as an explicit `null`. `JSONObject.optString` answers the
+     * four letters "null" for those, and the kiosk would paint them (a machine without location, a
+     * product without name). Absent and null both fall back to [porDefecto].
+     */
+    private fun textoDe(json: JSONObject?, clave: String, porDefecto: String = ""): String =
+        if (json == null || json.isNull(clave)) porDefecto else json.optString(clave, porDefecto).trim()
 
-        val status = source.optInt("tnEstado", 0)
-        if (status != 1) return 0 to ""
-        val usageType = source.optString("tcUsoTipo", "").trim()
-        if (usageType.isNotBlank() && !usageType.equals("FONDO_PLANOGRAMA", ignoreCase = true)) return 0 to ""
-        val mimeType = source.optString("tcMimeType", "").trim()
-        if (mimeType.isNotBlank() && !mimeType.startsWith("image/", ignoreCase = true)) return 0 to ""
-        val remoteUrl = source.optString("tcUrl", "").trim()
-        if (remoteUrl.isBlank()) return 0 to ""
-        return source.optInt("tnPresentacionArchivo", 0) to remoteUrl
+    /**
+     * El fondo de planograma que la maquina tiene puesto: la imagen que el kiosko pinta detras de la
+     * rejilla. Viene del backend con su id y su URL; sin fondo, el kiosko se pinta como puede.
+     */
+    private fun parseBackground(fondo: JSONObject?): Pair<Int, String> {
+        if (fondo == null) return 0 to ""
+
+        val url = textoDe(fondo.optJSONObject("archivo"), "tcUrl")
+        if (url.isBlank()) return 0 to ""
+
+        return (fondo.optInt("tnArchivo", 0)) to url
     }
 
-    private fun extractPrimaryImage(producto: JSONObject?): Pair<Int, String> {
-        if (producto == null) return 0 to ""
-        val principal = producto.optJSONObject("taImagenPrincipal")
-        val principalId = principal?.optInt("tnProductoArchivo", 0) ?: 0
-        val principalUrl = principal?.optString("tcUrl", "")?.trim().orEmpty()
-        if (principalUrl.isNotBlank()) return principalId to principalUrl
-        return 0 to producto.optString("tcImagenUrlPrincipal", "")?.trim().orEmpty()
-    }
-
-    private fun extractSecondaryImage(producto: JSONObject?): Pair<Int, String> {
-        if (producto == null) return 0 to ""
-        val secondaries = producto.optJSONArray("taImagenesSecundarias")
-        if (secondaries != null) {
-            var chosen: JSONObject? = null
-            var chosenOrder = Int.MAX_VALUE
-            for (index in 0 until secondaries.length()) {
-                val candidate = secondaries.optJSONObject(index) ?: continue
-                val candidateUrl = candidate.optString("tcUrl", "").trim()
-                if (candidateUrl.isBlank()) continue
-                val order = candidate.optInt("tnOrdenVisual", Int.MAX_VALUE)
-                if (chosen == null || order < chosenOrder) {
-                    chosen = candidate
-                    chosenOrder = order
-                }
-            }
-            if (chosen != null) {
-                val id = chosen.optInt("tnProductoArchivo", 0)
-                val url = chosen.optString("tcUrl", "").trim()
-                return id to url
-            }
-        }
-
-        val fallback = producto.optString("tcImagenUrlSecundaria", "").trim()
-        return 0 to fallback
-    }
-
+    /**
+     * El codigo de la celda tal como lo manda el backend (`A1`, `C7`) es la posicion en la rejilla, y de
+     * ahi sale el numero de salida que acciona la placa: la bandeja es la decena y la columna la unidad.
+     *
+     * Tambien se acepta un numero ya listo en el rango de la placa (10..68), que es lo que un operador
+     * puede haber cargado como codigo de su celda.
+     */
     private fun mapCellCodeToPhysical(code: String): Int? {
         val clean = code.trim().uppercase()
         clean.toIntOrNull()?.let { direct ->
-            if (direct in 10..68) return direct
+            if (direct in PHYSICAL_CELL_RANGE) return direct
         }
 
-        val match = Regex("^([A-F])(\\d{1,2})$").find(clean) ?: return null
-        val letter = match.groupValues[1][0]
-        val column = match.groupValues[2].toIntOrNull() ?: return null
-        if (column !in 1..9) return null
+        val match = Regex("^([A-Z])(\\d{1,2})$").find(clean) ?: return null
+        val bandeja = match.groupValues[1][0]
+        val columna = match.groupValues[2].toIntOrNull() ?: return null
+        if (columna !in 1..9) return null
 
-        val rowIndex = letter - 'A'
-        if (rowIndex !in 0..5) return null
+        val rowIndex = bandeja - 'A'
+        if (rowIndex < 0) return null
 
-        return ((rowIndex + 1) * 10) + (column - 1)
+        val physical = ((rowIndex + 1) * 10) + (columna - 1)
+
+        return physical.takeIf { it in PHYSICAL_CELL_RANGE }
     }
 
     private fun parseCellCode(code: String): Pair<String, Int> {
@@ -722,52 +417,35 @@ class HttpVendingBackendGateway(
         return code.uppercase() to Int.MAX_VALUE
     }
 
-    private fun resolvePath(source: JSONObject, path: String): Any? {
-        val parts = path.split(".")
-        var current: Any? = source
-        for (part in parts) {
-            current = when (current) {
-                is JSONObject -> if (current.has(part) && !current.isNull(part)) current.opt(part) else null
-                else -> null
-            }
-            if (current == null) return null
-        }
-        return current
-    }
+    private data class LineasDelPedido(
+        val id: Int,
+        val detalles: List<CreateOrderQrResponse.OrderDetail>
+    )
 
-    private fun buildCreateOrderQrBackendErrorMessage(
-        statusCode: Int,
-        rawBody: String,
-        fallbackMessage: String
-    ): String {
-        return try {
-            val json = JSONObject(rawBody)
-            val message = json.optString("message", fallbackMessage).ifBlank { fallbackMessage }
-            val errorsObj = json.optJSONObject("errors")
-            if (errorsObj == null || errorsObj.length() == 0) {
-                "$message (HTTP $statusCode)"
-            } else {
-                val details = mutableListOf<String>()
-                val keys = errorsObj.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val value = errorsObj.opt(key)
-                    when (value) {
-                        is JSONArray -> {
-                            val joined = (0 until value.length()).joinToString("; ") { idx ->
-                                value.optString(idx)
-                            }
-                            details += "$key: $joined"
-                        }
+    private data class CobroDelPedido(
+        val id: Int,
+        val qrBase64: String,
+        val expira: String,
+        val serverNowMs: Long?
+    )
 
-                        else -> details += "$key: ${value?.toString().orEmpty()}"
-                    }
-                }
-                "$message\n${details.joinToString("\n")}".trim()
-            }
-        } catch (_: Exception) {
-            if (rawBody.isBlank()) "$fallbackMessage (HTTP $statusCode)" else rawBody
-        }
+    private companion object {
+        const val PLANOGRAMA_PATH = "/maquina/planograma"
+        const val METODOS_PAGO_PATH = "/maquina/metodos-pago"
+        const val PEDIDOS_PATH = "/pedidos"
+        const val PAGOS_PATH = "/pagos"
+        const val ORDER_TIMEOUT_MS = 14_000
+
+        /** Catalogo `ESTADOPAGO` del backend. */
+        const val ESTADO_PAGO_PENDIENTE = 1
+        const val ESTADO_PAGO_PAGADO = 2
+        const val ESTADO_PAGO_CANCELADO = 3
+        const val ESTADO_PAGO_FALLIDO = 4
+
+        /** El motivo con el que queda el pedido de un cliente que se arrepiente o abandona el kiosko. */
+        const val MOTIVO_CANCELACION_KIOSKO = "CANCELADO_CLIENTE_APK"
+
+        val PHYSICAL_CELL_RANGE = 10..68
     }
 }
 

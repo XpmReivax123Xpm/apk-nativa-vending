@@ -1,67 +1,27 @@
 package com.vending.kiosk.app.data.backend
 
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-
+/**
+ * Validacion del PIN para SALIR del kiosko (mantenimiento).
+ *
+ * Es el MISMO PIN con el que la maquina entra: el backend no tiene un segundo camino para validar
+ * credenciales sin abrir sesion, asi que se valida con el login de maquina y el token que devuelve se
+ * descarta —al kiosko le alcanza con saber que el PIN es el de esta maquina—.
+ */
 object AdminAccessGateway {
 
-    private val ADMIN_ACCESS_ENDPOINT = "${BackendConfig.baseUrl}/api/maquinas/acceso"
+    fun validateAccess(direccionMac: String, pin: String): AdminAccessResult {
+        if (direccionMac.isBlank()) return AdminAccessResult.Error("El kiosko no tiene configurado su equipo")
 
-    fun validateAccess(codigoMaquina: String, pin: String): AdminAccessResult {
-        if (codigoMaquina.isBlank()) return AdminAccessResult.Error("Codigo de maquina invalido")
-
-        var connection: HttpURLConnection? = null
-        return try {
-            connection = (URL(ADMIN_ACCESS_ENDPOINT).openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Accept", "application/json")
-            }
-
-            val payload = JSONObject().apply {
-                put("tcCodigoMaquina", codigoMaquina)
-                put("tcPin", pin)
-            }.toString()
-
-            connection.outputStream.use { output ->
-                output.write(payload.toByteArray(Charsets.UTF_8))
-            }
-
-            val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
+        return when (val result = MachineAuthGateway.loginMachine(direccionMac, pin)) {
+            is MachineLoginResult.Success -> AdminAccessResult.Granted
+            is MachineLoginResult.Error -> {
+                val message = result.message.ifBlank { "PIN invalido" }
+                if (message.contains("HTTP 4", ignoreCase = true)) {
+                    AdminAccessResult.Denied(message)
                 } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    AdminAccessResult.Error(message)
                 }
-            }.getOrDefault("")
-
-            if (rawBody.isBlank()) {
-                return AdminAccessResult.Error("Sin respuesta de validacion de PIN")
             }
-
-            val json = JSONObject(rawBody)
-            val backendError = json.optInt("error", -1)
-            val backendStatus = json.optInt("status", 0)
-            val backendMessage = json.optString("message", "No se pudo validar acceso")
-            val values = json.optJSONObject("values") ?: JSONObject()
-            val acceso = values.optInt("tnAcceso", 0)
-
-            if (statusCode in 200..299 && backendError == 0 && backendStatus == 1 && acceso == 1) {
-                AdminAccessResult.Granted
-            } else if (acceso == 0 || backendError != 0 || backendStatus != 1) {
-                AdminAccessResult.Denied(backendMessage.ifBlank { "PIN invalido" })
-            } else {
-                AdminAccessResult.Error("$backendMessage (HTTP $statusCode)")
-            }
-        } catch (ex: Exception) {
-            AdminAccessResult.Error("Error validando acceso: ${ex.message ?: "sin detalle"}")
-        } finally {
-            connection?.disconnect()
         }
     }
 }

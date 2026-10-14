@@ -32,6 +32,11 @@ data class PaymentMethod(
 data class CreateOrderQrRequest(
     val machineId: Int,
     val paymentMethodId: Int,
+    /**
+     * La clave del alta del pedido: el reintento de la MISMA compra va con la misma clave y el
+     * backend devuelve el pedido que ya existe en vez de abrir otro. Vacia = sin proteccion.
+     */
+    val idempotencyKey: String = "",
     val customerName: String,
     val customerPhone: String,
     val customerCi: String,
@@ -46,6 +51,10 @@ data class CreateOrderQrRequest(
 
 data class CreateOrderQrResponse(
     val orderId: Int,
+    /**
+     * El id del PAGO: es con el que se consulta el estado del cobro (el pedido no se sondea).
+     */
+    val paymentId: Int = 0,
     val qrBase64: String,
     val expiration: String,
     val details: List<OrderDetail>,

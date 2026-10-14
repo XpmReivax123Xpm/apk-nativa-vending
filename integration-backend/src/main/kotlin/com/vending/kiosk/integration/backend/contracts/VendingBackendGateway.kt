@@ -10,10 +10,10 @@ import com.vending.kiosk.integration.backend.models.PaymentMethod
 import com.vending.kiosk.integration.backend.models.PaymentStatus
 
 interface VendingBackendGateway {
-    suspend fun fetchCatalog(machineId: Long): CatalogResponse
+    suspend fun fetchCatalog(): CatalogResponse
     suspend fun fetchEnabledPaymentMethods(): List<PaymentMethod>
     suspend fun createOrderQr(request: CreateOrderQrRequest): CreateOrderQrResponse
-    suspend fun fetchPaymentStatus(orderId: Long): PaymentStatus
+    suspend fun fetchPaymentStatus(pagoId: Long): PaymentStatus
     suspend fun cancelOrder(orderId: Long): CancelOrderResult
     suspend fun reportDispenseStatus(request: DispenseStatusRequest): DispenseStatusResult
 }

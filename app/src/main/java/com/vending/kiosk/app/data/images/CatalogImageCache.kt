@@ -44,6 +44,7 @@ class CatalogImageCache(context: Context) {
         val storedFile = storedPath?.let { File(it) }
 
         if (storedToken == token && storedFile?.exists() == true) {
+            rememberInMemory(storedFile, targetSizePx)
             return storedFile.absolutePath
         }
 
@@ -72,6 +73,22 @@ class CatalogImageCache(context: Context) {
     }
 
     fun isLocalImagePath(path: String): Boolean = path.isNotBlank() && !isRemoteUrl(path)
+
+    /**
+     * The file on disk is not enough: the grid paints from the in-memory cache, so a path that comes
+     * from the disk (the image was already downloaded in an earlier run) has to leave its bitmap loaded
+     * here as well. Without this the planogram shows "Vista previa no disponible" until the image is
+     * downloaded again.
+     *
+     * Call from Dispatchers.IO: it decodes when the bitmap is not already loaded.
+     */
+    private fun rememberInMemory(file: File, targetSizePx: Int) {
+        val key = localBitmapKey(file.absolutePath)
+        val cached = imageCache.get(key)
+        if (cached != null && cached.width <= targetSizePx && cached.height <= targetSizePx) return
+
+        decodeSampledBitmap(file, targetSizePx)?.let { imageCache.put(key, it) }
+    }
 
     fun getCachedBitmap(localPath: String): Bitmap? {
         if (!isLocalImagePath(localPath)) return null

@@ -1,7 +1,15 @@
-﻿package com.vending.kiosk.app.data.session
+package com.vending.kiosk.app.data.session
 
 import android.content.Context
 
+/**
+ * Lo que el kiosko guarda entre reinicios: la sesion de la maquina, su EQUIPO y los datos de la
+ * maquina que devolvio el login.
+ *
+ * El identificador del equipo se carga UNA vez —cuando se instala el kiosko o se cambia la tablet— y
+ * despues el kiosko solo pide el PIN: la maquina se identifica por su APARATO, nunca por el codigo que
+ * esta impreso en su frente (quien se lo supiera entraria al planograma de otra maquina).
+ */
 class AuthSessionManager(context: Context) {
 
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -15,24 +23,41 @@ class AuthSessionManager(context: Context) {
             .apply()
     }
 
-    fun saveMachineCredentials(machineId: Int, machineCode: String, machinePin: String) {
+    /** El identificador del APARATO y el PIN con el que el kiosko entra: se cargan una sola vez. */
+    fun saveEquipo(direccionMac: String, pin: String) {
         prefs.edit()
-            .putInt(KEY_MACHINE_ID, machineId)
-            .putString(KEY_MACHINE_CODE, machineCode)
-            .putString(KEY_MACHINE_PIN, machinePin)
+            .putString(KEY_DIRECCION_MAC, direccionMac.trim())
+            .putString(KEY_MACHINE_PIN, pin)
             .apply()
     }
 
-    fun getMachineCredentials(): MachineCredentials? {
-        val machineCode = prefs.getString(KEY_MACHINE_CODE, "").orEmpty().trim()
-        val machinePin = prefs.getString(KEY_MACHINE_PIN, "").orEmpty().trim()
-        val machineId = prefs.getInt(KEY_MACHINE_ID, 0)
-        if (machineCode.isBlank() || machinePin.isBlank()) return null
-        return MachineCredentials(
-            machineId = machineId,
-            machineCode = machineCode,
-            machinePin = machinePin
+    fun getEquipo(): Equipo? {
+        val direccionMac = prefs.getString(KEY_DIRECCION_MAC, "").orEmpty().trim()
+        val pin = prefs.getString(KEY_MACHINE_PIN, "").orEmpty().trim()
+        if (direccionMac.isBlank() || pin.isBlank()) return null
+
+        return Equipo(
+            direccionMac = direccionMac,
+            pin = pin,
+            machineId = prefs.getInt(KEY_MACHINE_ID, 0),
+            machineCode = prefs.getString(KEY_MACHINE_CODE, "").orEmpty().trim()
         )
+    }
+
+    /** Olvida el equipo: el kiosko vuelve a pedir su identificador (cambio de tablet). */
+    fun forgetEquipo() {
+        prefs.edit()
+            .remove(KEY_DIRECCION_MAC)
+            .remove(KEY_MACHINE_PIN)
+            .apply()
+    }
+
+    /** Los datos de la MAQUINA que devolvio el login: es el rotulo del kiosko, no una credencial. */
+    fun saveMaquina(machineId: Int, machineCode: String) {
+        prefs.edit()
+            .putInt(KEY_MACHINE_ID, machineId)
+            .putString(KEY_MACHINE_CODE, machineCode)
+            .apply()
     }
 
     fun getAuthorizationHeader(): String? {
@@ -86,14 +111,20 @@ class AuthSessionManager(context: Context) {
         private const val KEY_EXPIRES_AT = "expires_at"
         private const val KEY_MACHINE_ID = "machine_id"
         private const val KEY_MACHINE_CODE = "machine_code"
+        private const val KEY_DIRECCION_MAC = "direccion_mac"
         private const val KEY_MACHINE_PIN = "machine_pin"
         private const val KEY_KIOSK_AUTO_RESUME_ENABLED = "kiosk_auto_resume_enabled"
         private const val KEY_LAST_MACHINE_LOCATION = "last_machine_location"
     }
 }
 
-data class MachineCredentials(
+/**
+ * El equipo en el que corre este kiosko: su identificador —lo que el backend guarda como direccion de
+ * la maquina— y el PIN que el operador teclea, mas los datos de la maquina que devolvio el login.
+ */
+data class Equipo(
+    val direccionMac: String,
+    val pin: String,
     val machineId: Int,
-    val machineCode: String,
-    val machinePin: String
+    val machineCode: String
 )

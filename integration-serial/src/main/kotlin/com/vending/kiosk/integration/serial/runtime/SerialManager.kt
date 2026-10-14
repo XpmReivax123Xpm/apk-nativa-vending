@@ -1,7 +1,5 @@
 package com.vending.kiosk.integration.serial.runtime
 
-import android_serialport_api.SerialPort
-import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -12,21 +10,21 @@ class SerialManager {
         fun onStatus(msg: String)
     }
 
-    private var serialPort: SerialPort? = null
+    private var link: SerialLink? = null
     private var input: InputStream? = null
     private var output: OutputStream? = null
     @Volatile private var running = false
     private var rxThread: Thread? = null
 
-    fun isOpen(): Boolean = serialPort != null
+    fun isOpen(): Boolean = link != null
 
     fun open(path: String, baud: Int, listener: Listener) {
         try {
             close()
-            listener.onStatus("Abriendo puerto: $path @ $baud")
-            serialPort = SerialPort(File(path), baud, 0)
-            input = serialPort?.getInputStream()
-            output = serialPort?.getOutputStream()
+            listener.onStatus("Abriendo ${SerialTransportConfig.describe(path, baud)}")
+            link = SerialTransportConfig.current().open(path, baud)
+            input = link?.input
+            output = link?.output
             running = true
             rxThread = Thread({
                 val inStream = input ?: return@Thread
@@ -77,11 +75,14 @@ class SerialManager {
             output?.close()
         } catch (_: Throwable) {
         }
-        // La libreria nativa ronyuanserial_port incluida en esta APK no expone closeNative().
-        // Los streams anteriores cierran el descriptor; llamar serialPort.close() aborta el flujo SDK.
+        // En modo simulador esto cierra el socket; en la tablet libera el descriptor.
+        try {
+            link?.close()
+        } catch (_: Throwable) {
+        }
         rxThread = null
         input = null
         output = null
-        serialPort = null
+        link = null
     }
 }

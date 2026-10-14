@@ -7,7 +7,7 @@ import java.net.URL
 class LoginBackendGateway {
 
     fun login(correo: String, password: String): LoginBackendResult {
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/login"
+        val endpoint = "${BackendConfig.baseUrl}/api/login"
         var connection: HttpURLConnection? = null
 
         return try {

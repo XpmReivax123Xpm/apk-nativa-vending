@@ -13,7 +13,6 @@ import android.widget.Button
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import cc.uling.usdk.USDK
-import cc.uling.usdk.board.UBoard
 import cc.uling.usdk.board.wz.para.DSReplyPara
 import cc.uling.usdk.board.wz.para.SYPReplyPara
 import cc.uling.usdk.board.wz.para.TYReplyPara
@@ -29,7 +28,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 class VendingCalibratorActivity : Activity() {
-    private var board: UBoard? = null
+    private var board: CalibrationBoard? = null
 
     private lateinit var tvConnection: TextView
     private lateinit var tvColumns: TextView
@@ -47,9 +46,14 @@ class VendingCalibratorActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SimulationRuntime.apply()
         setContentView(R.layout.activity_vending_calibrator)
 
-        USDK.getInstance().init(application)
+        // El SDK ZhongDa solo publica librerias ARM: en modo simulador se usa la
+        // implementacion que habla con la placa simulada de la PC.
+        if (!SimulationRuntime.isSimulator()) {
+            USDK.getInstance().init(application)
+        }
         bindViews()
         bindActions()
         applyRowVisibility()
@@ -142,7 +146,11 @@ class VendingCalibratorActivity : Activity() {
     }
 
     private fun connectMachine() {
-        board = USDK.getInstance().create(INTERNAL_PORT)
+        board = if (SimulationRuntime.isSimulator()) {
+            SimulatedCalibrationBoard { message -> appendLog("SIM", message) }
+        } else {
+            SdkCalibrationBoard(USDK.getInstance().create(INTERNAL_PORT))
+        }
         val ret = board?.EF_OpenDev(INTERNAL_PORT, INTERNAL_BAUD) ?: -1
         if (ret == 0) {
             renderConnectionState(true)
@@ -338,6 +346,7 @@ class VendingCalibratorActivity : Activity() {
             "空闲" to "En reposo",
             "运行" to "En movimiento",
             "停止" to "Detenido",
+            "正常" to "Sin falla",
             "无故障" to "Sin falla",
             "无效管道编号" to "Numero de carril/canal invalido",
             "无效货道编号" to "Numero de carril/canal invalido",

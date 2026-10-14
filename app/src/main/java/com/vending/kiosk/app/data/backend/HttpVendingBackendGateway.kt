@@ -27,7 +27,7 @@ class HttpVendingBackendGateway(
 
     override suspend fun fetchCatalog(machineId: Long): CatalogResponse {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/$machineId/planograma"
+        val endpoint = "${BackendConfig.baseUrl}/api/maquinas/$machineId/planograma"
         var connection: HttpURLConnection? = null
 
         return try {
@@ -125,7 +125,7 @@ class HttpVendingBackendGateway(
 
     override suspend fun fetchEnabledPaymentMethods(): List<PaymentMethod> {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pago/qr/servicios-habilitados"
+        val endpoint = "${BackendConfig.baseUrl}/api/maquina/pago/qr/servicios-habilitados"
         var connection: HttpURLConnection? = null
 
         return try {
@@ -203,7 +203,7 @@ class HttpVendingBackendGateway(
 
     override suspend fun createOrderQr(request: CreateOrderQrRequest): CreateOrderQrResponse {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/crear-y-generar-qr"
+        val endpoint = "${BackendConfig.baseUrl}/api/pedido/crear-y-generar-qr"
         var connection: HttpURLConnection? = null
 
         return try {
@@ -342,7 +342,7 @@ class HttpVendingBackendGateway(
 
     override suspend fun fetchPaymentStatus(orderId: Long): PaymentStatus {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/$orderId/estado-pago"
+        val endpoint = "${BackendConfig.baseUrl}/api/pedido/$orderId/estado-pago"
         var connection: HttpURLConnection? = null
 
         return try {
@@ -401,7 +401,7 @@ class HttpVendingBackendGateway(
 
     override suspend fun cancelOrder(orderId: Long): CancelOrderResult {
         val authHeader = sessionManager.getAuthorizationHeader().orEmpty()
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/pedido/$orderId/cancelar"
+        val endpoint = "${BackendConfig.baseUrl}/api/pedido/$orderId/cancelar"
         var connection: HttpURLConnection? = null
 
         return try {
@@ -460,7 +460,7 @@ class HttpVendingBackendGateway(
             return DispenseStatusResult.Error("Authorization header is blank")
         }
 
-        val endpoint = "https://boxipagobackend.pagofacil.com.bo/api/maquina/pedido/dispensacion"
+        val endpoint = "${BackendConfig.baseUrl}/api/maquina/pedido/dispensacion"
         var connection: HttpURLConnection? = null
 
         return try {

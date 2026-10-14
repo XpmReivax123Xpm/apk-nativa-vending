@@ -25,6 +25,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        SimulationRuntime.apply()
+
         val startupLoadingView = findViewById<View>(R.id.startupLoadingView)
         val mainMenuContent = findViewById<View>(R.id.mainMenuContent)
 

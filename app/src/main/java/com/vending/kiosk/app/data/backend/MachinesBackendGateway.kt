@@ -6,7 +6,7 @@ import java.net.URL
 
 object MachinesBackendGateway {
 
-    private const val MACHINES_ENDPOINT = "https://boxipagobackend.pagofacil.com.bo/api/maquinas"
+    private val MACHINES_ENDPOINT = "${BackendConfig.baseUrl}/api/maquinas"
 
     fun fetchMachines(authorization: String): MachinesBackendResult {
         var connection: HttpURLConnection? = null

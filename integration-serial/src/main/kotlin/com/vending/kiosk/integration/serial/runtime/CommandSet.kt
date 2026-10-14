@@ -23,7 +23,20 @@ object CommandSet {
         return appendCrc16Modbus(baseNoCrc)
     }
 
-    private fun appendCrc16Modbus(hexNoCrc: String): String {
+    /**
+     * Sends the ToY position register (0x1007) that the ZhongDa SDK itself writes.
+     * Used by the PC board simulator to replace the SDK platform movement, which
+     * cannot run on x86_64.
+     */
+    fun buildToYPosition(position: Int, address: Int = 1): String {
+        require(address in 1..247) { "Direccion Modbus fuera de rango (1..247): $address" }
+        require(position in 0..5000) { "Posicion Y fuera de rango (0..5000): $position" }
+        val addrHex = String.format("%02X", address)
+        return appendCrc16Modbus(String.format("%s061007%04X", addrHex, position))
+    }
+
+    /** Public so the simulator calibration path can frame requests identically. */
+    fun appendCrc16Modbus(hexNoCrc: String): String {
         val data = HexUtil.hexToBytes(hexNoCrc)
         val crc = crc16Modbus(data)
         val lo = crc and 0xFF
@@ -31,7 +44,7 @@ object CommandSet {
         return hexNoCrc + String.format("%02X%02X", lo, hi)
     }
 
-    private fun crc16Modbus(data: ByteArray): Int {
+    fun crc16Modbus(data: ByteArray): Int {
         var crc = 0xFFFF
         for (b in data) {
             crc = crc xor (b.toInt() and 0xFF)

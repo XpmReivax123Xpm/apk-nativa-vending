@@ -57,6 +57,7 @@ class VendingTesterActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_vending_tester)
+        SimulationRuntime.apply()
         bindViews()
         initLogFile()
 
@@ -127,15 +128,24 @@ class VendingTesterActivity : AppCompatActivity() {
             serial = serial,
             serialListener = serialListener,
             ui = flowUi,
-            platformRecoveryCommand = SdkYZeroPlatformRecoveryCommand(
-                context = this,
-                serial = serial,
-                serialListener = serialListener,
-                portProvider = { activePort },
-                baudProvider = { activeBaud },
-                beforeSdkOpen = { stopIdleIoPolling() },
-                afterRawReopen = { startIdleIoPolling() }
-            )
+            platformRecoveryCommand = if (SimulationRuntime.isSimulator()) {
+                SimulatorPlatformRecoveryCommand(
+                    serial = serial,
+                    serialListener = serialListener,
+                    portProvider = { activePort },
+                    baudProvider = { activeBaud }
+                )
+            } else {
+                SdkYZeroPlatformRecoveryCommand(
+                    context = this,
+                    serial = serial,
+                    serialListener = serialListener,
+                    portProvider = { activePort },
+                    baudProvider = { activeBaud },
+                    beforeSdkOpen = { stopIdleIoPolling() },
+                    afterRawReopen = { startIdleIoPolling() }
+                )
+            }
         )
         appendLog("App lista.")
         appendLog("Log guardandose en: ${logFile?.absolutePath ?: "N/A"}")

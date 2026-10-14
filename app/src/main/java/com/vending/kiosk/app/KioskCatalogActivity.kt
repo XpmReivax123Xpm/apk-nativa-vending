@@ -247,6 +247,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun initializeScreen() {
+        SimulationRuntime.apply()
         applyCatalogSystemBars()
         val layoutRes = if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.N_MR1) {
             R.layout.activity_kiosk_catalog_legacy
@@ -378,15 +379,24 @@ class KioskCatalogActivity : AppCompatActivity() {
             serial = serial,
             serialListener = serialListener,
             ui = vendingUi,
-            platformRecoveryCommand = SdkYZeroPlatformRecoveryCommand(
-                context = this,
-                serial = serial,
-                serialListener = serialListener,
-                portProvider = { DEFAULT_PORT },
-                baudProvider = { DEFAULT_BAUD },
-                beforeSdkOpen = { stopIdleIoPolling() },
-                afterRawReopen = { startIdleIoPolling() }
-            )
+            platformRecoveryCommand = if (SimulationRuntime.isSimulator()) {
+                SimulatorPlatformRecoveryCommand(
+                    serial = serial,
+                    serialListener = serialListener,
+                    portProvider = { DEFAULT_PORT },
+                    baudProvider = { DEFAULT_BAUD }
+                )
+            } else {
+                SdkYZeroPlatformRecoveryCommand(
+                    context = this,
+                    serial = serial,
+                    serialListener = serialListener,
+                    portProvider = { DEFAULT_PORT },
+                    baudProvider = { DEFAULT_BAUD },
+                    beforeSdkOpen = { stopIdleIoPolling() },
+                    afterRawReopen = { startIdleIoPolling() }
+                )
+            }
         )
     }
 

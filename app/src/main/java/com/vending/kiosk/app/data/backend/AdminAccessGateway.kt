@@ -6,7 +6,7 @@ import java.net.URL
 
 object AdminAccessGateway {
 
-    private const val ADMIN_ACCESS_ENDPOINT = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/acceso"
+    private val ADMIN_ACCESS_ENDPOINT = "${BackendConfig.baseUrl}/api/maquinas/acceso"
 
     fun validateAccess(codigoMaquina: String, pin: String): AdminAccessResult {
         if (codigoMaquina.isBlank()) return AdminAccessResult.Error("Codigo de maquina invalido")

@@ -7,7 +7,7 @@ import java.net.URL
 
 object MachineAuthGateway {
 
-    private const val MACHINE_LOGIN_ENDPOINT = "https://boxipagobackend.pagofacil.com.bo/api/maquinas/login"
+    private val MACHINE_LOGIN_ENDPOINT = "${BackendConfig.baseUrl}/api/maquinas/login"
 
     fun loginMachine(machineCode: String, pin: String): MachineLoginResult {
         if (machineCode.isBlank() || pin.isBlank()) {

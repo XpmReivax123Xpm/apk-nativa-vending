@@ -10,6 +10,7 @@ import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.domain.cart.CartItem
 import com.vending.kiosk.integration.backend.contracts.VendingBackendGateway
 import com.vending.kiosk.integration.backend.models.CancelOrderResult
+import com.vending.kiosk.integration.backend.models.ConfirmPaymentCodeResult
 import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest
 import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.PaymentMethod
@@ -38,6 +39,9 @@ sealed interface PaymentStep {
 
     /** El cliente teclea su celular: solo para los métodos que cobran ahí. */
     data object Phone : PaymentStep
+
+    /** El cliente teclea el código del banco: solo para los métodos que cobran ahí y lo piden. */
+    data object Code : PaymentStep
     data object Checkout : PaymentStep
     data object Qr : PaymentStep
     data object Completed : PaymentStep
@@ -69,6 +73,8 @@ data class PaymentUiState(
     val selectedPaymentMethod: PaymentMethod? = null,
     /** El celular del cliente, para los métodos que cobran ahí: viaja con el pedido. */
     val customerPhone: String = "",
+    /** El código que el banco le da al cliente, para los métodos que lo piden (`tlRequiereCodigo`). */
+    val customerCode: String = "",
     val qrOrder: CreateOrderQrResponse? = null,
     val qrExpiresAtMs: Long? = null,
     val isLoadingPaymentMethods: Boolean = false,
@@ -228,7 +234,37 @@ class PaymentViewModel(
     fun returnFromPhone() {
         val state = _uiState.value
         if (state.step == PaymentStep.Phone) {
-            _uiState.value = state.copy(step = PaymentStep.MethodSelection, error = null)
+            _uiState.value = state.copy(step = PaymentStep.MethodSelection, qrOrder = null, error = null)
+        }
+    }
+
+    /**
+     * El código que el banco le dio al cliente, para los métodos que cobran en el celular y lo piden.
+     * Es texto —la pasarela decide el formato— así que solo se exige que venga y no pase del tope.
+     */
+    fun submitCustomerCode(codigo: String) {
+        val state = _uiState.value
+        if (state.step != PaymentStep.Code) return
+
+        val limpio = codigo.trim()
+        if (limpio.isEmpty()) {
+            _uiState.value = state.copy(error = CODIGO_VACIO)
+            return
+        }
+        if (limpio.length > CODIGO_MAX) {
+            _uiState.value = state.copy(error = CODIGO_LARGO)
+            return
+        }
+
+        _uiState.value = state.copy(customerCode = limpio, step = PaymentStep.Checkout, error = null)
+    }
+
+    fun returnFromCode() {
+        val state = _uiState.value
+        if (state.step == PaymentStep.Code) {
+            // Al volver se descarta el cobro que quedó a medias: si el cliente teclea de nuevo, se
+            // confirma sobre un cobro nuevo y no sobre el del código que ya rechazó.
+            _uiState.value = state.copy(step = PaymentStep.Phone, qrOrder = null, error = null)
         }
     }
 
@@ -246,13 +282,19 @@ class PaymentViewModel(
             return
         }
 
-        _uiState.value = state.copy(customerPhone = limpio, step = PaymentStep.Checkout, error = null)
+        // Los métodos que además piden el código del banco llevan al paso del código antes de cobrar.
+        val siguiente = if (state.selectedPaymentMethod?.requiereCodigo == true) {
+            PaymentStep.Code
+        } else {
+            PaymentStep.Checkout
+        }
+        _uiState.value = state.copy(customerPhone = limpio, step = siguiente, error = null)
     }
 
     fun returnToMethodSelection() {
         val state = _uiState.value
         if (state.step == PaymentStep.Checkout && !state.isCreatingQr) {
-            _uiState.value = state.copy(step = PaymentStep.MethodSelection, error = null)
+            _uiState.value = state.copy(step = PaymentStep.MethodSelection, qrOrder = null, error = null)
         }
     }
 
@@ -280,6 +322,27 @@ class PaymentViewModel(
             return
         }
 
+        if (method.requiereCodigo && state.customerCode.isBlank()) {
+            _uiState.value = state.copy(step = PaymentStep.Code, error = CODIGO_VACIO)
+            return
+        }
+
+        // Un código rechazado deja el cobro YA iniciado esperando uno válido: se vuelve a confirmar
+        // sobre ESE pago en vez de abrir otro y dejar el anterior colgado.
+        val pendingOrder = state.qrOrder?.takeIf { it.paymentId > 0 && method.requiereCodigo }
+        if (pendingOrder != null) {
+            _uiState.value = state.copy(isCreatingQr = true, error = null)
+            viewModelScope.launch {
+                when (val confirm = withContext(Dispatchers.IO) {
+                    confirmCodeWithSingleRefresh(pendingOrder.paymentId, state.customerCode)
+                }) {
+                    CodeConfirmResult.Ok -> startWaitingForPayment(pendingOrder, method)
+                    is CodeConfirmResult.Rejected -> rejectCode(confirm.message, pendingOrder, confirm.sessionLost)
+                }
+            }
+            return
+        }
+
         _uiState.value = state.copy(isCreatingQr = true, error = null)
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -297,23 +360,20 @@ class PaymentViewModel(
                         return@launch
                     }
 
-                    val qrExpiresAtMs = resolveQrExpirationMs(
-                        rawExpiration = result.order.expiration,
-                        serverNowMs = result.order.serverNowMs
-                    )
-                    _uiState.value = _uiState.value.copy(
-                        step = PaymentStep.Qr,
-                        qrOrder = result.order,
-                        qrExpiresAtMs = qrExpiresAtMs,
-                        isCreatingQr = false,
-                        statusMessage = if (method.cobraEnElCelular) {
-                            "Esperando que el cliente confirme en su celular..."
-                        } else {
-                            "Esperando confirmacion de pago..."
-                        },
-                        error = null
-                    )
-                    startPaymentPolling(result.order.paymentId, result.order.orderId, qrExpiresAtMs)
+                    // Los métodos que piden código confirman el cobro con él antes de esperar el pago.
+                    if (method.requiereCodigo) {
+                        when (val confirm = withContext(Dispatchers.IO) {
+                            confirmCodeWithSingleRefresh(result.order.paymentId, state.customerCode)
+                        }) {
+                            CodeConfirmResult.Ok -> Unit
+                            is CodeConfirmResult.Rejected -> {
+                                rejectCode(confirm.message, result.order, confirm.sessionLost)
+                                return@launch
+                            }
+                        }
+                    }
+
+                    startWaitingForPayment(result.order, method)
                 }
 
                 is CreateQrResult.Error -> {
@@ -322,6 +382,41 @@ class PaymentViewModel(
                 }
             }
         }
+    }
+
+    /** Deja la pantalla esperando el pago: se resuelve el vencimiento y arranca el sondeo de siempre. */
+    private fun startWaitingForPayment(order: CreateOrderQrResponse, method: PaymentMethod) {
+        val qrExpiresAtMs = resolveQrExpirationMs(
+            rawExpiration = order.expiration,
+            serverNowMs = order.serverNowMs
+        )
+        _uiState.value = _uiState.value.copy(
+            step = PaymentStep.Qr,
+            qrOrder = order,
+            qrExpiresAtMs = qrExpiresAtMs,
+            isCreatingQr = false,
+            statusMessage = if (method.cobraEnElCelular) {
+                "Esperando que el cliente confirme en su celular..."
+            } else {
+                "Esperando confirmacion de pago..."
+            },
+            error = null
+        )
+        startPaymentPolling(order.paymentId, order.orderId, qrExpiresAtMs)
+    }
+
+    /**
+     * El banco rechazó el código: el motivo se muestra en el paso del código y el cliente puede
+     * volver a teclearlo, sin perder el cobro que ya está iniciado.
+     */
+    private fun rejectCode(message: String, order: CreateOrderQrResponse, sessionLost: Boolean = false) {
+        _uiState.value = _uiState.value.copy(
+            step = PaymentStep.Code,
+            qrOrder = order,
+            isCreatingQr = false,
+            error = message
+        )
+        if (sessionLost) publishSessionLost()
     }
 
     fun cancelPendingOrder() {
@@ -674,6 +769,39 @@ class PaymentViewModel(
         CancelOrderResult.Error("Error cancelando pedido: ${exception.message ?: "sin detalle"}")
     }
 
+    private suspend fun confirmCodeWithSingleRefresh(paymentId: Int, code: String): CodeConfirmResult {
+        if (resolveValidSession().isNullOrBlank()) {
+            return CodeConfirmResult.Rejected("Sesion de maquina expirada", sessionLost = true)
+        }
+
+        var result = confirmCode(paymentId, code)
+        if (result is CodeConfirmResult.Rejected && result.unauthorized) {
+            if (resolveValidSession(forceRefresh = true).isNullOrBlank()) {
+                return CodeConfirmResult.Rejected("Sesion de maquina expirada", sessionLost = true)
+            }
+            result = confirmCode(paymentId, code)
+        }
+        return if (result is CodeConfirmResult.Rejected && result.unauthorized) {
+            result.copy(sessionLost = true)
+        } else {
+            result
+        }
+    }
+
+    private suspend fun confirmCode(paymentId: Int, code: String): CodeConfirmResult = try {
+        when (val result = vendingBackendGateway.confirmPaymentWithCode(paymentId.toLong(), code)) {
+            is ConfirmPaymentCodeResult.Success -> CodeConfirmResult.Ok
+            is ConfirmPaymentCodeResult.Error -> CodeConfirmResult.Rejected(
+                message = result.message,
+                unauthorized = isUnauthorizedMessage(result.message)
+            )
+        }
+    } catch (exception: CancellationException) {
+        throw exception
+    } catch (exception: Exception) {
+        CodeConfirmResult.Rejected("Error confirmando el cobro: ${exception.message ?: "sin detalle"}")
+    }
+
     private fun resolveValidSession(forceRefresh: Boolean = false): String? {
         if (!forceRefresh) authSessionManager.getAuthorizationHeader()?.let { return it }
         return when (machineAuthGateway.refreshSessionWithStoredMachineCredentials(authSessionManager)) {
@@ -746,6 +874,15 @@ class PaymentViewModel(
         ) : PaymentPollResult
     }
 
+    private sealed interface CodeConfirmResult {
+        data object Ok : CodeConfirmResult
+        data class Rejected(
+            val message: String,
+            val unauthorized: Boolean = false,
+            val sessionLost: Boolean = false
+        ) : CodeConfirmResult
+    }
+
     private companion object {
         val dispenseTestPaymentMethod = PaymentMethod(
             id = -1,
@@ -762,5 +899,10 @@ class PaymentViewModel(
 
         /** Un movil boliviano son 8 digitos: es lo que se le pide al cliente cuando el cobro va a su celular. */
         const val TELEFONO_INVALIDO = "Teclea un celular de 8 digitos"
+
+        /** El codigo lo emite el banco: es texto y solo se le pone un tope, sin fijarle digitos. */
+        const val CODIGO_MAX = 20
+        const val CODIGO_VACIO = "Teclea el codigo que te dio el banco"
+        const val CODIGO_LARGO = "El codigo tiene como maximo 20 caracteres"
     }
 }

@@ -735,6 +735,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                         onReturnToMethodSelection = paymentViewModel::returnToMethodSelection,
                         onReturnFromPhone = paymentViewModel::returnFromPhone,
                         onSubmitCustomerPhone = paymentViewModel::submitCustomerPhone,
+                        onReturnFromCode = paymentViewModel::returnFromCode,
+                        onSubmitCustomerCode = paymentViewModel::submitCustomerCode,
                         onConfirmCheckout = paymentViewModel::confirmCheckout,
                         onCancel = ::cancelPaymentFromCompose,
                         onInteraction = ::restartPaymentTimeout,
@@ -988,6 +990,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             PaymentStep.Qr -> paymentViewModel.cancelPendingOrder()
             PaymentStep.MethodSelection,
             PaymentStep.Phone,
+            PaymentStep.Code,
             PaymentStep.Checkout,
             PaymentStep.Completed -> paymentViewModel.closePayment()
             PaymentStep.Closed -> Unit

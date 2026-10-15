@@ -34,6 +34,11 @@ data class PaymentMethod(
     val formaDeCobro: String = FORMA_QR,
     /** Slug de la pasarela que cobra (`tcSlugPasarela`): es lo que identifica al proveedor. */
     val slugPasarela: String = "",
+    /**
+     * El cobro pide además el código que el banco le da al cliente (`tlRequiereCodigo`): sin ese
+     * código el pago no se cierra, así que el kiosko lo teclea antes de confirmar.
+     */
+    val requiereCodigo: Boolean = false,
     val isDispenseTest: Boolean = false
 ) {
     /** El cobro se cierra en el teléfono del cliente: hay que pedir su número antes de cobrar. */
@@ -93,6 +98,12 @@ sealed interface PaymentStatus {
 sealed interface CancelOrderResult {
     data class Success(val message: String) : CancelOrderResult
     data class Error(val message: String) : CancelOrderResult
+}
+
+/** El resultado de confirmar el cobro con el código que el banco le dio al cliente. */
+sealed interface ConfirmPaymentCodeResult {
+    data object Success : ConfirmPaymentCodeResult
+    data class Error(val message: String) : ConfirmPaymentCodeResult
 }
 
 data class DispenseStatusRequest(

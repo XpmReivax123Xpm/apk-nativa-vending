@@ -78,6 +78,8 @@ fun PaymentScreen(
     onReturnToMethodSelection: () -> Unit,
     onReturnFromPhone: () -> Unit,
     onSubmitCustomerPhone: (String) -> Unit,
+    onReturnFromCode: () -> Unit,
+    onSubmitCustomerCode: (String) -> Unit,
     onConfirmCheckout: () -> Unit,
     onCancel: () -> Unit,
     onInteraction: () -> Unit,
@@ -172,6 +174,22 @@ fun PaymentScreen(
                             onSubmit = { telefono ->
                                 onInteraction()
                                 onSubmitCustomerPhone(telefono)
+                            },
+                            onCancel = {
+                                onInteraction()
+                                onCancel()
+                            }
+                        )
+
+                        PaymentStep.Code -> CodeEntryContent(
+                            state = state,
+                            onReturn = {
+                                onInteraction()
+                                onReturnFromCode()
+                            },
+                            onSubmit = { codigo ->
+                                onInteraction()
+                                onSubmitCustomerCode(codigo)
                             },
                             onCancel = {
                                 onInteraction()
@@ -1122,6 +1140,131 @@ private fun PhoneEntryContent(
 }
 
 /**
+ * El código que el banco le da al cliente, para los métodos que cobran en el celular y además lo
+ * piden: es lo último antes de confirmar. Teclado propio, igual que el del celular, y el código es
+ * texto con tope —no se le fija una cantidad de dígitos—.
+ */
+@Composable
+private fun CodeEntryContent(
+    state: PaymentUiState,
+    onReturn: () -> Unit,
+    onSubmit: (String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var codigo by remember(state.step) { mutableStateOf("") }
+
+    Text(
+        text = "Código del banco",
+        color = Color(0xFF10184A),
+        fontSize = 32.sp,
+        lineHeight = 36.sp,
+        fontWeight = FontWeight.Black
+    )
+    Text(
+        text = "Revisá el mensaje del banco en tu celular, escribí el código y confirmalo para cerrar el pago.",
+        color = Color(0xFF60738C),
+        fontSize = 18.sp,
+        lineHeight = 22.sp
+    )
+    Text(
+        text = codigo.ifBlank { "—" },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        color = if (codigo.isEmpty()) Color(0xFF9AAABB) else Color(0xFF10184A),
+        fontSize = 40.sp,
+        fontWeight = FontWeight.Black,
+        textAlign = TextAlign.Center
+    )
+
+    val filas = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("borrar", "0", "")
+    )
+
+    filas.forEach { fila ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            fila.forEach { tecla ->
+                when (tecla) {
+                    "" -> Spacer(Modifier.weight(1f))
+
+                    "borrar" -> OutlinedButton(
+                        onClick = { codigo = codigo.dropLast(1) },
+                        enabled = codigo.isNotEmpty(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("Borrar", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    else -> Button(
+                        onClick = { if (codigo.length < CODIGO_MAX_LENGTH) codigo += tecla },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEAF4FF),
+                            contentColor = Color(0xFF10184A)
+                        )
+                    ) {
+                        Text(tecla, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    state.error?.let { PaymentError(it) }
+    if (state.isCreatingQr) PaymentLoading("Confirmando el cobro...")
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        OutlinedButton(
+            onClick = onReturn,
+            enabled = !state.isCreatingQr,
+            modifier = Modifier
+                .weight(1f)
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text("Volver", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        }
+        Button(
+            onClick = { onSubmit(codigo) },
+            enabled = codigo.isNotBlank() && !state.isCreatingQr,
+            modifier = Modifier
+                .weight(1f)
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text("Continuar", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+
+    if (state.isCancellingOrder) PaymentLoading("Cancelando pedido...")
+    OutlinedButton(
+        onClick = onCancel,
+        enabled = !state.isCancellingOrder && !state.isCreatingQr,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Text("Cancelar la compra", fontSize = 15.sp)
+    }
+}
+
+/**
  * Lo que ve el cliente cuando el cobro viaja a su celular: no hay código que mostrar, solo la
  * solicitud enviada y la espera (el sondeo del pago y el vencimiento son los de siempre).
  */
@@ -1283,6 +1426,9 @@ private fun PaymentError(message: String) {
 
 private fun money(value: Double): String = String.format(Locale.US, "%.2f Bs", value)
 
+/** Tope del código del banco en el teclado: es texto, no una cantidad fija de dígitos. */
+private const val CODIGO_MAX_LENGTH = 20
+
 private fun previewCartItem(index: Int, quantity: Int) = CartItem(
     planogramCellId = index,
     productId = index,
@@ -1309,6 +1455,7 @@ private fun PaymentMethodSelectionPreview() {
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
         onReturnFromPhone = {}, onSubmitCustomerPhone = {},
+        onReturnFromCode = {}, onSubmitCustomerCode = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }
@@ -1325,6 +1472,7 @@ private fun PaymentCheckoutPreview() {
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
         onReturnFromPhone = {}, onSubmitCustomerPhone = {},
+        onReturnFromCode = {}, onSubmitCustomerCode = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }
@@ -1340,6 +1488,7 @@ private fun PaymentQrUnavailablePreview() {
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
         onReturnFromPhone = {}, onSubmitCustomerPhone = {},
+        onReturnFromCode = {}, onSubmitCustomerCode = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }
@@ -1355,6 +1504,7 @@ private fun PaymentMethodLoadingErrorPreview() {
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
         onReturnFromPhone = {}, onSubmitCustomerPhone = {},
+        onReturnFromCode = {}, onSubmitCustomerCode = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }

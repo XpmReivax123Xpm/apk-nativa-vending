@@ -6,6 +6,7 @@ import com.vending.kiosk.app.domain.catalog.CatalogUseCase
 import com.vending.kiosk.integration.backend.contracts.VendingBackendGateway
 import com.vending.kiosk.integration.backend.models.CancelOrderResult
 import com.vending.kiosk.integration.backend.models.CatalogResponse
+import com.vending.kiosk.integration.backend.models.ConfirmPaymentCodeResult
 import com.vending.kiosk.integration.backend.models.CreateOrderQrRequest
 import com.vending.kiosk.integration.backend.models.CreateOrderQrResponse
 import com.vending.kiosk.integration.backend.models.DispenseStatusRequest
@@ -114,7 +115,8 @@ class HttpVendingBackendGateway(
                     id = id,
                     label = label,
                     formaDeCobro = textoDe(item, "tcFormaDeCobro").ifBlank { PaymentMethod.FORMA_QR },
-                    slugPasarela = textoDe(item, "tcSlugPasarela")
+                    slugPasarela = textoDe(item, "tcSlugPasarela"),
+                    requiereCodigo = item.optBoolean("tlRequiereCodigo", false)
                 )
             } else {
                 null
@@ -190,6 +192,34 @@ class HttpVendingBackendGateway(
             CancelOrderResult.Success("Pedido cancelado.")
         } else {
             CancelOrderResult.Error(response.errorMessage("No se pudo cancelar el pedido."))
+        }
+    }
+
+    /**
+     * Confirma el COBRO con el codigo que el banco le dio al cliente.
+     *
+     * Es el cierre de los metodos que cobran en el celular y ademas piden codigo: hasta que el
+     * cliente no lo teclee el pago queda pendiente. Con el pago ya confirmado, la espera lo marca
+     * pagado y la dispensacion arranca sola.
+     */
+    override suspend fun confirmPaymentWithCode(paymentId: Long, code: String): ConfirmPaymentCodeResult {
+        val payload = JSONObject().apply { put("tcCodigoPago", code) }
+
+        val response = try {
+            BackendHttp.request(
+                method = "POST",
+                path = "$PAGOS_PATH/$paymentId/confirmar",
+                authorization = sessionManager.getAuthorizationHeader(),
+                body = payload
+            )
+        } catch (ex: Exception) {
+            return ConfirmPaymentCodeResult.Error("Error confirmando el cobro: ${ex.message ?: "sin detalle"}")
+        }
+
+        return if (response.isSuccess) {
+            ConfirmPaymentCodeResult.Success
+        } else {
+            ConfirmPaymentCodeResult.Error(response.errorMessage("No se pudo confirmar el cobro con el codigo."))
         }
     }
 

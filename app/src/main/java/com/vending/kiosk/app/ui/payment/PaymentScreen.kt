@@ -368,16 +368,24 @@ private fun PaymentMethodSheet(
     }
 }
 
+/**
+ * El logo de la pasarela, por su SLUG: el nombre del método puede cambiar y el slug identifica al
+ * proveedor. Un método del catálogo que todavía no tiene arte cae en el genérico.
+ */
+private fun iconoDelMetodo(method: PaymentMethod?): Int = when {
+    method == null -> com.vending.kiosk.R.drawable.ic_qr_payment
+    method.isDispenseTest -> com.vending.kiosk.R.drawable.ic_shopping_cart
+    method.slugPasarela == "pagofacil_tigomoney" -> com.vending.kiosk.R.drawable.ic_metodo_tigo_money
+    method.slugPasarela == "pagofacil_yape" -> com.vending.kiosk.R.drawable.ic_metodo_yape
+    else -> com.vending.kiosk.R.drawable.ic_qr_payment
+}
+
 @Composable
 private fun PaymentMethodCard(method: PaymentMethod, selected: Boolean, onClick: () -> Unit) {
     val isQrMethod = !method.isDispenseTest && method.label.contains("qr", ignoreCase = true)
     val borderColor = if (selected) Color(0xFF3B82F6) else Color(0xFFB6D5F5)
     val containerColor = if (selected) Color(0xFFEAF4FF) else Color.White
-    val iconResource = if (method.isDispenseTest) {
-        com.vending.kiosk.R.drawable.ic_shopping_cart
-    } else {
-        com.vending.kiosk.R.drawable.ic_qr_payment
-    }
+    val iconResource = iconoDelMetodo(method)
 
     Card(
         modifier = Modifier
@@ -596,11 +604,7 @@ private fun CheckoutContent(
 @Composable
 private fun CheckoutPaymentMethodCard(method: PaymentMethod?) {
     val isDispenseTest = method?.isDispenseTest == true
-    val iconResource = if (isDispenseTest) {
-        com.vending.kiosk.R.drawable.ic_shopping_cart
-    } else {
-        com.vending.kiosk.R.drawable.ic_qr_payment
-    }
+    val iconResource = iconoDelMetodo(method)
 
     Card(
         modifier = Modifier.fillMaxWidth(),

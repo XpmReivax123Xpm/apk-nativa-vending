@@ -113,7 +113,8 @@ class HttpVendingBackendGateway(
                 PaymentMethod(
                     id = id,
                     label = label,
-                    formaDeCobro = textoDe(item, "tcFormaDeCobro").ifBlank { PaymentMethod.FORMA_QR }
+                    formaDeCobro = textoDe(item, "tcFormaDeCobro").ifBlank { PaymentMethod.FORMA_QR },
+                    slugPasarela = textoDe(item, "tcSlugPasarela")
                 )
             } else {
                 null

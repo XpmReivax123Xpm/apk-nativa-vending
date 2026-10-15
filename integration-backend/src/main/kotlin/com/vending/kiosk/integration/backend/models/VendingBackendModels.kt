@@ -32,6 +32,8 @@ data class PaymentMethod(
      * sepa cobrar de ninguna forma no llega en esta lista.
      */
     val formaDeCobro: String = FORMA_QR,
+    /** Slug de la pasarela que cobra (`tcSlugPasarela`): es lo que identifica al proveedor. */
+    val slugPasarela: String = "",
     val isDispenseTest: Boolean = false
 ) {
     /** El cobro se cierra en el teléfono del cliente: hay que pedir su número antes de cobrar. */

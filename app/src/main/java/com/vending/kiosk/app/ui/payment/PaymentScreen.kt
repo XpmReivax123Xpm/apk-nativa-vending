@@ -76,6 +76,8 @@ fun PaymentScreen(
     onSelectPaymentMethod: (Int) -> Unit,
     onContinueToCheckout: () -> Unit,
     onReturnToMethodSelection: () -> Unit,
+    onReturnFromPhone: () -> Unit,
+    onSubmitCustomerPhone: (String) -> Unit,
     onConfirmCheckout: () -> Unit,
     onCancel: () -> Unit,
     onInteraction: () -> Unit,
@@ -100,13 +102,25 @@ fun PaymentScreen(
                     .fillMaxSize()
                     .padding(20.dp)
             ) {
-                DraggableQrPaymentPanel(
-                    state = state,
-                    onCancel = {
-                        onInteraction()
-                        onCancel()
-                    }
-                )
+                if (state.selectedPaymentMethod?.cobraEnElCelular == true) {
+                    // El cobro viaja al celular del cliente y él lo cierra ahí: no hay QR que
+                    // escanear, solo esperar (el sondeo del pago y el vencimiento son los mismos).
+                    WaitingOnPhonePanel(
+                        state = state,
+                        onCancel = {
+                            onInteraction()
+                            onCancel()
+                        }
+                    )
+                } else {
+                    DraggableQrPaymentPanel(
+                        state = state,
+                        onCancel = {
+                            onInteraction()
+                            onCancel()
+                        }
+                    )
+                }
             }
 
             PaymentStep.MethodSelection -> PaymentMethodSheet(
@@ -147,6 +161,22 @@ fun PaymentScreen(
                             },
                             imageCacheVersion = imageCacheVersion,
                             getCachedImageBitmap = getCachedImageBitmap
+                        )
+
+                        PaymentStep.Phone -> PhoneEntryContent(
+                            state = state,
+                            onReturn = {
+                                onInteraction()
+                                onReturnFromPhone()
+                            },
+                            onSubmit = { telefono ->
+                                onInteraction()
+                                onSubmitCustomerPhone(telefono)
+                            },
+                            onCancel = {
+                                onInteraction()
+                                onCancel()
+                            }
                         )
 
                         PaymentStep.MethodSelection -> Unit
@@ -373,10 +403,10 @@ private fun PaymentMethodCard(method: PaymentMethod, selected: Boolean, onClick:
             ) {
                 Image(
                     painter = painterResource(iconResource),
-                    contentDescription = if (method.isDispenseTest) {
-                        "Dispensación de prueba"
-                    } else {
-                        "Pago con QR"
+                    contentDescription = when {
+                        method.isDispenseTest -> "Dispensación de prueba"
+                        method.cobraEnElCelular -> "Pago en el celular"
+                        else -> "Pago con QR"
                     },
                     modifier = Modifier.size(if (method.isDispenseTest) 78.dp else 98.dp)
                 )
@@ -438,10 +468,11 @@ private fun CheckoutContent(
             fontWeight = FontWeight.Black
         )
         Text(
-            text = if (isDispenseTest) {
-                "Revise su pedido antes de iniciar la dispensación de prueba."
-            } else {
-                "Revise su pedido antes de generar el código QR."
+            text = when {
+                isDispenseTest -> "Revise su pedido antes de iniciar la dispensación de prueba."
+                state.selectedPaymentMethod?.cobraEnElCelular == true ->
+                    "Revise su pedido antes de enviar la solicitud de cobro a su celular."
+                else -> "Revise su pedido antes de generar el código QR."
             },
             color = Color(0xFF7C78B6),
             fontSize = 18.sp,
@@ -461,7 +492,13 @@ private fun CheckoutContent(
         )
         state.error?.let { PaymentError(it) }
         if (state.isCreatingQr) {
-            PaymentLoading("Generando código QR...")
+            PaymentLoading(
+                if (state.selectedPaymentMethod?.cobraEnElCelular == true) {
+                    "Enviando la solicitud a su celular..."
+                } else {
+                    "Generando código QR..."
+                }
+            )
         }
         Button(
             onClick = onConfirm,
@@ -494,8 +531,9 @@ private fun CheckoutContent(
             Spacer(Modifier.width(10.dp))
             Text(
                 text = when {
-                    state.isCreatingQr -> "GENERANDO..."
+                    state.isCreatingQr -> "PROCESANDO..."
                     isDispenseTest -> "INICIAR DISPENSACIÓN"
+                    state.selectedPaymentMethod?.cobraEnElCelular == true -> "ENVIAR AL CELULAR"
                     else -> "GENERAR QR"
                 },
                 fontSize = 20.sp,
@@ -582,10 +620,10 @@ private fun CheckoutPaymentMethodCard(method: PaymentMethod?) {
             ) {
                 Image(
                     painter = painterResource(iconResource),
-                    contentDescription = if (isDispenseTest) {
-                        "Dispensación de prueba"
-                    } else {
-                        "Pago con QR"
+                    contentDescription = when {
+                        isDispenseTest -> "Dispensación de prueba"
+                        method?.cobraEnElCelular == true -> "Pago en el celular"
+                        else -> "Pago con QR"
                     },
                     modifier = Modifier.size(if (isDispenseTest) 54.dp else 68.dp)
                 )
@@ -955,6 +993,239 @@ private fun ColumnScope.QrContent(state: PaymentUiState, qrSize: Dp, onCancel: (
     }
 }
 
+/**
+ * El celular del cliente, para los métodos que cobran ahí: el cobro viaja a ese número, así que se
+ * teclea antes de cobrar. Teclado propio (un kiosko no tiene por qué mostrar el teclado del sistema).
+ */
+@Composable
+private fun PhoneEntryContent(
+    state: PaymentUiState,
+    onReturn: () -> Unit,
+    onSubmit: (String) -> Unit,
+    onCancel: () -> Unit
+) {
+    var digitos by remember(state.step) { mutableStateOf("") }
+
+    Text(
+        text = "Tu celular",
+        color = Color(0xFF10184A),
+        fontSize = 32.sp,
+        lineHeight = 36.sp,
+        fontWeight = FontWeight.Black
+    )
+    Text(
+        text = "El cobro llega a tu teléfono: confirmalo desde tu app para completar la compra.",
+        color = Color(0xFF60738C),
+        fontSize = 18.sp,
+        lineHeight = 22.sp
+    )
+    Text(
+        text = digitos.ifBlank { "—" },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        color = if (digitos.isEmpty()) Color(0xFF9AAABB) else Color(0xFF10184A),
+        fontSize = 40.sp,
+        fontWeight = FontWeight.Black,
+        textAlign = TextAlign.Center
+    )
+
+    val filas = listOf(
+        listOf("1", "2", "3"),
+        listOf("4", "5", "6"),
+        listOf("7", "8", "9"),
+        listOf("borrar", "0", "")
+    )
+
+    filas.forEach { fila ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            fila.forEach { tecla ->
+                when (tecla) {
+                    "" -> Spacer(Modifier.weight(1f))
+
+                    "borrar" -> OutlinedButton(
+                        onClick = { digitos = digitos.dropLast(1) },
+                        enabled = digitos.isNotEmpty(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text("Borrar", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    else -> Button(
+                        onClick = { if (digitos.length < 8) digitos += tecla },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(58.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFEAF4FF),
+                            contentColor = Color(0xFF10184A)
+                        )
+                    ) {
+                        Text(tecla, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    state.error?.let { PaymentError(it) }
+    if (state.isCreatingQr) PaymentLoading("Generando el cobro...")
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        OutlinedButton(
+            onClick = onReturn,
+            enabled = !state.isCreatingQr,
+            modifier = Modifier
+                .weight(1f)
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text("Volver", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        }
+        Button(
+            onClick = { onSubmit(digitos) },
+            enabled = digitos.length == 8 && !state.isCreatingQr,
+            modifier = Modifier
+                .weight(1f)
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text("Continuar", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+
+    if (state.isCancellingOrder) PaymentLoading("Cancelando pedido...")
+    OutlinedButton(
+        onClick = onCancel,
+        enabled = !state.isCancellingOrder && !state.isCreatingQr,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Text("Cancelar la compra", fontSize = 15.sp)
+    }
+}
+
+/**
+ * Lo que ve el cliente cuando el cobro viaja a su celular: no hay código que mostrar, solo la
+ * solicitud enviada y la espera (el sondeo del pago y el vencimiento son los de siempre).
+ */
+@Composable
+private fun WaitingOnPhonePanel(state: PaymentUiState, onCancel: () -> Unit) {
+    val expirationAtMs = state.qrExpiresAtMs
+    var remainingSeconds by remember(state.qrOrder?.orderId, expirationAtMs) {
+        mutableStateOf(calculateRemainingSeconds(expirationAtMs))
+    }
+    LaunchedEffect(state.qrOrder?.orderId, expirationAtMs) {
+        while (expirationAtMs != null) {
+            remainingSeconds = calculateRemainingSeconds(expirationAtMs)
+            if (remainingSeconds == 0L) break
+            delay(1_000L)
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 560.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text(
+                    text = "Paga con ${state.selectedPaymentMethod?.label ?: "tu celular"}",
+                    color = Color(0xFF10184A),
+                    fontSize = 30.sp,
+                    lineHeight = 34.sp,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    text = "Mandamos la solicitud de cobro al celular ${state.customerPhone}. " +
+                        "Abrí tu app, revisá el mensaje del banco y confirmá el pago.",
+                    color = Color(0xFF60738C),
+                    fontSize = 18.sp,
+                    lineHeight = 22.sp
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(30.dp),
+                        color = Color(0xFF2F80ED),
+                        trackColor = Color(0xFFD9E9FF),
+                        strokeWidth = 4.dp
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = if (remainingSeconds == 0L) {
+                            "Solicitud vencida. Cancelando pedido..."
+                        } else {
+                            "Esperando confirmación de pago..."
+                        },
+                        color = Color(0xFF10184A),
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (remainingSeconds != null) {
+                    Text(
+                        text = "Expira en ${formatRemainingTime(remainingSeconds ?: 0L)}",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = Color(0xFF60738C),
+                        textAlign = TextAlign.Center,
+                        fontSize = 16.sp
+                    )
+                }
+
+                state.error?.let { PaymentError(it) }
+                if (state.isCancellingOrder) PaymentLoading("Cancelando pedido...")
+
+                OutlinedButton(
+                    onClick = onCancel,
+                    enabled = !state.isCancellingOrder,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    border = BorderStroke(1.5.dp, Color(0xFFF06A6A)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color(0xFFFFF1F1),
+                        contentColor = Color(0xFFD92D36)
+                    ),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(
+                        painter = painterResource(com.vending.kiosk.R.drawable.ic_close),
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text("Cancelar", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
 private fun calculateRemainingSeconds(expirationAtMs: Long?): Long? {
     expirationAtMs ?: return null
     val remainingMs = expirationAtMs - System.currentTimeMillis()
@@ -1033,6 +1304,7 @@ private fun PaymentMethodSelectionPreview() {
             selectedPaymentMethod = previewMethods.first()
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
+        onReturnFromPhone = {}, onSubmitCustomerPhone = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }
@@ -1048,6 +1320,7 @@ private fun PaymentCheckoutPreview() {
             selectedPaymentMethod = previewMethods.first()
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
+        onReturnFromPhone = {}, onSubmitCustomerPhone = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }
@@ -1062,6 +1335,7 @@ private fun PaymentQrUnavailablePreview() {
             statusMessage = "Esperando confirmación de pago..."
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
+        onReturnFromPhone = {}, onSubmitCustomerPhone = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }
@@ -1076,6 +1350,7 @@ private fun PaymentMethodLoadingErrorPreview() {
             error = "No se pudieron cargar los métodos de pago"
         ),
         onSelectPaymentMethod = {}, onContinueToCheckout = {}, onReturnToMethodSelection = {},
+        onReturnFromPhone = {}, onSubmitCustomerPhone = {},
         onConfirmCheckout = {}, onCancel = {}, onInteraction = {}
     )
 }

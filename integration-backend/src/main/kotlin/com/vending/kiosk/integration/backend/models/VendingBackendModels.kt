@@ -26,8 +26,22 @@ data class CatalogResponse(
 data class PaymentMethod(
     val id: Int,
     val label: String,
+    /**
+     * Cómo cobra la pasarela: `QR` (el cliente escanea un código) o `CELULAR` (el cobro viaja a su
+     * teléfono y él lo cierra ahí). Lo manda el backend en `tcFormaDeCobro`; una pasarela que no
+     * sepa cobrar de ninguna forma no llega en esta lista.
+     */
+    val formaDeCobro: String = FORMA_QR,
     val isDispenseTest: Boolean = false
-)
+) {
+    /** El cobro se cierra en el teléfono del cliente: hay que pedir su número antes de cobrar. */
+    val cobraEnElCelular: Boolean get() = formaDeCobro.equals(FORMA_CELULAR, ignoreCase = true)
+
+    companion object {
+        const val FORMA_QR = "QR"
+        const val FORMA_CELULAR = "CELULAR"
+    }
+}
 
 data class CreateOrderQrRequest(
     val machineId: Int,

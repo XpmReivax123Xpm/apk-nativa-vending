@@ -109,7 +109,15 @@ class HttpVendingBackendGateway(
         val methods = response.dataArray().mapNotNull { item ->
             val id = item.optInt("tnMetodoPago", 0)
             val label = textoDe(item, "tcNombreMetodoPago")
-            if (id > 0 && label.isNotBlank()) PaymentMethod(id = id, label = label) else null
+            if (id > 0 && label.isNotBlank()) {
+                PaymentMethod(
+                    id = id,
+                    label = label,
+                    formaDeCobro = textoDe(item, "tcFormaDeCobro").ifBlank { PaymentMethod.FORMA_QR }
+                )
+            } else {
+                null
+            }
         }.distinctBy { it.id }
 
         if (methods.isEmpty()) {
@@ -305,10 +313,10 @@ class HttpVendingBackendGateway(
         if (pagoId <= 0) {
             throw CreateOrderQrGatewayException("Respuesta sin el id del pago")
         }
-        if (qrBase64.isBlank()) {
-            throw CreateOrderQrGatewayException("El metodo de pago no devolvio un codigo QR")
-        }
 
+        // El QR puede venir vacio y no es un error del gateway: los metodos que cobran en el celular
+        // del cliente no tienen codigo que mostrar. Quien sabe que forma de cobro eligio el cliente
+        // es la pantalla, y es ella la que exige el QR cuando corresponde.
         return CobroDelPedido(
             id = pagoId,
             qrBase64 = qrBase64,

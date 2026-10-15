@@ -35,6 +35,9 @@ import java.util.UUID
 sealed interface PaymentStep {
     data object Closed : PaymentStep
     data object MethodSelection : PaymentStep
+
+    /** El cliente teclea su celular: solo para los métodos que cobran ahí. */
+    data object Phone : PaymentStep
     data object Checkout : PaymentStep
     data object Qr : PaymentStep
     data object Completed : PaymentStep
@@ -64,6 +67,8 @@ data class PaymentUiState(
     val paymentMethods: List<PaymentMethod> = emptyList(),
     val allowDispenseTest: Boolean = false,
     val selectedPaymentMethod: PaymentMethod? = null,
+    /** El celular del cliente, para los métodos que cobran ahí: viaja con el pedido. */
+    val customerPhone: String = "",
     val qrOrder: CreateOrderQrResponse? = null,
     val qrExpiresAtMs: Long? = null,
     val isLoadingPaymentMethods: Boolean = false,
@@ -215,7 +220,33 @@ class PaymentViewModel(
             _uiState.value = state.copy(error = "Selecciona un metodo de pago")
             return
         }
-        _uiState.value = state.copy(step = PaymentStep.Checkout, error = null)
+
+        val siguiente = if (selectedMethod.cobraEnElCelular) PaymentStep.Phone else PaymentStep.Checkout
+        _uiState.value = state.copy(step = siguiente, error = null)
+    }
+
+    fun returnFromPhone() {
+        val state = _uiState.value
+        if (state.step == PaymentStep.Phone) {
+            _uiState.value = state.copy(step = PaymentStep.MethodSelection, error = null)
+        }
+    }
+
+    /**
+     * El celular que el cliente teclea cuando el método cobra ahí: el cobro viaja a ese número y
+     * queda guardado con la venta, así que no se cobra con uno inventado.
+     */
+    fun submitCustomerPhone(telefono: String) {
+        val state = _uiState.value
+        if (state.step != PaymentStep.Phone) return
+
+        val limpio = telefono.filter { it.isDigit() }
+        if (!esTelefonoValido(limpio)) {
+            _uiState.value = state.copy(error = TELEFONO_INVALIDO)
+            return
+        }
+
+        _uiState.value = state.copy(customerPhone = limpio, step = PaymentStep.Checkout, error = null)
     }
 
     fun returnToMethodSelection() {
@@ -252,10 +283,20 @@ class PaymentViewModel(
         _uiState.value = state.copy(isCreatingQr = true, error = null)
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
-                createOrderQrWithSingleRefresh(state.items, method.id)
+                createOrderQrWithSingleRefresh(state.items, method.id, state.customerPhone)
             }
             when (result) {
                 is CreateQrResult.Success -> {
+                    // El QR es obligatorio solo para los metodos que cobran mostrandolo: uno que cobra
+                    // en el celular del cliente no tiene nada que mostrar, solo se espera.
+                    if (result.order.qrBase64.isBlank() && !method.cobraEnElCelular) {
+                        _uiState.value = _uiState.value.copy(
+                            isCreatingQr = false,
+                            error = "El metodo de pago no devolvio un codigo QR"
+                        )
+                        return@launch
+                    }
+
                     val qrExpiresAtMs = resolveQrExpirationMs(
                         rawExpiration = result.order.expiration,
                         serverNowMs = result.order.serverNowMs
@@ -265,7 +306,11 @@ class PaymentViewModel(
                         qrOrder = result.order,
                         qrExpiresAtMs = qrExpiresAtMs,
                         isCreatingQr = false,
-                        statusMessage = "Esperando confirmacion de pago...",
+                        statusMessage = if (method.cobraEnElCelular) {
+                            "Esperando que el cliente confirme en su celular..."
+                        } else {
+                            "Esperando confirmacion de pago..."
+                        },
                         error = null
                     )
                     startPaymentPolling(result.order.paymentId, result.order.orderId, qrExpiresAtMs)
@@ -504,19 +549,20 @@ class PaymentViewModel(
 
     private suspend fun createOrderQrWithSingleRefresh(
         items: List<CartItem>,
-        paymentMethodId: Int
+        paymentMethodId: Int,
+        telefono: String
     ): CreateQrResult {
         if (resolveValidSession().isNullOrBlank()) {
             return CreateQrResult.Error("Sesion de maquina expirada", sessionLost = true)
         }
 
-        val clave = checkoutKeyFor(items, paymentMethodId)
-        var result = createOrderQr(items, paymentMethodId, clave)
+        val clave = checkoutKeyFor(items, paymentMethodId, telefono)
+        var result = createOrderQr(items, paymentMethodId, clave, telefono)
         if (result is CreateQrResult.Error && result.unauthorized) {
             if (resolveValidSession(forceRefresh = true).isNullOrBlank()) {
                 return CreateQrResult.Error("Sesion de maquina expirada", sessionLost = true)
             }
-            result = createOrderQr(items, paymentMethodId, clave)
+            result = createOrderQr(items, paymentMethodId, clave, telefono)
         }
         return if (result is CreateQrResult.Error && result.unauthorized) {
             result.copy(sessionLost = true)
@@ -526,14 +572,14 @@ class PaymentViewModel(
     }
 
     /**
-     * La clave del alta: la misma mientras la compra sea la misma —mismo carrito y mismo metodo—, una
-     * nueva cuando cambia cualquiera de los dos (el pedido que ya existe en el backend es de OTRA
-     * compra y devolverlo cobraria lo que el cliente ya no esta pidiendo).
+     * La clave del alta: la misma mientras la compra sea la misma —mismo carrito, mismo metodo y el
+     * mismo celular—, una nueva cuando cambia cualquiera de los tres (el pedido que ya existe en el
+     * backend es de OTRA compra, y con otro celular el cobro viajaria al numero viejo).
      */
-    private fun checkoutKeyFor(items: List<CartItem>, paymentMethodId: Int): String {
+    private fun checkoutKeyFor(items: List<CartItem>, paymentMethodId: Int, telefono: String): String {
         val firma = items
             .sortedWith(compareBy({ it.planogramCellId }, { it.productId }))
-            .joinToString("|") { "${it.planogramCellId}:${it.productId}:${it.quantity}" } + ">$paymentMethodId"
+            .joinToString("|") { "${it.planogramCellId}:${it.productId}:${it.quantity}" } + ">$paymentMethodId@$telefono"
 
         if (firma != checkoutSignature) {
             checkoutSignature = firma
@@ -542,10 +588,15 @@ class PaymentViewModel(
         return checkoutKey
     }
 
+    /** Un movil boliviano son 8 digitos. */
+    private fun esTelefonoValido(telefono: String): Boolean =
+        telefono.length == 8 && telefono.all { it.isDigit() }
+
     private suspend fun createOrderQr(
         items: List<CartItem>,
         paymentMethodId: Int,
-        idempotencyKey: String
+        idempotencyKey: String,
+        telefono: String
     ): CreateQrResult = try {
         CreateQrResult.Success(
             vendingBackendGateway.createOrderQr(
@@ -554,7 +605,7 @@ class PaymentViewModel(
                     paymentMethodId = paymentMethodId,
                     idempotencyKey = idempotencyKey,
                     customerName = DEFAULT_CUSTOMER_NAME,
-                    customerPhone = DEFAULT_CUSTOMER_PHONE,
+                    customerPhone = telefono.ifBlank { DEFAULT_CUSTOMER_PHONE },
                     customerCi = DEFAULT_CUSTOMER_CI_NIT,
                     items = items.map {
                         CreateOrderQrRequest.Item(
@@ -708,5 +759,8 @@ class PaymentViewModel(
         const val DEFAULT_CUSTOMER_NAME = "Sin nombre"
         const val DEFAULT_CUSTOMER_PHONE = "9999999"
         const val DEFAULT_CUSTOMER_CI_NIT = "9999999"
+
+        /** Un movil boliviano son 8 digitos: es lo que se le pide al cliente cuando el cobro va a su celular. */
+        const val TELEFONO_INVALIDO = "Teclea un celular de 8 digitos"
     }
 }

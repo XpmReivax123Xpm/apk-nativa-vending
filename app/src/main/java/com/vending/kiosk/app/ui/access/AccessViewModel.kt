@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.device.DeviceIdentifierFailure
+import com.vending.kiosk.app.device.DeviceIdentifierResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,17 +15,20 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Acceso al kiosko: el equipo donde corre —que se carga UNA sola vez— y el PIN de la maquina.
+ * Acceso al kiosko: SOLO el PIN de la maquina.
  *
- * La maquina se identifica por su APARATO: quien conoce el codigo impreso en el frente no puede
- * entrar con el al planograma de otra maquina.
+ * El identificador del equipo no se pide ni se teclea nunca: lo entrega el aparato (ver
+ * `DeviceIdentity`) y sin el el kiosko no inicia sesion. La maquina se identifica por su APARATO:
+ * quien conoce el codigo impreso en el frente no puede entrar al planograma de otra maquina.
  */
 data class AccessUiState(
-    val direccionMac: String = "",
-    val pin: String = "",
-    val needsEquipo: Boolean = true,
+    /** Identificador del equipo que hay que anotar: se muestra UNA vez, antes del PIN. */
+    val identificadorDelEquipo: String? = null,
+    /** Por que el equipo no entrego su identificador: sin el, el kiosko no inicia. */
+    val identificadorNoDisponible: DeviceIdentifierFailure? = null,
     val machineCode: String = "",
     val machineLocation: String = "",
+    val pin: String = "",
     val isAuthenticating: Boolean = false,
     val error: String? = null,
     val navigation: AccessNavigation? = null
@@ -37,50 +42,65 @@ data class AccessNavigation(
 
 class AccessViewModel(
     private val machineAuthGateway: MachineAuthGateway,
-    private val authSessionManager: AuthSessionManager
+    private val authSessionManager: AuthSessionManager,
+    /** Identificador del equipo, leido al abrir la pantalla (ver `DeviceIdentity`). */
+    deviceIdentifier: DeviceIdentifierResult
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AccessUiState())
     val uiState: StateFlow<AccessUiState> = _uiState.asStateFlow()
 
+    /** MAC vigente del equipo; null mientras no se haya podido obtener. */
+    private var macDelEquipo: String? = null
+
     init {
-        val equipo = authSessionManager.getEquipo()
+        aplicarIdentificador(deviceIdentifier)
 
         _uiState.value = _uiState.value.copy(
-            direccionMac = equipo?.direccionMac.orEmpty(),
-            needsEquipo = equipo == null,
-            machineCode = equipo?.machineCode.orEmpty(),
+            machineCode = authSessionManager.getEquipo()?.machineCode.orEmpty(),
             machineLocation = authSessionManager.getMachineLocation().orEmpty()
         )
     }
 
-    fun onDireccionMacChange(value: String) {
-        _uiState.value = _uiState.value.copy(direccionMac = value.trim(), error = null)
+    /** Se volvio a leer el identificador del equipo (boton «Reintentar» de la pantalla de falla). */
+    fun actualizarIdentificador(deviceIdentifier: DeviceIdentifierResult) {
+        aplicarIdentificador(deviceIdentifier)
+    }
+
+    private fun aplicarIdentificador(deviceIdentifier: DeviceIdentifierResult) {
+        macDelEquipo = (deviceIdentifier as? DeviceIdentifierResult.Available)?.macAddress
+
+        _uiState.value = _uiState.value.copy(
+            identificadorNoDisponible =
+                (deviceIdentifier as? DeviceIdentifierResult.Unavailable)?.failure,
+            // El identificador se muestra UNA sola vez, para que se anote y se registre en el ERP.
+            identificadorDelEquipo = macDelEquipo
+                ?.takeIf { !authSessionManager.isDeviceIdentifierRevealed() }
+        )
     }
 
     fun onPinChange(value: String) {
         _uiState.value = _uiState.value.copy(pin = value.take(10), error = null)
     }
 
-    /** Cambio de tablet: el kiosko olvida su equipo y lo vuelve a pedir. */
-    fun cambiarEquipo() {
-        authSessionManager.forgetEquipo()
-        _uiState.value = _uiState.value.copy(
-            needsEquipo = true,
-            direccionMac = "",
-            pin = "",
-            error = null
-        )
+    /** El operador anoto el identificador: no se vuelve a mostrar y el acceso sigue con el PIN. */
+    fun confirmarIdentificadorAnotado() {
+        authSessionManager.markDeviceIdentifierRevealed()
+        _uiState.value = _uiState.value.copy(identificadorDelEquipo = null)
     }
 
     fun autenticar() {
         val state = _uiState.value
         if (state.isAuthenticating) return
 
-        val direccionMac = state.direccionMac.trim()
+        val direccionMac = macDelEquipo.orEmpty()
 
+        // Sin identificador del aparato no hay autenticacion posible: es a proposito, no hay ingreso
+        // manual de identificador en el kiosko.
         if (direccionMac.isBlank()) {
-            _uiState.value = state.copy(error = "Ingresa el identificador del equipo")
+            _uiState.value = state.copy(
+                error = "No se obtuvo el identificador del equipo: el kiosko no puede ingresar"
+            )
             return
         }
         if (state.pin.isBlank()) {

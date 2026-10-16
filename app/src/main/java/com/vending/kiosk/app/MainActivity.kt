@@ -10,6 +10,9 @@ import com.vending.kiosk.R
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.device.DeviceIdentifierResult
+import com.vending.kiosk.app.device.DeviceIdentity
+import com.vending.kiosk.app.device.HardwareWatchdog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,6 +30,10 @@ class MainActivity : AppCompatActivity() {
 
         SimulationRuntime.apply()
 
+        // El watchdog de placa se alimenta mientras la app viva: si el kiosko se cuelga, la placa reinicia
+        // la tablet sola. En equipos sin el servicio del fabricante no hace nada.
+        HardwareWatchdog.start(this)
+
         val startupLoadingView = findViewById<View>(R.id.startupLoadingView)
         val mainMenuContent = findViewById<View>(R.id.mainMenuContent)
 
@@ -38,11 +45,16 @@ class MainActivity : AppCompatActivity() {
         val equipo = authSessionManager.getEquipo()
         val autoResumeEnabled = authSessionManager.isKioskAutoResumeEnabled()
         val hasKioskAccess = equipo != null && equipo.machineId > 0
+        val deviceIdentifier = DeviceIdentity.read(this)
+        val hasDeviceIdentifier = deviceIdentifier is DeviceIdentifierResult.Available
+        // El kiosko no inicia sin el identificador del equipo (no hay ingreso manual), ni antes de que se
+        // le haya mostrado UNA vez al operador para que lo anote.
+        val deviceIdentifierPending = hasDeviceIdentifier && !authSessionManager.isDeviceIdentifierRevealed()
 
         val job = lifecycleScope.launch {
             delay(AUTO_RESUME_BOOT_DELAY_MS)
 
-            if (autoResumeEnabled && hasKioskAccess) {
+            if (autoResumeEnabled && hasKioskAccess && hasDeviceIdentifier && !deviceIdentifierPending) {
                 if (userSelectedMainMenuAction) {
                     Log.d(TAG, "Auto-resume aborted: user selected a main menu action")
                     showMainMenu()
@@ -101,6 +113,8 @@ class MainActivity : AppCompatActivity() {
             } else {
                 val reason = when {
                     !autoResumeEnabled -> "auto-resume disabled"
+                    !hasDeviceIdentifier -> "el equipo no entrego su identificador"
+                    deviceIdentifierPending -> "el identificador de la tablet todavia no se mostro"
                     equipo == null -> "el kiosko no tiene equipo configurado"
                     equipo.machineId <= 0 -> "sin datos de la maquina (sin login previo)"
                     else -> "unknown"

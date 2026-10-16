@@ -44,7 +44,9 @@ val vendingSerialEndpoint = vendingProperty("vendingSimEndpoint", "10.0.2.2:9100
 // lo puede interferir—. Cuando exista el VPS se cambian ESTAS DOS constantes (y el default de
 // `BackendConfig`).
 val vendingDevelopmentBackend = "http://10.0.2.2:8000"
-val vendingDeployBackend = "http://10.0.2.2:8000"
+// El de DESPLIEGUE es el que queda grabado en la release (cerrojo 3): hoy apunta al backend publico
+// por el que la maquina alcanza la API, mientras no haya VPS.
+val vendingDeployBackend = "https://headstone-preseason-cope.ngrok-free.dev"
 val vendingBackendUrl = vendingProperty("vendingBackendUrl", "").ifEmpty {
     if (vendingSerialTransport == "tcp") "http://10.0.2.2:9200" else vendingDevelopmentBackend
 }

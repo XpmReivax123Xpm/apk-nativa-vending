@@ -47,16 +47,15 @@ import androidx.compose.ui.unit.sp
 import com.vending.kiosk.R
 
 /**
- * Pantalla de acceso al kiosko: pide el PIN de la maquina y, si el kiosko todavia no sabe en que equipo
- * corre, tambien su identificador —una sola vez—.
+ * Pantalla de acceso al kiosko: SOLO el PIN de la maquina. El identificador del equipo no se pide ni
+ * se muestra aca: lo entrega el aparato (ver `ui/access/DeviceIdentifierScreen` para la unica vez que
+ * se le muestra al operador para que lo anote).
  */
 @Composable
 fun AccessScreen(
     state: AccessUiState,
-    onDireccionMacChange: (String) -> Unit,
     onPinChange: (String) -> Unit,
     onEnterClick: () -> Unit,
-    onCambiarEquipoClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
     val primaryBlue = colorResource(R.color.bp_primary_blue)
@@ -89,10 +88,8 @@ fun AccessScreen(
 
             AccessForm(
                 state = state,
-                onDireccionMacChange = onDireccionMacChange,
                 onPinChange = onPinChange,
                 onEnterClick = onEnterClick,
-                onCambiarEquipoClick = onCambiarEquipoClick,
                 cyan = cyan,
                 orange = orange
             )
@@ -109,10 +106,8 @@ fun AccessScreen(
 @Composable
 private fun AccessForm(
     state: AccessUiState,
-    onDireccionMacChange: (String) -> Unit,
     onPinChange: (String) -> Unit,
     onEnterClick: () -> Unit,
-    onCambiarEquipoClick: () -> Unit,
     cyan: Color,
     orange: Color
 ) {
@@ -146,35 +141,12 @@ private fun AccessForm(
                 fontWeight = FontWeight.Bold
             )
 
-            if (!state.needsEquipo) {
+            if (state.machineCode.isNotBlank()) {
                 Text(
-                    text = state.machineCode.ifBlank { "Equipo configurado" } +
+                    text = state.machineCode +
                         state.machineLocation.takeIf { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
                     color = Color.White.copy(alpha = 0.85f),
                     style = MaterialTheme.typography.bodyMedium
-                )
-            }
-
-            if (state.needsEquipo) {
-                OutlinedTextField(
-                    value = state.direccionMac,
-                    onValueChange = onDireccionMacChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isAuthenticating,
-                    label = { Text("Identificador del equipo") },
-                    placeholder = { Text("MAC o serial de la tablet") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Text,
-                        imeAction = ImeAction.Next
-                    ),
-                    colors = fieldColors
-                )
-
-                Text(
-                    text = "Se carga una sola vez y despues el kiosko solo pide el PIN.",
-                    color = Color.White.copy(alpha = 0.75f),
-                    style = MaterialTheme.typography.bodySmall
                 )
             }
 
@@ -232,46 +204,32 @@ private fun AccessForm(
             ) {
                 Text(text = "Ingresar", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
-
-            if (!state.needsEquipo) {
-                TextButton(
-                    onClick = onCambiarEquipoClick,
-                    enabled = !state.isAuthenticating,
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text(text = "Cambiar equipo", color = cyan)
-                }
-            }
         }
     }
 }
 
 @Preview(showBackground = true, widthDp = 411, heightDp = 800)
 @Composable
-private fun AccessScreenEquipoPendientePreview() {
+private fun AccessScreenSoloPinPreview() {
     AccessScreen(
-        state = AccessUiState(needsEquipo = true),
-        onDireccionMacChange = {},
+        state = AccessUiState(),
         onPinChange = {},
         onEnterClick = {},
-        onCambiarEquipoClick = {},
         onBackClick = {}
     )
 }
 
 @Preview(showBackground = true, widthDp = 411, heightDp = 800)
 @Composable
-private fun AccessScreenSoloPinPreview() {
+private fun AccessScreenConEquipoPreview() {
     AccessScreen(
         state = AccessUiState(
-            needsEquipo = false,
             machineCode = "MQ-1001",
-            machineLocation = "Sucursal Sur"
+            machineLocation = "Sucursal Sur",
+            error = "PIN incorrecto"
         ),
-        onDireccionMacChange = {},
         onPinChange = {},
         onEnterClick = {},
-        onCambiarEquipoClick = {},
         onBackClick = {}
     )
 }

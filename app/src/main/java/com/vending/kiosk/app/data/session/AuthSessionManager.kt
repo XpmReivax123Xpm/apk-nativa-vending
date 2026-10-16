@@ -6,9 +6,10 @@ import android.content.Context
  * Lo que el kiosko guarda entre reinicios: la sesion de la maquina, su EQUIPO y los datos de la
  * maquina que devolvio el login.
  *
- * El identificador del equipo se carga UNA vez —cuando se instala el kiosko o se cambia la tablet— y
- * despues el kiosko solo pide el PIN: la maquina se identifica por su APARATO, nunca por el codigo que
- * esta impreso en su frente (quien se lo supiera entraria al planograma de otra maquina).
+ * El identificador del equipo se carga UNA vez —cuando se instala el kiosko o se cambia la tablet—: lo
+ * entrega el propio aparato (ver `com.vending.kiosk.app.device.DeviceIdentity`) y el operador solo teclea
+ * el PIN. La maquina se identifica por su APARATO, nunca por el codigo que esta impreso en su frente
+ * (quien se lo supiera entraria al planograma de otra maquina).
  */
 class AuthSessionManager(context: Context) {
 
@@ -50,6 +51,21 @@ class AuthSessionManager(context: Context) {
             .remove(KEY_DIRECCION_MAC)
             .remove(KEY_MACHINE_PIN)
             .apply()
+    }
+
+    /** Recuerda que el identificador del aparato ya se mostro para que lo anotaran. */
+    fun markDeviceIdentifierRevealed() {
+        prefs.edit()
+            .putBoolean(KEY_DEVICE_IDENTIFIER_REVEALED, true)
+            .apply()
+    }
+
+    /**
+     * Si el identificador de la tablet ya se le mostro al operador para que lo anote. La pantalla que lo
+     * muestra es la unica vez que se ve, asi que se recuerda para no volver a exponerlo.
+     */
+    fun isDeviceIdentifierRevealed(): Boolean {
+        return prefs.getBoolean(KEY_DEVICE_IDENTIFIER_REVEALED, false)
     }
 
     /** Los datos de la MAQUINA que devolvio el login: es el rotulo del kiosko, no una credencial. */
@@ -114,6 +130,7 @@ class AuthSessionManager(context: Context) {
         private const val KEY_DIRECCION_MAC = "direccion_mac"
         private const val KEY_MACHINE_PIN = "machine_pin"
         private const val KEY_KIOSK_AUTO_RESUME_ENABLED = "kiosk_auto_resume_enabled"
+        private const val KEY_DEVICE_IDENTIFIER_REVEALED = "device_identifier_revealed"
         private const val KEY_LAST_MACHINE_LOCATION = "last_machine_location"
     }
 }

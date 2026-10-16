@@ -118,3 +118,16 @@ sealed interface DispenseStatusResult {
     data object Success : DispenseStatusResult
     data class Error(val message: String) : DispenseStatusResult
 }
+
+/**
+ * Lo que respondio el backend a la bitacora de una unidad.
+ *
+ * Son TRES casos y no dos a proposito: un fallo temporal (la red del local) se reintenta en la
+ * proxima subida, mientras que un rechazo del backend (esa linea no es de este pedido, el cuerpo no
+ * es el gzip, no hay sesion valida) da lo mismo por mas veces que se repita.
+ */
+sealed interface BitacoraUploadResult {
+    data object Success : BitacoraUploadResult
+    data class Rechazada(val message: String) : BitacoraUploadResult
+    data class Error(val message: String) : BitacoraUploadResult
+}

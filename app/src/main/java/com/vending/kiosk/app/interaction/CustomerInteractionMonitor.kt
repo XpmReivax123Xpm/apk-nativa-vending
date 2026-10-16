@@ -6,6 +6,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/**
+ * La bitacora de lo que pasa durante una dispensacion, para el operador del ERP.
+ *
+ * La unidad de trabajo es LA UNIDAD del pedido, no la compra: en un carrito de tres productos una
+ * unidad puede salir y otra fallar, y lo que hay que poder leer es el texto de la que fallo —por eso
+ * la bitacora se abre y se cierra por unidad—. La sesion sigue viva mientras dura el pedido y los
+ * archivos viven en el storage externo del equipo.
+ */
 class CustomerInteractionMonitor(private val context: Context) {
 
     private val lock = Any()
@@ -31,6 +39,8 @@ class CustomerInteractionMonitor(private val context: Context) {
     private val rawBitacoraBuffer = StringBuilder()
     private var sessionId: String? = null
     private var active = false
+    /** La linea del pedido de la unidad en curso: es a la que se cuelga su bitacora. */
+    private var unitPedidoDetalle: Int = 0
     private var lastLogsText: String = ""
     private var lastBitacoraText: String = ""
     private var lastRawBitacoraText: String = ""
@@ -49,6 +59,7 @@ class CustomerInteractionMonitor(private val context: Context) {
             sessionId = fileFormat.format(Date())
             active = true
             lastSavedArtifacts = null
+            unitPedidoDetalle = 0
 
             val safeMachine = machineCode.ifBlank { "SIN_MAQUINA" }
             val safePedido = if (pedidoId > 0) pedidoId.toString() else "SIN_PEDIDO"
@@ -67,6 +78,43 @@ class CustomerInteractionMonitor(private val context: Context) {
     }
 
     fun isActive(): Boolean = synchronized(lock) { active }
+
+    /**
+     * Abre la bitacora de UNA unidad del pedido: la maquina dispensa unidad por unidad y el texto
+     * que interesa es el de la que fallo, no el de toda la compra.
+     */
+    fun startUnit(pedidoDetalle: Int) {
+        synchronized(lock) {
+            if (!active) return
+            unitPedidoDetalle = pedidoDetalle
+            val linea = if (pedidoDetalle > 0) pedidoDetalle.toString() else "SIN_LINEA"
+            appendBitacoraLocked("UNIT START | linea=$linea")
+            appendLogLocked("Unit start | linea=$linea")
+        }
+    }
+
+    /**
+     * Cierra la bitacora de la unidad en curso: la escribe en SU archivo y limpia los buffers para
+     * la siguiente, sin cerrar la sesion del pedido.
+     *
+     * Devuelve `null` cuando no hay nada que escribir (no hay sesion o la unidad no dejo texto).
+     */
+    fun finalizeUnit(): File? {
+        synchronized(lock) {
+            if (!active) return null
+
+            val linea = if (unitPedidoDetalle > 0) unitPedidoDetalle.toString() else "SIN_LINEA"
+            appendBitacoraLocked("UNIT END | linea=$linea")
+
+            val archivado = escribirBitacoraDeUnidad()
+
+            bitacoraBuffer.clear()
+            logsBuffer.clear()
+            unitPedidoDetalle = 0
+
+            return archivado
+        }
+    }
 
     fun appendLog(message: String) {
         synchronized(lock) {
@@ -182,6 +230,25 @@ class CustomerInteractionMonitor(private val context: Context) {
     private fun getBaseDir(): File {
         val root = context.getExternalFilesDir(null) ?: context.filesDir
         return File(root, "monitoreo de ciclo de vida de interaccion con el cliente")
+    }
+
+    /**
+     * El archivo de la unidad en curso, dentro de la carpeta de la sesion: el nombre lleva la linea
+     * del pedido para poder cruzarlo con lo que el backend recibio.
+     */
+    private fun escribirBitacoraDeUnidad(): File? {
+        return try {
+            val baseDir = getBaseDir()
+            if (!baseDir.exists()) baseDir.mkdirs()
+
+            val sufijo = if (unitPedidoDetalle > 0) "u$unitPedidoDetalle" else "sesion"
+            val archivo = File(baseDir, "bitacora_${sessionId ?: fileFormat.format(Date())}_$sufijo.txt")
+            archivo.writeText(bitacoraBuffer.toString())
+
+            archivo
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun appendLogLocked(message: String) {

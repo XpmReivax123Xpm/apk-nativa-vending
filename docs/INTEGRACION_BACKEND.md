@@ -66,6 +66,7 @@ POST /api/v1/maquina-auth/login   { "tcDireccionMac": "...", "tcPin": "1234" }
 | Estado del cobro (sondeo cada 5 s) | `GET /pagos/{pago}` |
 | Cancelar el pedido | `POST /pedidos/{pedido}/cancelar` (campo `tcMotivo`) |
 | Reportar la dispensación de una unidad | `POST /pedidos/{pedido}/dispensacion` |
+| Subir la bitácora de esa unidad (gzip) | `POST /pedidos/{pedido}/dispensacion/{pedidoDetalle}/bitacora` |
 | Validar el PIN de salida del kiosko | `POST /maquina-auth/login` (es el mismo PIN; el token se descarta) |
 
 **Sobre de respuesta:** los recursos vienen envueltos en `{ "data": ... }` y los errores son
@@ -129,6 +130,27 @@ POST /api/v1/pedidos/{pedido}/dispensacion
 Los ids son los del catálogo del backend —`2 EN_PROCESO`, `3 RECOJO_PENDIENTE`, `4 COMPLETADO`,
 `5 FALLIDO`, `7 ATORADO`— y el código del evento es texto libre que queda como rastro de qué pasó en
 esa unidad. El reporte va *fire-and-forget*: si se pierde, el backend cierra el pedido solo a las 24 h.
+
+### Bitácora de la dispensación (el texto de la unidad)
+
+```http
+POST /api/v1/pedidos/{pedido}/dispensacion/{pedidoDetalle}/bitacora
+Content-Type: application/gzip
+X-Version-Apk: 0.1.0-bootstrap
+
+<cuerpo: el .txt.gz del texto que el kiosko escribió durante esa unidad>
+```
+
+La bitácora es la de UNA unidad (la del pedido y su `pedidoDetalle`), no la de toda la compra: si un
+carrito lleva tres productos y falla uno, lo que el ERP muestra es el texto de ese. Se sube APARTE del
+reporte de estado —que no la espera— y en segundo plano: el kiosko la comprime en su carpeta de
+pendientes y la sube con la próxima unidad o al arrancar, así que una red caída no se lleva justo la
+bitácora del fallo. La versión de la APK viaja en `X-Version-Apk` (queda en la fila del backend).
+
+Responde `201` la primera vez y `200` si esa unidad ya tenía bitácora (el reintento no la pisa), `404`
+si el pedido no es de esta máquina, `422` si el cuerpo no es un gzip legible o pasa el tope, y `410`
+si la retención ya la borró (7 días desde la dispensación). Las dispensaciones de PRUEBA no se suben:
+no tienen pedido al que colgarlas.
 
 ## Pendientes y avisos
 

@@ -4,6 +4,7 @@ import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.domain.catalog.CatalogItem
 import com.vending.kiosk.app.domain.catalog.CatalogUseCase
 import com.vending.kiosk.integration.backend.contracts.VendingBackendGateway
+import com.vending.kiosk.integration.backend.models.BitacoraUploadResult
 import com.vending.kiosk.integration.backend.models.CancelOrderResult
 import com.vending.kiosk.integration.backend.models.CatalogResponse
 import com.vending.kiosk.integration.backend.models.ConfirmPaymentCodeResult
@@ -260,6 +261,46 @@ class HttpVendingBackendGateway(
         }
     }
 
+    /**
+     * Sube la bitacora de una unidad: el gzip viaja tal cual, sin envolverlo en JSON.
+     *
+     * Son DOS desenlaces distintos a proposito: `Rechazada` (el backend la rechazo por lo que dice
+     * —no es la linea de ese pedido, no es gzip, esa unidad no existe—) no se reintenta, mientras que
+     * `Error` (red caida, 401, 5xx) si, en la proxima subida.
+     */
+    override suspend fun uploadDispensacionBitacora(
+        orderId: Int,
+        orderDetailId: Int,
+        contenido: ByteArray,
+        versionApk: String
+    ): BitacoraUploadResult {
+        val authorization = sessionManager.getAuthorizationHeader()
+        if (authorization.isNullOrBlank()) {
+            return BitacoraUploadResult.Error("Sesion de maquina no disponible")
+        }
+
+        val response = try {
+            BackendHttp.requestBinary(
+                method = "POST",
+                path = "$PEDIDOS_PATH/$orderId/dispensacion/$orderDetailId/bitacora",
+                authorization = authorization,
+                body = contenido,
+                contentType = "application/gzip",
+                extraHeaders = mapOf("X-Version-Apk" to versionApk),
+                timeoutMs = BITACORA_TIMEOUT_MS
+            )
+        } catch (ex: Exception) {
+            return BitacoraUploadResult.Error("Error subiendo la bitacora: ${ex.message ?: "sin detalle"}")
+        }
+
+        return when {
+            response.isSuccess -> BitacoraUploadResult.Success
+            response.statusCode in RECHAZOS_DEFINITIVOS ->
+                BitacoraUploadResult.Rechazada(response.errorMessage("Bitacora rechazada."))
+            else -> BitacoraUploadResult.Error(response.errorMessage("No se pudo subir la bitacora."))
+        }
+    }
+
     /** El alta del pedido: una linea por unidad, con la celda del planograma que la maquina dispensara. */
     private fun crearPedido(request: CreateOrderQrRequest): LineasDelPedido {
         val detalles = JSONArray()
@@ -474,6 +515,15 @@ class HttpVendingBackendGateway(
         const val PEDIDOS_PATH = "/pedidos"
         const val PAGOS_PATH = "/pagos"
         const val ORDER_TIMEOUT_MS = 14_000
+        /** La bitacora es un archivo: se le da mas aire que a un JSON de negocio. */
+        const val BITACORA_TIMEOUT_MS = 20_000
+
+        /**
+         * Status con los que reintentar la misma bitacora da lo mismo: esa linea no es de ese pedido
+         * (404), la dispensacion no esta (404/410), el cuerpo no se pudo leer (422) o supera el tope
+         * (413).
+         */
+        val RECHAZOS_DEFINITIVOS = setOf(404, 410, 413, 422)
 
         /** Catalogo `ESTADOPAGO` del backend. */
         const val ESTADO_PAGO_PENDIENTE = 1

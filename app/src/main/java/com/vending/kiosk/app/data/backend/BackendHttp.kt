@@ -123,4 +123,59 @@ internal object BackendHttp {
             connection?.disconnect()
         }
     }
+
+    /**
+     * One answered call whose body is BINARY —the gzipped bitacora—: the bytes go out untouched and
+     * the caller declares the content type.
+     *
+     * Same envelope, same error handling and same server clock as [request]; the only difference is
+     * the body, because a bitacora is text of repeated frames and sending it as JSON (base64) would
+     * inflate it by a third for nothing.
+     */
+    fun requestBinary(
+        method: String,
+        path: String,
+        authorization: String? = null,
+        body: ByteArray,
+        contentType: String,
+        extraHeaders: Map<String, String> = emptyMap(),
+        timeoutMs: Int = DEFAULT_TIMEOUT_MS
+    ): BackendResponse {
+        val endpoint = BackendConfig.apiUrl + path
+        var connection: HttpURLConnection? = null
+
+        try {
+            connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                requestMethod = method
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                setRequestProperty("Accept", "application/json")
+                if (!authorization.isNullOrBlank()) {
+                    setRequestProperty("Authorization", authorization)
+                }
+                extraHeaders.forEach { (header, value) -> setRequestProperty(header, value) }
+                doOutput = true
+                setRequestProperty("Content-Type", contentType)
+            }
+
+            connection.outputStream.use { output -> output.write(body) }
+
+            val statusCode = connection.responseCode
+            val rawBody = runCatching {
+                if (statusCode in 200..299) {
+                    connection.inputStream.bufferedReader().use { it.readText() }
+                } else {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }
+            }.getOrDefault("")
+
+            return BackendResponse(
+                statusCode = statusCode,
+                body = rawBody,
+                serverNowMs = connection.date.takeIf { it > 0L }
+            )
+        } finally {
+            connection?.disconnect()
+        }
+    }
 }

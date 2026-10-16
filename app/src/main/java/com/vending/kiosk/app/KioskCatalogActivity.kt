@@ -46,6 +46,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.repeatOnLifecycle
 import com.vending.kiosk.R
+import com.vending.kiosk.app.interaction.BitacoraDispensacionUploader
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.ui.catalog.CatalogScreen
 import com.vending.kiosk.app.ui.catalog.CatalogUiState
@@ -289,6 +290,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         enterKioskMode()
 
         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
+        flushPendingBitacoras()
         catalogViewModel = ViewModelProvider(
             this,
             CatalogViewModelFactory(vendingBackendGateway, catalogImageCache, authSessionManager)
@@ -778,6 +780,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         catalogLoadInProgress = false
                         if (state.error != null || state.sessionLost) return@collect
                         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
+                        flushPendingBitacoras()
                         cartViewModel.syncWithCatalog(state.items)
                     }
                 }
@@ -1170,6 +1173,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         val currentCell = currentItem.cell
         val currentNumber = dispensingCursor + 1
         val total = dispensingQueue.size
+        // Cada unidad tiene SU bitacora: se abre aca y se cierra cuando la unidad termina, asi el
+        // operador ve el texto de la que fallo y no el de toda la compra.
+        interactionMonitor.startUnit(currentItem.tnPedidoDetalle)
         dispenseViewModel.showDispensing(
             currentIndex = currentNumber,
             totalItems = total,
@@ -1209,6 +1215,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 tcEstado = "COMPLETADO"
             )
         }
+        cerrarBitacoraDeUnidad()
         dispensingCursor++
         startNextDispenseItem()
     }
@@ -1236,6 +1243,8 @@ class KioskCatalogActivity : AppCompatActivity() {
                     tcEstado = "FALLIDO"
                 )
             }
+            // La bitacora de la unidad que fallo: es la que el operador va a querer leer.
+            cerrarBitacoraDeUnidad()
         }
         dispensingInProgress = false
         runCatching { vendFlow.stop() }
@@ -1252,6 +1261,42 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     private fun isTerminalDispenseTimeout(errorCode: String): Boolean {
         return errorCode.contains("TIMEOUT", ignoreCase = true) && errorCode != "IO_TIMEOUT"
+    }
+
+    /**
+     * Cierra la bitacora de la unidad que acaba de terminar y la deja subiendo en segundo plano.
+     *
+     * La subida NO bloquea nada: el texto se comprime al instante y viaja en una corrutina de IO, y
+     * si la red del local esta caida queda pendiente para el proximo arranque o la proxima unidad.
+     * El reporte de negocio de la unidad no depende de esto.
+     */
+    private fun cerrarBitacoraDeUnidad() {
+        val unidad = dispensingQueue.getOrNull(dispensingCursor) ?: return
+        val pedidoId = activeDispensePedidoId
+
+        if (pedidoId <= 0 || unidad.tnPedidoDetalle <= 0) return
+
+        val bitacora = interactionMonitor.finalizeUnit() ?: return
+
+        if (!BitacoraDispensacionUploader.enqueue(applicationContext, bitacora, pedidoId, unidad.tnPedidoDetalle)) {
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            BitacoraDispensacionUploader.flush(applicationContext, vendingBackendGateway)
+        }
+    }
+
+    /**
+     * Vacia las bitacoras que quedaron pendientes de subir: la red puede caerse justo en el fallo que
+     * interesa, y el kiosko arranca varias veces al dia.
+     */
+    private fun flushPendingBitacoras() {
+        if (authHeader.isBlank()) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            BitacoraDispensacionUploader.flush(applicationContext, vendingBackendGateway)
+        }
     }
 
     private fun onDispenseFinished() {

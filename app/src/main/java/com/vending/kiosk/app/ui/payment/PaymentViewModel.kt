@@ -468,6 +468,9 @@ class PaymentViewModel(
     /**
      * Sondea el COBRO y, si el tiempo se agota, cancela el PEDIDO: son dos ids distintos —el pago
      * tiene su propia fila— y el backend cancela pedidos, no pagos.
+     *
+     * La espera la manda el VENCIMIENTO DEL QR y nada mas: un intento que no llega al backend se
+     * reintenta en el siguiente ciclo, porque el cliente puede estar pagando aunque la red no conteste.
      */
     private fun startPaymentPolling(pagoId: Int, pedidoId: Int, qrExpiresAtMs: Long?) {
         paymentPollingJob?.cancel()
@@ -499,14 +502,18 @@ class PaymentViewModel(
                     }
 
                     is PaymentPollResult.Error -> {
-                        _uiState.value = _uiState.value.copy(
-                            statusMessage = result.message,
-                            error = result.message
-                        )
                         if (result.sessionLost) {
+                            _uiState.value = _uiState.value.copy(
+                                statusMessage = result.message,
+                                error = result.message
+                            )
                             publishSessionLost()
                             return@launch
                         }
+                        // Un intento fallido no vence el cobro: la espera la manda el vencimiento del
+                        // QR y el cliente puede estar pagando aunque la red no conteste. Se reintenta
+                        // en el siguiente ciclo sin pintar el error, que dejaria la pantalla en rojo
+                        // con el QR todavia vigente.
                     }
                 }
                 delay(PAYMENT_POLL_INTERVAL_MS)

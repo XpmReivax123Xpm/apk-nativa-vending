@@ -156,7 +156,12 @@ class HttpVendingBackendGateway(
      */
     override suspend fun fetchPaymentStatus(pagoId: Long): PaymentStatus {
         val response = try {
-            BackendHttp.request("GET", "$PAGOS_PATH/$pagoId", sessionManager.getAuthorizationHeader())
+            BackendHttp.request(
+                method = "GET",
+                path = "$PAGOS_PATH/$pagoId",
+                authorization = sessionManager.getAuthorizationHeader(),
+                timeoutMs = STATUS_TIMEOUT_MS
+            )
         } catch (ex: Exception) {
             return PaymentStatus.Error("Error consultando el estado del pago: ${ex.message ?: "sin detalle"}")
         }
@@ -517,6 +522,12 @@ class HttpVendingBackendGateway(
         const val ORDER_TIMEOUT_MS = 14_000
         /** La bitacora es un archivo: se le da mas aire que a un JSON de negocio. */
         const val BITACORA_TIMEOUT_MS = 20_000
+        /**
+         * El sondeo del cobro es una lectura de una fila, pero corre en bucle mientras el cliente paga:
+         * se le da mas aire que a una llamada de negocio para no descartar una respuesta lenta, y un
+         * intento que igual falle no vence el cobro —de eso se encarga el vencimiento del QR—.
+         */
+        const val STATUS_TIMEOUT_MS = 20_000
 
         /**
          * Status con los que reintentar la misma bitacora da lo mismo: esa linea no es de ese pedido

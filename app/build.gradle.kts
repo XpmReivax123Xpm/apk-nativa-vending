@@ -39,14 +39,13 @@ val vendingSerialEndpoint = vendingProperty("vendingSimEndpoint", "10.0.2.2:9100
 // Backend base URL. Empty means automatic: the DEVELOPMENT backend below for a native build, and the
 // local mock backend for a simulator build (so the kiosk flow stays testable offline).
 //
-// MIENTRAS SE INTEGRA, LOS DOS APUNTAN AL BACKEND LOCAL: la URL vieja
-// (boxipagobackend.pagofacil.com.bo) NO se usa desde esta APK —es otro flujo, en produccion, y no se
-// lo puede interferir—. Cuando exista el VPS se cambian ESTAS DOS constantes (y el default de
-// `BackendConfig`).
-val vendingDevelopmentBackend = "http://10.0.2.2:8000"
-// El de DESPLIEGUE es el que queda grabado en la release (cerrojo 3): hoy apunta al backend publico
-// por el que la maquina alcanza la API, mientras no haya VPS.
-val vendingDeployBackend = "https://headstone-preseason-cope.ngrok-free.dev"
+// LOS DOS APUNTAN AL BACKEND YA DESPLEGADO (backend.boxipago.com.bo): la URL vieja
+// (boxipagobackend.pagofacil.com.bo) NO se usa desde esta APK —es otro flujo, en produccion, y no
+// se lo puede interferir—.
+val vendingDevelopmentBackend = "https://backend.boxipago.com.bo"
+// El de DESPLIEGUE es el que queda grabado en la release (cerrojo 3). Tiene que ser una URL publica
+// HTTPS: las pasarelas de pago solo confirman contra un callback alcanzable desde internet.
+val vendingDeployBackend = "https://backend.boxipago.com.bo"
 val vendingBackendUrl = vendingProperty("vendingBackendUrl", "").ifEmpty {
     if (vendingSerialTransport == "tcp") "http://10.0.2.2:9200" else vendingDevelopmentBackend
 }
@@ -83,8 +82,8 @@ android {
             buildConfigField("String", "SERIAL_TRANSPORT", "\"native\"")
             buildConfigField("String", "SERIAL_SIM_ENDPOINT", "\"10.0.2.2:9100\"")
             // Cerrojo 3: y siempre contra el backend de DESPLIEGUE, nunca contra el simulador
-            // local, aunque la propiedad quede seteada en la maquina. Hoy el de despliegue es el
-            // backend de desarrollo (todavia no hay VPS): cuando exista, se cambia arriba.
+            // local, aunque la propiedad quede seteada en la maquina. El de despliegue se cambia
+            // arriba.
             buildConfigField("String", "BACKEND_BASE_URL", "\"$vendingDeployBackend\"")
         }
     }

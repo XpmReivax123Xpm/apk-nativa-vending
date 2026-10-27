@@ -8,16 +8,17 @@ contrato que la APK usa hoy y lo que queda pendiente del lado de la aplicación.
 `BackendConfig.baseUrl` sale de `BuildConfig.BACKEND_BASE_URL`, y todo endpoint cuelga de
 `BackendConfig.apiUrl` (= `baseUrl` + `/api/v1`).
 
-**Mientras se integra, TODO apunta al backend LOCAL**: el backend viejo
+El backend ya está **desplegado** en `https://backend.boxipago.com.bo` (VPS público, con certificado
+válido): es el destino de la `release` y el default del `debug`. El backend viejo
 (`boxipagobackend.pagofacil.com.bo`) no se usa desde esta APK porque atiende otro flujo que está en
-producción.
+producción, y el Laravel local es solo para desarrollo.
 
 | Build | A dónde apunta |
 | --- | --- |
-| `release` | `vendingDeployBackend` de `app/build.gradle.kts` (hoy el local; el VPS se pone ahí) |
-| `debug` (sin propiedades) | `vendingDevelopmentBackend` de `app/build.gradle.kts` (hoy el local) |
+| `release` | `vendingDeployBackend` = `https://backend.boxipago.com.bo` |
+| `debug` (sin propiedades) | `vendingDevelopmentBackend` = `https://backend.boxipago.com.bo` |
 | `debug` con `vendingSerial=tcp` | el mock local (`http://10.0.2.2:9200`), con el mismo contrato que el backend |
-| `debug` con `-PvendingBackendUrl=http://<host>:<puerto>` o `vendingBackendUrl` en `local.properties` | ese host: es lo que se usa para probar desde una tablet de la red |
+| `debug` con `-PvendingBackendUrl=...` o `vendingBackendUrl` en `local.properties` | ese host: es lo que se usa para probar con el Laravel local o con la LAN |
 
 `10.0.2.2` es como el emulador ve a la PC. Para una tablet de la LAN se pasa la IP de la PC (el
 `local.properties` de esta máquina ya la tiene). El Laravel tiene que escuchar en la red:

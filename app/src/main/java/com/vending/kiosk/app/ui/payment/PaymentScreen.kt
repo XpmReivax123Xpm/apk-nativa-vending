@@ -244,7 +244,7 @@ private fun DraggableQrPaymentPanel(
             panelOffset = if (isPositionInitialized) {
                 IntOffset(panelOffset.x.coerceIn(0, maxX), panelOffset.y.coerceIn(0, maxY))
             } else {
-                IntOffset(maxX / 2, maxY / 2)
+                IntOffset(maxX / 2, maxY)
             }
             isPositionInitialized = true
         }

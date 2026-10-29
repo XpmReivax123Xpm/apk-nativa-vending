@@ -78,7 +78,9 @@ class IdleVideoOverlayView(
 
     private companion object {
         private val IDLE_VIDEO_RES_IDS = intArrayOf(
-            R.raw.video_de_vengan
+            R.raw.video_de_vengan,
+            R.raw.presentacion_pago_facil,
+            R.raw.sra_nelly_labor_aqui
         )
     }
 }

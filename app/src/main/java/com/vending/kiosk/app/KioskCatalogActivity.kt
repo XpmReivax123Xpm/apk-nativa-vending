@@ -1203,10 +1203,12 @@ class KioskCatalogActivity : AppCompatActivity() {
             )
         }
         if (justDone?.driverZeroDelivered == true) {
+            // El driver de la placa dejo de responder (0000) pero el producto salio y el retiro se
+            // confirmo por IO: la unidad SI se entrego, y el 0000 queda como rastro en el evento.
             reportDispenseStateByIndex(
                 index = dispensingCursor,
-                tnEstado = 7,
-                tcEstado = "ENTREGADO_CON_DRIVER_0000"
+                tnEstado = 4,
+                tcEstado = "COMPLETADO_CON_DRIVER_0000"
             )
         } else {
             reportDispenseStateByIndex(

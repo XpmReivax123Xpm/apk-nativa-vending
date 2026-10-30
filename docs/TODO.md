@@ -312,3 +312,8 @@
 ### Actualizacion 2026-06-16
 - [x] Reproducir los 3 videos promocionales en secuencia durante modo inactividad.
 - [x] Renombrar videos nuevos en `res/raw` a nombres validos para Android.
+
+### Actualizacion 2026-10-30
+- [x] Reportar la unidad entregada por retiro IO despues de `driver 0000` como COMPLETADA:
+  - [x] `tnEstadoDispensacion=4`
+  - [x] `tcEstadoDispensacion=COMPLETADO_CON_DRIVER_0000`.

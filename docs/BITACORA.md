@@ -1197,3 +1197,19 @@ Definir especificacion detallada de modulo `operator-auth + vending-context + ki
 
 ### Nota
 - Se renombraron los archivos nuevos porque Android no acepta espacios, mayusculas ni acentos en nombres dentro de `res/raw`.
+
+## 2026-10-30 - Unidad entregada tras driver 0000 se reporta COMPLETADA
+
+### Hallazgo
+- Pedido #4159 (produccion, 29/10/2026 21:13, celda 14): la bitacora de la unidad muestra el retiro confirmado
+  (`1er click 0082` -> `abierta 0002` -> `cerrada sin producto 0092` -> `2do click 00D2` -> `DONE`), o sea el
+  producto SI salio; el pedido igual quedo completado parcial.
+- La APK reportaba esa unidad como `7 ATORADO` con el codigo `ENTREGADO_CON_DRIVER_0000`, asi que el backend
+  dejaba la linea NO_ENTREGADO, el pedido FALLIDO y no descontaba la celda.
+
+### Correccion
+- `KioskCatalogActivity.onDispenseItemDone()`: la unidad con `driverZeroDelivered` se reporta con
+  `DispensacionEstado = 4 (COMPLETADO)` y el codigo `COMPLETADO_CON_DRIVER_0000`.
+- El driver 0000 queda como rastro en `CodigoEventoFinal`; el cierre del pedido, la linea ENTREGADO y el
+  descuento de la celda pasan por el camino normal de una unidad completada.
+- `7 ATORADO` queda solo para incidencias reales sin entrega (`ANOMALO`, `IO_TIMEOUT_CANCEL`).

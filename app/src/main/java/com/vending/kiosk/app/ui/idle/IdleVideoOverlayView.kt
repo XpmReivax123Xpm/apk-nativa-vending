@@ -2,7 +2,9 @@ package com.vending.kiosk.app.ui.idle
 
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Log
 import android.view.Gravity
+import android.view.SurfaceHolder
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.VideoView
@@ -22,6 +24,21 @@ class IdleVideoOverlayView(
     init {
         overlay.visibility = View.GONE
         overlay.setOnClickListener { onOverlayTouched() }
+
+        /*
+         * La superficie se crea con el tamano REAL del video, que es la proporcion que hay que respetar.
+         * Se toma de aca y no solo de `onPrepared` porque en varios equipos `getVideoWidth()` todavia vale
+         * 0 cuando llega ese callback y el tamano aparece un instante despues.
+         */
+        video.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) = Unit
+
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                fitToScreen(width, height)
+            }
+
+            override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
+        })
     }
 
     fun show() {
@@ -31,7 +48,10 @@ class IdleVideoOverlayView(
         overlay.visibility = View.VISIBLE
 
         video.setOnPreparedListener { player: MediaPlayer ->
-            fitVideoCentered(player)
+            fitToScreen(player.videoWidth, player.videoHeight)
+            // El tamano del video puede llegar despues de preparar: se reintenta un par de veces.
+            video.postDelayed({ fitToScreen(player.videoWidth, player.videoHeight) }, 200L)
+            video.postDelayed({ fitToScreen(player.videoWidth, player.videoHeight) }, 700L)
             if (isVisible) {
                 video.start()
             }
@@ -85,18 +105,12 @@ class IdleVideoOverlayView(
      * Sin esto el video queda en su tamano nativo pegado arriba y, cuando la resolucion no coincide con
      * la pantalla, deja el hueco negro entero abajo en vez de repartirlo entre los dos lados.
      */
-    private fun fitVideoCentered(player: MediaPlayer) {
-        val videoWidth = player.videoWidth
-        val videoHeight = player.videoHeight
+    private fun fitToScreen(videoWidth: Int, videoHeight: Int) {
+        if (!isVisible || videoWidth <= 0 || videoHeight <= 0) return
+
         val availableWidth = overlay.width
         val availableHeight = overlay.height
-
-        if (videoWidth <= 0 || videoHeight <= 0) return
-        if (availableWidth <= 0 || availableHeight <= 0) {
-            // Todavia sin layout: se reintenta en el siguiente ciclo de la vista, solo mientras el overlay siga visible.
-            if (isVisible) overlay.post { if (isVisible) fitVideoCentered(player) }
-            return
-        }
+        if (availableWidth <= 0 || availableHeight <= 0) return
 
         val scale = minOf(
             availableWidth.toFloat() / videoWidth,
@@ -105,25 +119,21 @@ class IdleVideoOverlayView(
         val width = (videoWidth * scale).toInt().coerceIn(1, availableWidth)
         val height = (videoHeight * scale).toInt().coerceIn(1, availableHeight)
 
-        applySize(width, height)
-        // VideoView vuelve a fijar la superficie al tamano nativo al terminar de preparar, asi que el
-        // ajuste se repite en el siguiente ciclo para que quede como el ultimo.
-        video.post { if (isVisible) applySize(width, height) }
-    }
+        if (video.width == width && video.height == height) return
 
-    /**
-     * La superficie se fija al tamano ya ajustado para que el decodificador escale el video ahi y no
-     * quede recortado, y la vista de ese mismo tamano centrada en la pantalla.
-     */
-    private fun applySize(width: Int, height: Int) {
+        Log.d(
+            TAG,
+            "video de inactividad ${videoWidth}x${videoHeight} -> caja ${width}x${height} " +
+                "(pantalla ${availableWidth}x${availableHeight})"
+        )
+
         video.holder.setFixedSize(width, height)
-
-        if (video.width != width || video.height != height) {
-            video.layoutParams = FrameLayout.LayoutParams(width, height, Gravity.CENTER)
-        }
+        video.layoutParams = FrameLayout.LayoutParams(width, height, Gravity.CENTER)
     }
 
     private companion object {
+        private const val TAG = "IdleVideo"
+
         private val IDLE_VIDEO_RES_IDS = intArrayOf(
             R.raw.video_de_vengan,
             R.raw.presentacion_pago_facil,

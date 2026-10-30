@@ -114,8 +114,16 @@ data class DispenseStatusRequest(
     val dispenseStatus: String
 )
 
+/**
+ * Lo que respondio el backend al reporte de estado de UNA unidad.
+ *
+ * Son TRES casos y no dos a proposito: un fallo temporal (red caida, token vencido, 5xx) se reintenta
+ * desde la cola de pendientes de la APK, mientras que un rechazo del backend (esa linea no es de este
+ * pedido, la celda no coincide) da lo mismo por mas veces que se repita.
+ */
 sealed interface DispenseStatusResult {
     data object Success : DispenseStatusResult
+    data class Rechazada(val message: String) : DispenseStatusResult
     data class Error(val message: String) : DispenseStatusResult
 }
 

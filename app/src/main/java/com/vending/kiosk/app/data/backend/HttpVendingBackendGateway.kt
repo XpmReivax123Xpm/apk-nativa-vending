@@ -232,8 +232,10 @@ class HttpVendingBackendGateway(
     /**
      * Reporta lo que la maquina hizo con UNA unidad del pedido.
      *
-     * Va fire-and-forget: el kiosko no bloquea la pantalla por un reporte. Lo que se pierda se cierra
-     * solo en el backend (el pedido colgado vence a las 24 h).
+     * No bloquea la pantalla: el reporte se encola antes (ver `DispenseStatusUploader`) y este metodo
+     * solo intenta mandarlo. Tres desenlaces: `Success`; `Rechazada`, cuando el backend no lo va a
+     * aceptar nunca (la linea no es de ese pedido, la celda no coincide); y `Error` (red caida, token
+     * vencido, 5xx), que la cola reintenta.
      */
     override suspend fun reportDispenseStatus(request: DispenseStatusRequest): DispenseStatusResult {
         val authorization = sessionManager.getAuthorizationHeader()
@@ -259,10 +261,11 @@ class HttpVendingBackendGateway(
             return DispenseStatusResult.Error("Error reportando la dispensacion: ${ex.message ?: "sin detalle"}")
         }
 
-        return if (response.isSuccess) {
-            DispenseStatusResult.Success
-        } else {
-            DispenseStatusResult.Error(response.errorMessage("No se pudo reportar la dispensacion."))
+        return when {
+            response.isSuccess -> DispenseStatusResult.Success
+            response.statusCode in RECHAZOS_DEFINITIVOS ->
+                DispenseStatusResult.Rechazada(response.errorMessage("Reporte de dispensacion rechazado."))
+            else -> DispenseStatusResult.Error(response.errorMessage("No se pudo reportar la dispensacion."))
         }
     }
 

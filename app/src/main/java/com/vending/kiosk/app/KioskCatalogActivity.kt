@@ -71,6 +71,7 @@ import com.vending.kiosk.app.ui.payment.PaymentTerminalResult
 import com.vending.kiosk.app.ui.payment.PaymentUiState
 import com.vending.kiosk.app.ui.payment.PaymentViewModel
 import com.vending.kiosk.app.data.backend.HttpVendingBackendGateway
+import com.vending.kiosk.app.data.backend.DispenseStatusUploader
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.AdminAccessGateway
 import com.vending.kiosk.app.data.backend.AdminAccessResult
@@ -135,6 +136,9 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispensingInProgress = false
     private var clearCartOnDispenseFinish = false
     private var activeDispensePedidoId = 0
+    private val dispenseStatusRetryHandler = Handler(Looper.getMainLooper())
+    private var dispenseStatusRetryRunnable: Runnable? = null
+    private var dispenseStatusRetryDelayMs = DISPENSE_STATUS_RETRY_MIN_MS
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
     private var dispenseSuccessTimerRunnable: Runnable? = null
     private val monitoringViewerController = MonitoringViewerController(this)
@@ -291,6 +295,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
         flushPendingBitacoras()
+        flushPendingDispenseStatuses()
         catalogViewModel = ViewModelProvider(
             this,
             CatalogViewModelFactory(vendingBackendGateway, catalogImageCache, authSessionManager)
@@ -349,6 +354,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         idleVideoOverlayView?.hide()
         idleVideoOverlayView?.stopPlayback()
         monitoringViewerController.dismiss()
+        dispenseStatusRetryHandler.removeCallbacksAndMessages(null)
+        dispenseStatusRetryRunnable = null
         unlockHoldHandler.removeCallbacksAndMessages(null)
         idleController.stop()
         if (::vendFlow.isInitialized) {
@@ -781,6 +788,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                         if (state.error != null || state.sessionLost) return@collect
                         authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
                         flushPendingBitacoras()
+                        flushPendingDispenseStatuses()
                         cartViewModel.syncWithCatalog(state.items)
                     }
                 }
@@ -1334,26 +1342,62 @@ class KioskCatalogActivity : AppCompatActivity() {
         current.tnEstadoDispensacion = tnEstado
         if (activeDispensePedidoId <= 0 || current.tnPedidoDetalle <= 0) return
 
+        val request = BackendDispenseStatusRequest(
+            orderId = activeDispensePedidoId,
+            orderDetailId = current.tnPedidoDetalle,
+            planogramCellId = current.item.planogramaCeldaId,
+            dispenseStatusId = tnEstado,
+            dispenseStatus = tcEstado
+        )
+
+        // Primero queda en el equipo: con este reporte el backend cierra la venta y descuenta la celda,
+        // asi que perderlo no puede depender de que la red este bien justo en ese segundo.
+        if (!DispenseStatusUploader.enqueue(applicationContext, request)) {
+            // Sin carpeta donde encolarlo (disco lleno, almacenamiento inaccesible): al menos se
+            // intenta el envio directo, que es lo que hacia antes de existir la cola.
+            Log.w(TAG, "No se pudo encolar el reporte de dispensacion de la linea ${current.tnPedidoDetalle}")
+            lifecycleScope.launch(Dispatchers.IO) {
+                runCatching { vendingBackendGateway.reportDispenseStatus(request) }
+            }
+        }
+        flushPendingDispenseStatuses()
+    }
+
+    /**
+     * Manda los reportes de dispensacion que quedaron esperando y, si todavia queda alguno, programa
+     * otro intento mas adelante.
+     */
+    private fun flushPendingDispenseStatuses() {
+        if (authHeader.isBlank()) {
+            if (DispenseStatusUploader.pendientes(applicationContext) > 0) scheduleDispenseStatusRetry()
+            return
+        }
+
         lifecycleScope.launch(Dispatchers.IO) {
-            sendDispenseStatus(
-                BackendDispenseStatusRequest(
-                    orderId = activeDispensePedidoId,
-                    orderDetailId = current.tnPedidoDetalle,
-                    planogramCellId = current.item.planogramaCeldaId,
-                    dispenseStatusId = tnEstado,
-                    dispenseStatus = tcEstado
-                )
-            )
+            val pendientes = DispenseStatusUploader.flush(applicationContext, vendingBackendGateway)
+
+            withContext(Dispatchers.Main) {
+                if (pendientes == 0) {
+                    dispenseStatusRetryDelayMs = DISPENSE_STATUS_RETRY_MIN_MS
+                } else {
+                    scheduleDispenseStatusRetry()
+                }
+            }
         }
     }
 
-    private suspend fun sendDispenseStatus(request: BackendDispenseStatusRequest) {
-        if (authHeader.isBlank()) return
-        try {
-            vendingBackendGateway.reportDispenseStatus(request)
-        } catch (_: Exception) {
-            // no bloquea UX por falla de reporte
+    private fun scheduleDispenseStatusRetry() {
+        if (dispenseStatusRetryRunnable != null) return
+
+        val runnable = Runnable {
+            dispenseStatusRetryRunnable = null
+            flushPendingDispenseStatuses()
         }
+        dispenseStatusRetryRunnable = runnable
+        dispenseStatusRetryHandler.postDelayed(runnable, dispenseStatusRetryDelayMs)
+
+        // Cada vez que no se puede vaciar la cola se espera mas, para no golpear una red caida.
+        dispenseStatusRetryDelayMs = (dispenseStatusRetryDelayMs * 2).coerceAtMost(DISPENSE_STATUS_RETRY_MAX_MS)
     }
 
     private fun showDispenseError(message: String, errorCode: String) {
@@ -1600,6 +1644,8 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val PRODUCT_DIALOG_TIMEOUT_MS = 60_000L
         private const val DISPENSE_SUCCESS_DIALOG_TIMEOUT_MS = 5_000L
         private const val IDLE_IO_POLL_MS = 750L
+        private const val DISPENSE_STATUS_RETRY_MIN_MS = 15_000L
+        private const val DISPENSE_STATUS_RETRY_MAX_MS = 120_000L
     }
 }
 

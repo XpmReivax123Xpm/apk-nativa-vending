@@ -117,13 +117,15 @@ data class DispenseStatusRequest(
 /**
  * Lo que respondio el backend al reporte de estado de UNA unidad.
  *
- * Son TRES casos y no dos a proposito: un fallo temporal (red caida, token vencido, 5xx) se reintenta
- * desde la cola de pendientes de la APK, mientras que un rechazo del backend (esa linea no es de este
- * pedido, la celda no coincide) da lo mismo por mas veces que se repita.
+ * Son CUATRO casos y no dos a proposito: `SessionExpired` se resuelve renovando la sesion de maquina
+ * (el kiosko tiene el equipo y el PIN guardados) y repitiendo el reporte; `Error` es un fallo temporal
+ * (red, 5xx) que la cola reintenta mas tarde; y `Rechazada` es un no definitivo (esa linea no es de
+ * este pedido, la celda no coincide) que da lo mismo por mas veces que se repita.
  */
 sealed interface DispenseStatusResult {
     data object Success : DispenseStatusResult
     data class Rechazada(val message: String) : DispenseStatusResult
+    data class SessionExpired(val message: String) : DispenseStatusResult
     data class Error(val message: String) : DispenseStatusResult
 }
 

@@ -240,7 +240,7 @@ class HttpVendingBackendGateway(
     override suspend fun reportDispenseStatus(request: DispenseStatusRequest): DispenseStatusResult {
         val authorization = sessionManager.getAuthorizationHeader()
         if (authorization.isNullOrBlank()) {
-            return DispenseStatusResult.Error("Sesion de maquina no disponible")
+            return DispenseStatusResult.SessionExpired("Sesion de maquina no disponible")
         }
 
         val payload = JSONObject().apply {
@@ -263,6 +263,7 @@ class HttpVendingBackendGateway(
 
         return when {
             response.isSuccess -> DispenseStatusResult.Success
+            response.isUnauthorized -> DispenseStatusResult.SessionExpired(response.errorMessage("Sesion de maquina vencida."))
             response.statusCode in RECHAZOS_DEFINITIVOS ->
                 DispenseStatusResult.Rechazada(response.errorMessage("Reporte de dispensacion rechazado."))
             else -> DispenseStatusResult.Error(response.errorMessage("No se pudo reportar la dispensacion."))

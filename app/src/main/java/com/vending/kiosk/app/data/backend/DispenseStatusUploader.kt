@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicLong
  * pierde, la venta queda abierta, el inventario no baja y a las 24 h el pedido se cierra por
  * vencimiento. Por eso el reporte se escribe PRIMERO en una carpeta de pendientes del equipo y recien
  * despues se intenta mandar; lo que no salio se reintenta en la proxima unidad, al cargar el catalogo
- * o al arrancar el kiosko.
+ * o al arrancar el kiosko, y si la sesion de maquina vencio se renueva con el equipo y el PIN guardados.
  *
  * Reenviar es seguro: el backend es idempotente por el estado ACTUAL de la dispensacion, asi que un
  * reintento no descuenta dos veces la celda ni duplica la venta. Lo que el backend rechaza de forma
@@ -92,10 +92,16 @@ object DispenseStatusUploader {
     /**
      * Manda lo pendiente, en el orden en que ocurrio, y devuelve cuantos reportes quedan sin enviar.
      *
-     * Se detiene en el primer fallo TEMPORAL (red caida, token vencido, 5xx): si el backend no
-     * responde, insistir con el resto solo gasta tiempo y los deja igual de pendientes.
+     * Si el backend contesta que la sesion de maquina vencio, `renovarSesion` la vuelve a abrir con el
+     * equipo y el PIN guardados y se repite el MISMO reporte (el backend es idempotente). Se detiene en
+     * el primer fallo TEMPORAL (red caida, 5xx) o cuando no se pudo renovar: insistir con el resto solo
+     * gasta tiempo y los deja igual de pendientes.
      */
-    suspend fun flush(context: Context, gateway: VendingBackendGateway): Int = candado.withLock {
+    suspend fun flush(
+        context: Context,
+        gateway: VendingBackendGateway,
+        renovarSesion: () -> Boolean,
+    ): Int = candado.withLock {
         val carpeta = carpetaDePendientes(context)
         if (!carpeta.exists()) return@withLock 0
 
@@ -108,18 +114,30 @@ object DispenseStatusUploader {
                 continue
             }
 
-            val resultado = runCatching { gateway.reportDispenseStatus(request) }
-                .getOrElse { DispenseStatusResult.Error(it.message ?: "sin detalle") }
+            var resultado = enviar(gateway, request)
+
+            if (resultado is DispenseStatusResult.SessionExpired) {
+                if (!renovarSesion()) return@withLock contarPendientes(carpeta)
+                resultado = enviar(gateway, request)
+            }
 
             when (resultado) {
                 is DispenseStatusResult.Success -> archivo.delete()
                 is DispenseStatusResult.Rechazada -> moverARechazados(carpeta, archivo)
-                is DispenseStatusResult.Error -> return@withLock contarPendientes(carpeta)
+                // Error, o una sesion que no se pudo renovar: se reintenta en el proximo vaciado.
+                else -> return@withLock contarPendientes(carpeta)
             }
         }
 
         contarPendientes(carpeta)
     }
+
+    private suspend fun enviar(
+        gateway: VendingBackendGateway,
+        request: DispenseStatusRequest,
+    ): DispenseStatusResult =
+        runCatching { gateway.reportDispenseStatus(request) }
+            .getOrElse { DispenseStatusResult.Error(it.message ?: "sin detalle") }
 
     /** Cuantos reportes esperan envio. No toca la red. */
     fun pendientes(context: Context): Int = contarPendientes(carpetaDePendientes(context))

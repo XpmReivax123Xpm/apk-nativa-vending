@@ -73,6 +73,7 @@ import com.vending.kiosk.app.ui.payment.PaymentViewModel
 import com.vending.kiosk.app.data.backend.HttpVendingBackendGateway
 import com.vending.kiosk.app.data.backend.DispenseStatusUploader
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
+import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.backend.AdminAccessGateway
 import com.vending.kiosk.app.data.backend.AdminAccessResult
 import com.vending.kiosk.app.data.images.CatalogImageCache
@@ -139,6 +140,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private val dispenseStatusRetryHandler = Handler(Looper.getMainLooper())
     private var dispenseStatusRetryRunnable: Runnable? = null
     private var dispenseStatusRetryDelayMs = DISPENSE_STATUS_RETRY_MIN_MS
+    private var lastMachineSessionRenewalMs = 0L
     private val dispenseSuccessTimerHandler = Handler(Looper.getMainLooper())
     private var dispenseSuccessTimerRunnable: Runnable? = null
     private val monitoringViewerController = MonitoringViewerController(this)
@@ -1368,13 +1370,14 @@ class KioskCatalogActivity : AppCompatActivity() {
      * otro intento mas adelante.
      */
     private fun flushPendingDispenseStatuses() {
-        if (authHeader.isBlank()) {
-            if (DispenseStatusUploader.pendientes(applicationContext) > 0) scheduleDispenseStatusRetry()
-            return
-        }
+        if (DispenseStatusUploader.pendientes(applicationContext) == 0) return
 
         lifecycleScope.launch(Dispatchers.IO) {
-            val pendientes = DispenseStatusUploader.flush(applicationContext, vendingBackendGateway)
+            val pendientes = DispenseStatusUploader.flush(
+                context = applicationContext,
+                gateway = vendingBackendGateway,
+                renovarSesion = ::renewMachineSession,
+            )
 
             withContext(Dispatchers.Main) {
                 if (pendientes == 0) {
@@ -1383,6 +1386,25 @@ class KioskCatalogActivity : AppCompatActivity() {
                     scheduleDispenseStatusRetry()
                 }
             }
+        }
+    }
+
+    /**
+     * Reabre la sesion de maquina con el equipo y el PIN que ya estan guardados, para que un reporte
+     * pendiente no quede esperando a que alguien vuelva a entrar con el PIN. El login esta limitado en el
+     * backend, asi que un fallo no se reintenta antes de 10 minutos.
+     */
+    private fun renewMachineSession(): Boolean {
+        val ahora = System.currentTimeMillis()
+        if (ahora - lastMachineSessionRenewalMs < MACHINE_SESSION_RENEWAL_INTERVAL_MS) return false
+        lastMachineSessionRenewalMs = ahora
+
+        return when (MachineAuthGateway.refreshSessionWithStoredMachineCredentials(authSessionManager)) {
+            is MachineLoginResult.Success -> {
+                authHeader = authSessionManager.getAuthorizationHeader().orEmpty()
+                true
+            }
+            is MachineLoginResult.Error -> false
         }
     }
 
@@ -1646,6 +1668,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         private const val IDLE_IO_POLL_MS = 750L
         private const val DISPENSE_STATUS_RETRY_MIN_MS = 15_000L
         private const val DISPENSE_STATUS_RETRY_MAX_MS = 120_000L
+        private const val MACHINE_SESSION_RENEWAL_INTERVAL_MS = 600_000L
     }
 }
 

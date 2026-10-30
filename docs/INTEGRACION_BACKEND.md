@@ -133,9 +133,10 @@ Los ids son los del catálogo del backend —`2 EN_PROCESO`, `3 RECOJO_PENDIENTE
 esa unidad. El kiosko **encola el reporte en el equipo antes de mandarlo** (`DispenseStatusUploader`,
 carpeta `dispensacion_pendientes`) y reintenta lo que no salió al cerrar cada unidad, al cargar el
 catálogo y con espera creciente: la venta y el inventario dependen de este reporte, así que un corte de
-red no puede dejarlo en el aire. Reenviarlo es seguro porque el backend es idempotente por el estado
-actual de la dispensación; un rechazo definitivo (la línea no es de ese pedido, la celda no coincide) no
-se reintenta y queda guardado en `dispensacion_rechazados` para diagnosticar.
+red no puede dejarlo en el aire. Si la sesión de máquina venció, la cola la reabre sola con el equipo y
+el PIN guardados y repite el mismo reporte. Reenviarlo es seguro porque el backend es idempotente por el
+estado actual de la dispensación; un rechazo definitivo (la línea no es de ese pedido, la celda no
+coincide) no se reintenta y queda guardado en `dispensacion_rechazados` para diagnosticar.
 
 ### Bitácora de la dispensación (el texto de la unidad)
 

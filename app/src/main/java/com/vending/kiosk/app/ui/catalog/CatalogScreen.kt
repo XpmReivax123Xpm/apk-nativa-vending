@@ -120,8 +120,11 @@ fun CatalogScreen(
 
             Box(modifier = Modifier.weight(1f)) {
                 when {
-                    state.error != null -> CatalogStatus(message = state.error)
-                    state.isLoading -> CatalogLoading(orange = orange)
+                    // Un refresco fallido no puede vaciar la pantalla: si ya hay productos cargados se
+                    // siguen mostrando y el reintento corre por detras. Solo un catalogo que nunca
+                    // llego muestra el error.
+                    state.error != null && state.items.isEmpty() -> CatalogStatus(message = state.error)
+                    state.isLoading && state.items.isEmpty() -> CatalogLoading(orange = orange)
                     state.items.isEmpty() -> CatalogStatus(message = "No hay productos disponibles")
                     else -> CatalogContent(
                         state = state,

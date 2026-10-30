@@ -13,6 +13,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +48,8 @@ class CatalogViewModel(
     private val cartImagesBeingPreloaded = ConcurrentHashMap.newKeySet<String>()
     private var catalogPreloadJob: Job? = null
     private var lastCatalogPage: Int? = null
+    private var catalogRetryJob: Job? = null
+    private var catalogRetryAttempt = 0
 
     fun configureMachine(machineId: Int, machineCode: String, machineLocation: String) {
         _uiState.value = _uiState.value.copy(
@@ -66,6 +69,9 @@ class CatalogViewModel(
             try {
                 when (val result = withContext(Dispatchers.IO) { loadCatalogData() }) {
                     is CatalogLoadResult.Success -> {
+                        catalogRetryJob?.cancel()
+                        catalogRetryJob = null
+                        catalogRetryAttempt = 0
                         catalogPreloadJob?.cancel()
                         catalogPreloadJob = null
                         lastCatalogPage = null
@@ -82,9 +88,10 @@ class CatalogViewModel(
                         sessionLost = true
                     )
 
-                    is CatalogLoadResult.Failure -> _uiState.value = _uiState.value.copy(
-                        error = result.message
-                    )
+                    is CatalogLoadResult.Failure -> {
+                        _uiState.value = _uiState.value.copy(error = result.message)
+                        scheduleCatalogRetry()
+                    }
                 }
             } catch (exception: CancellationException) {
                 throw exception
@@ -92,9 +99,33 @@ class CatalogViewModel(
                 _uiState.value = _uiState.value.copy(
                     error = exception.message ?: "No se pudo cargar el catalogo"
                 )
+                scheduleCatalogRetry()
             } finally {
                 _uiState.value = _uiState.value.copy(isLoading = false)
             }
+        }
+    }
+
+    /**
+     * Un refresco fallido no deja la pantalla sin productos: se conserva el ultimo catalogo cargado
+     * —la pantalla lo sigue mostrando— y se reintenta solo. Frente a la maquina no hay nadie que
+     * pulse "reintentar", y una pantalla en error no sale de ahi hasta reiniciar la app.
+     *
+     * Las esperas crecen y se quedan en la ultima: una maquina sin red puede pasar horas asi sin
+     * gastar nada, y cuando la red vuelve el catalogo se carga solo.
+     */
+    private fun scheduleCatalogRetry() {
+        if (catalogRetryJob?.isActive == true) return
+
+        val delayMs = CATALOG_RETRY_DELAYS_MS[catalogRetryAttempt.coerceAtMost(CATALOG_RETRY_DELAYS_MS.lastIndex)]
+        catalogRetryAttempt += 1
+
+        catalogRetryJob = viewModelScope.launch {
+            delay(delayMs)
+            // Se suelta antes de recargar: si esa carga tambien falla, el fallo tiene que poder
+            // agendar el proximo reintento.
+            catalogRetryJob = null
+            loadCatalog()
         }
     }
 
@@ -252,6 +283,11 @@ class CatalogViewModel(
             is MachineLoginResult.Success -> authSessionManager.getAuthorizationHeader()
             is MachineLoginResult.Error -> null
         }
+    }
+
+    private companion object {
+        /** Espera entre reintentos del catalogo: 10 s, 30 s y de ahi en adelante cada minuto. */
+        val CATALOG_RETRY_DELAYS_MS = longArrayOf(10_000L, 30_000L, 60_000L)
     }
 }
 

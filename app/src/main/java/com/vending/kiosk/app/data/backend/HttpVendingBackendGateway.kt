@@ -48,6 +48,14 @@ class HttpVendingBackendGateway(
             )
         }
 
+        // Un 2xx con el cuerpo vacio no es un planograma sin celdas: es el backend contestando sin el
+        // recurso, y la pantalla tiene que decir eso en vez de "no hay celdas".
+        if (response.body.isBlank()) {
+            throw CatalogGatewayException(
+                "El servidor respondio sin datos del planograma (HTTP ${response.statusCode})"
+            )
+        }
+
         val data = response.dataObject()
         if (!data.has("celdas")) {
             throw CatalogGatewayException("Respuesta sin celdas en el planograma")

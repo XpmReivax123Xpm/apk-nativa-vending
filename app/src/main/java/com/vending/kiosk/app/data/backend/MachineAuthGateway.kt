@@ -33,7 +33,10 @@ object MachineAuthGateway {
                 return MachineLoginResult.Error(response.errorMessage("No se pudo autenticar la maquina"))
             }
 
-            val json = JSONObject(response.body)
+            val json = response.jsonObjectOrNull()
+                ?: return MachineLoginResult.Error(
+                    "El servidor respondio sin datos al autenticar la maquina (HTTP ${response.statusCode})"
+                )
             val accessToken = json.optString("access_token", "").trim()
             val tokenType = json.optString("token_type", "Bearer").trim().ifBlank { "Bearer" }
             // El backend dice cuantos MINUTOS dura el token de acceso: el kiosko no usa el refresh

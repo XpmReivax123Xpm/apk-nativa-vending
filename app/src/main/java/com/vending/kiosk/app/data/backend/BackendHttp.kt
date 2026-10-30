@@ -19,12 +19,21 @@ internal data class BackendResponse(
     val isSuccess: Boolean get() = statusCode in 200..299
     val isUnauthorized: Boolean get() = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
 
-    /** The `data` object of a resource response (`{"data": {...}}`). */
-    fun dataObject(): JSONObject = JSONObject(body).optJSONObject("data") ?: JSONObject()
+    /**
+     * The body as a JSON object, or `null` when the backend sent no readable JSON.
+     *
+     * An empty body is a real answer —a proxy that returns 200 without content, a connection that
+     * died mid-body— and it must never escape as the parser's own exception ("End of input at
+     * character 0") to a kiosk screen: each caller answers with its message.
+     */
+    fun jsonObjectOrNull(): JSONObject? = runCatching { JSONObject(body) }.getOrNull()
 
-    /** The `data` list of a collection response (`{"data": [...]}`). */
+    /** The `data` object of a resource response (`{"data": {...}}`), empty when there is none. */
+    fun dataObject(): JSONObject = jsonObjectOrNull()?.optJSONObject("data") ?: JSONObject()
+
+    /** The `data` list of a collection response (`{"data": [...]}`), empty when there is none. */
     fun dataArray(): List<JSONObject> {
-        val array = JSONObject(body).optJSONArray("data") ?: JSONArray()
+        val array = jsonObjectOrNull()?.optJSONArray("data") ?: JSONArray()
 
         return (0 until array.length()).mapNotNull { array.optJSONObject(it) }
     }
@@ -36,7 +45,7 @@ internal data class BackendResponse(
      */
     fun errorMessage(fallback: String): String {
         val detail = runCatching {
-            val json = JSONObject(body)
+            val json = jsonObjectOrNull() ?: JSONObject()
             val message = json.optString("message", "").trim().ifBlank { fallback }
             val errors = json.optJSONObject("errors") ?: JSONObject()
             val keys = errors.keys()
@@ -106,13 +115,14 @@ internal object BackendHttp {
             }
 
             val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
+            // El cuerpo de un 2xx se lee SIN red de seguridad: si la conexion se corta a mitad del
+            // cuerpo, el fallo tiene que salir como error de red y no como un cuerpo vacio, que es
+            // indistinguible despues de "el servidor no mando el recurso".
+            val rawBody = if (statusCode in 200..299) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            }
 
             return BackendResponse(
                 statusCode = statusCode,
@@ -161,13 +171,14 @@ internal object BackendHttp {
             connection.outputStream.use { output -> output.write(body) }
 
             val statusCode = connection.responseCode
-            val rawBody = runCatching {
-                if (statusCode in 200..299) {
-                    connection.inputStream.bufferedReader().use { it.readText() }
-                } else {
-                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }
-            }.getOrDefault("")
+            // El cuerpo de un 2xx se lee SIN red de seguridad: si la conexion se corta a mitad del
+            // cuerpo, el fallo tiene que salir como error de red y no como un cuerpo vacio, que es
+            // indistinguible despues de "el servidor no mando el recurso".
+            val rawBody = if (statusCode in 200..299) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            }
 
             return BackendResponse(
                 statusCode = statusCode,

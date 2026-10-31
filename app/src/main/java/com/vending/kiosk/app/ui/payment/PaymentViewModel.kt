@@ -469,14 +469,18 @@ class PaymentViewModel(
      * Sondea el COBRO y, si el tiempo se agota, cancela el PEDIDO: son dos ids distintos —el pago
      * tiene su propia fila— y el backend cancela pedidos, no pagos.
      *
-     * La espera la manda el VENCIMIENTO DEL QR y nada mas: un intento que no llega al backend se
-     * reintenta en el siguiente ciclo, porque el cliente puede estar pagando aunque la red no conteste.
+     * La espera la manda el VENCIMIENTO DEL QR, mas un margen corto: la confirmacion del banco
+     * llega con retraso y el cliente puede haber pagado en el ultimo segundo del codigo. Un intento
+     * que no llega al backend se reintenta en el siguiente ciclo, porque el cliente puede estar
+     * pagando aunque la red no conteste.
      */
     private fun startPaymentPolling(pagoId: Int, pedidoId: Int, qrExpiresAtMs: Long?) {
         paymentPollingJob?.cancel()
         paymentPollingJob = viewModelScope.launch {
             val expiresAtMs = qrExpiresAtMs ?: (System.currentTimeMillis() + PAYMENT_TIMEOUT_MS)
-            while (isActive && System.currentTimeMillis() <= expiresAtMs) {
+            val deadlineMs = expiresAtMs + PAYMENT_CONFIRMATION_GRACE_MS
+
+            while (isActive && System.currentTimeMillis() <= deadlineMs) {
                 when (val result = withContext(Dispatchers.IO) { fetchPaymentStatusWithSingleRefresh(pagoId) }) {
                     PaymentPollResult.Paid -> {
                         val order = _uiState.value.qrOrder ?: return@launch
@@ -485,8 +489,14 @@ class PaymentViewModel(
                     }
 
                     is PaymentPollResult.Pending -> {
+                        // Vencido el codigo, lo unico que puede pasar es que el cliente haya pagado
+                        // antes: la pantalla lo dice, no sigue prometiendo un QR que ya no sirve.
                         _uiState.value = _uiState.value.copy(
-                            statusMessage = "Esperando confirmacion de pago...",
+                            statusMessage = if (System.currentTimeMillis() > expiresAtMs) {
+                                "Verificando el pago..."
+                            } else {
+                                "Esperando confirmacion de pago..."
+                            },
                             error = null
                         )
                     }
@@ -519,7 +529,7 @@ class PaymentViewModel(
                 delay(PAYMENT_POLL_INTERVAL_MS)
             }
 
-            if (isActive) cancelAfterTimeout(pedidoId)
+            if (isActive) cancelAfterTimeout(pagoId, pedidoId)
         }
     }
 
@@ -594,7 +604,14 @@ class PaymentViewModel(
         return null
     }
 
-    private suspend fun cancelAfterTimeout(orderId: Int) {
+    /**
+     * Cierra la espera cuando se agoto el tiempo del QR.
+     *
+     * Antes de dar la venta por perdida se mira el cobro una vez mas: el backend no cancela un
+     * pedido ya pagado (responde 422), asi que un cobro que entro sobre el vencimiento se rescata
+     * aca en vez de dejar al cliente pagando un producto que nunca sale.
+     */
+    private suspend fun cancelAfterTimeout(pagoId: Int, orderId: Int) {
         _uiState.value = _uiState.value.copy(
             isCancellingOrder = true,
             statusMessage = "Tiempo de espera agotado. Cancelando pedido...",
@@ -604,6 +621,17 @@ class PaymentViewModel(
         if (result is CancelOrderResult.Error && isUnauthorizedMessage(result.message)) {
             publishSessionLost()
         }
+
+        if (result is CancelOrderResult.Error && !isUnauthorizedMessage(result.message)) {
+            val ultimo = withContext(Dispatchers.IO) { fetchPaymentStatusWithSingleRefresh(pagoId) }
+            val order = _uiState.value.qrOrder
+
+            if (ultimo == PaymentPollResult.Paid && order != null) {
+                complete(PaymentTerminalResult.Paid(order))
+                return
+            }
+        }
+
         val message = when (result) {
             is CancelOrderResult.Success -> result.message.ifBlank { "QR vencido. Pedido cancelado." }
             is CancelOrderResult.Error -> "QR vencido. No se pudo notificar la cancelacion."
@@ -896,8 +924,14 @@ class PaymentViewModel(
             label = "Dispensación de prueba",
             isDispenseTest = true
         )
-        const val PAYMENT_POLL_INTERVAL_MS = 5_000L
+        const val PAYMENT_POLL_INTERVAL_MS = 2_000L
         const val PAYMENT_TIMEOUT_MS = 120_000L
+        /**
+         * Cuanto se sigue mirando el cobro despues de que vence el QR. El codigo ya no se puede
+         * pagar, pero la confirmacion de lo que el cliente alcanzo a pagar antes llega con retraso:
+         * cerrar la espera en el segundo exacto del vencimiento pierde esos cobros.
+         */
+        const val PAYMENT_CONFIRMATION_GRACE_MS = 20_000L
         const val PAYMENT_METHODS_CACHE_TTL_MS = 120_000L
         const val BACKEND_TIME_ZONE_ID = "America/La_Paz"
         const val DEFAULT_CUSTOMER_NAME = "Sin nombre"

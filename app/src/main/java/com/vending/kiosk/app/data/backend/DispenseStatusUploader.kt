@@ -54,10 +54,17 @@ object DispenseStatusUploader {
      * Se llama en el camino de la dispensacion, asi que solo escribe un archivo chico y no habla con
      * la red.
      *
+     * @param repetible un reintento manual cuenta como OTRO intento de la misma unidad: el backend
+     * suma uno por cada EN_PROCESO que recibe, asi que ese reporte tiene que viajar aunque el
+     * anterior siga esperando en la cola.
      * @return `false` cuando ese reporte no se puede encolar (sin pedido o sin linea) o el archivo no
      * se pudo escribir; la dispensacion sigue igual.
      */
-    fun enqueue(context: Context, request: DispenseStatusRequest): Boolean {
+    fun enqueue(
+        context: Context,
+        request: DispenseStatusRequest,
+        repetible: Boolean = false,
+    ): Boolean {
         if (request.orderId <= 0 || request.orderDetailId <= 0) return false
         if (request.dispenseStatusId <= 0) return false
 
@@ -67,8 +74,9 @@ object DispenseStatusUploader {
 
             val pendientes = archivosPendientes(carpeta)
 
-            // Ya hay un reporte igual esperando: repetirlo no agrega nada.
-            val mismoReporte = pendientes.any { archivo ->
+            // Ya hay un reporte igual esperando: repetirlo no agrega nada. El reintento manual si
+            // agrega —es otro intento de la misma unidad— y por eso no se descarta.
+            val mismoReporte = !repetible && pendientes.any { archivo ->
                 val datos = datosDe(archivo) ?: return@any false
                 datos.detalle == request.orderDetailId && datos.estado == request.dispenseStatusId
             }

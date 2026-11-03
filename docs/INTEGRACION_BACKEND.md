@@ -130,13 +130,16 @@ POST /api/v1/pedidos/{pedido}/dispensacion
 
 Los ids son los del catálogo del backend —`2 EN_PROCESO`, `3 RECOJO_PENDIENTE`, `4 COMPLETADO`,
 `5 FALLIDO`, `7 ATORADO`— y el código del evento es texto libre que queda como rastro de qué pasó en
-esa unidad. El kiosko **encola el reporte en el equipo antes de mandarlo** (`DispenseStatusUploader`,
-carpeta `dispensacion_pendientes`) y reintenta lo que no salió al cerrar cada unidad, al cargar el
-catálogo y con espera creciente: la venta y el inventario dependen de este reporte, así que un corte de
-red no puede dejarlo en el aire. Si la sesión de máquina venció, la cola la reabre sola con el equipo y
-el PIN guardados y repite el mismo reporte. Reenviarlo es seguro porque el backend es idempotente por el
-estado actual de la dispensación; un rechazo definitivo (la línea no es de ese pedido, la celda no
-coincide) no se reintenta y queda guardado en `dispensacion_rechazados` para diagnosticar.
+esa unidad. **Cada `EN_PROCESO` es un intento**: cuando el operador pulsa el reintento manual, el kiosko
+vuelve a reportar `EN_PROCESO` (con el código `REINTENTO_MANUAL`) para que el backend sume el intento y
+el ERP no muestre la unidad como si se hubiera intentado una sola vez. El kiosko **encola el reporte en
+el equipo antes de mandarlo** (`DispenseStatusUploader`, carpeta `dispensacion_pendientes`) y reintenta lo
+que no salió al cerrar cada unidad, al cargar el catálogo y con espera creciente: la venta y el inventario
+dependen de este reporte, así que un corte de red no puede dejarlo en el aire. Si la sesión de máquina
+venció, la cola la reabre sola con el equipo y el PIN guardados y repite el mismo reporte. Reenviarlo es
+seguro porque el backend es idempotente por el estado actual de la dispensación; un rechazo definitivo
+(la línea no es de ese pedido, la celda no coincide) no se reintenta y queda guardado en
+`dispensacion_rechazados` para diagnosticar.
 
 ### Bitácora de la dispensación (el texto de la unidad)
 

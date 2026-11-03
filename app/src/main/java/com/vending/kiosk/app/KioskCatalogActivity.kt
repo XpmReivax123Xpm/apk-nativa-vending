@@ -1338,9 +1338,16 @@ class KioskCatalogActivity : AppCompatActivity() {
         }
     }
 
-    private fun reportDispenseStateByIndex(index: Int, tnEstado: Int, tcEstado: String) {
+    private fun reportDispenseStateByIndex(
+        index: Int,
+        tnEstado: Int,
+        tcEstado: String,
+        repetible: Boolean = false,
+    ) {
         val current = dispensingQueue.getOrNull(index) ?: return
-        if (current.tnEstadoDispensacion == tnEstado) return
+        // Un reporte repetido del MISMO estado no agrega nada... salvo el de un reintento manual,
+        // que es otro intento de la unidad y el backend lo cuenta como tal.
+        if (!repetible && current.tnEstadoDispensacion == tnEstado) return
         current.tnEstadoDispensacion = tnEstado
         if (activeDispensePedidoId <= 0 || current.tnPedidoDetalle <= 0) return
 
@@ -1354,7 +1361,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
         // Primero queda en el equipo: con este reporte el backend cierra la venta y descuenta la celda,
         // asi que perderlo no puede depender de que la red este bien justo en ese segundo.
-        if (!DispenseStatusUploader.enqueue(applicationContext, request)) {
+        if (!DispenseStatusUploader.enqueue(applicationContext, request, repetible)) {
             // Sin carpeta donde encolarlo (disco lleno, almacenamiento inaccesible): al menos se
             // intenta el envio directo, que es lo que hacia antes de existir la cola.
             Log.w(TAG, "No se pudo encolar el reporte de dispensacion de la linea ${current.tnPedidoDetalle}")
@@ -1499,7 +1506,17 @@ class KioskCatalogActivity : AppCompatActivity() {
         val wasAlreadyRetrying = vendFlow.isManualDoorRetryRunning()
         val started = runCatching { vendFlow.requestManualDoorRetrySequence() }.getOrDefault(false)
         when {
-            started -> dispenseViewModel.setManualRetryInProgress()
+            started -> {
+                // El reintento manual es OTRO intento de la misma unidad: se vuelve a reportar
+                // EN_PROCESO para que el backend lo sume en NumeroIntento, que es lo que muestra el ERP.
+                reportDispenseStateByIndex(
+                    index = dispensingCursor,
+                    tnEstado = 2,
+                    tcEstado = "REINTENTO_MANUAL",
+                    repetible = true
+                )
+                dispenseViewModel.setManualRetryInProgress()
+            }
             wasAlreadyRetrying || vendFlow.isManualDoorRetryRunning() -> dispenseViewModel.setManualRetryAlreadyInProgress()
             else -> dispenseViewModel.setManualRetryUnableToStart()
         }

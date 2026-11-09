@@ -140,10 +140,7 @@ class PaymentViewModel(
         if (!forceRefresh && cachedPaymentMethods.isNotEmpty() &&
             now - cachedPaymentMethodsAtMs < PAYMENT_METHODS_CACHE_TTL_MS
         ) {
-            _uiState.value = state.copy(
-                paymentMethods = withDispenseTestMethod(cachedPaymentMethods, state.allowDispenseTest),
-                error = null
-            )
+            _uiState.value = applyLoadedPaymentMethods(cachedPaymentMethods)
             return
         }
 
@@ -156,14 +153,7 @@ class PaymentViewModel(
                     cachedPaymentMethods = result.methods
                     cachedPaymentMethodsAtMs = System.currentTimeMillis()
                     if (_uiState.value.step == PaymentStep.MethodSelection) {
-                        _uiState.value = _uiState.value.copy(
-                            paymentMethods = withDispenseTestMethod(
-                                result.methods,
-                                _uiState.value.allowDispenseTest
-                            ),
-                            isLoadingPaymentMethods = false,
-                            error = null
-                        )
+                        _uiState.value = applyLoadedPaymentMethods(result.methods)
                     }
                 }
 
@@ -192,14 +182,7 @@ class PaymentViewModel(
                     cachedPaymentMethods = result.methods
                     cachedPaymentMethodsAtMs = System.currentTimeMillis()
                     if (_uiState.value.step == PaymentStep.MethodSelection) {
-                        _uiState.value = _uiState.value.copy(
-                            paymentMethods = withDispenseTestMethod(
-                                result.methods,
-                                _uiState.value.allowDispenseTest
-                            ),
-                            isLoadingPaymentMethods = false,
-                            error = null
-                        )
+                        _uiState.value = applyLoadedPaymentMethods(result.methods)
                     }
                 }
 
@@ -866,6 +849,34 @@ class PaymentViewModel(
     private fun publishSessionLost() {
         _uiState.value = _uiState.value.copy(sessionLost = true)
         _events.tryEmit(PaymentEvent.SessionLost)
+    }
+
+    /**
+     * Deja lista la seleccion de metodos y, si quedo uno solo, lo toma y avanza al paso que seguiria
+     * tras elegirlo: con un unico metodo habilitado no hay nada que elegir. La dispensacion de prueba
+     * suma una opcion mas, asi que en ese modo siempre hay al menos dos y se muestra la seleccion.
+     *
+     * No se aplica cuando ya hay un metodo elegido: volver desde el checkout tiene que mostrar la
+     * lista, no devolver al cliente al paso del que viene.
+     */
+    private fun applyLoadedPaymentMethods(methods: List<PaymentMethod>): PaymentUiState {
+        val state = _uiState.value
+        val options = withDispenseTestMethod(methods, state.allowDispenseTest)
+        val onlyMethod = options.singleOrNull()
+        if (onlyMethod == null || state.selectedPaymentMethod != null) {
+            return state.copy(
+                paymentMethods = options,
+                isLoadingPaymentMethods = false,
+                error = null
+            )
+        }
+        return state.copy(
+            paymentMethods = options,
+            selectedPaymentMethod = onlyMethod,
+            step = if (onlyMethod.cobraEnElCelular) PaymentStep.Phone else PaymentStep.Checkout,
+            isLoadingPaymentMethods = false,
+            error = null
+        )
     }
 
     private fun withDispenseTestMethod(

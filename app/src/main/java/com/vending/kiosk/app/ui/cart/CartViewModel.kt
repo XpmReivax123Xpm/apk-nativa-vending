@@ -24,21 +24,17 @@ class CartViewModel(
     private val _uiState = MutableStateFlow(CartUiState())
     val uiState: StateFlow<CartUiState> = _uiState.asStateFlow()
 
-    fun addProduct(catalogItem: CatalogItem, quantity: Int = 1) {
+    fun addProduct(catalogItem: CatalogItem, quantity: Int = 1): Boolean =
         applyMutation(cartUseCase.add(_uiState.value.items, catalogItem.toCartItem(quantity)))
-    }
 
-    fun increment(planogramCellId: Int) {
+    fun increment(planogramCellId: Int): Boolean =
         applyMutation(cartUseCase.increment(_uiState.value.items, planogramCellId))
-    }
 
-    fun decrement(planogramCellId: Int) {
+    fun decrement(planogramCellId: Int): Boolean =
         applyMutation(cartUseCase.decrement(_uiState.value.items, planogramCellId))
-    }
 
-    fun remove(planogramCellId: Int) {
+    fun remove(planogramCellId: Int): Boolean =
         applyMutation(cartUseCase.remove(_uiState.value.items, planogramCellId))
-    }
 
     fun clear() {
         updateItems(cartUseCase.clear())
@@ -60,8 +56,9 @@ class CartViewModel(
         _uiState.value = _uiState.value.copy(operationNotApplied = false)
     }
 
-    private fun applyMutation(mutation: CartMutation) {
+    private fun applyMutation(mutation: CartMutation): Boolean {
         updateItems(mutation.items, operationNotApplied = !mutation.applied)
+        return mutation.applied
     }
 
     private fun updateItems(items: List<CartItem>, operationNotApplied: Boolean = false) {

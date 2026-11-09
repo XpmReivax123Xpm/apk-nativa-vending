@@ -199,11 +199,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                         tnEstado = 3,
                         tcEstado = "RECOJO_PENDIENTE"
                     )
-                    val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
-                    showRetrieveDialogForCurrentItem()
-                    dispenseViewModel.updateStatus(
-                        "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
-                    )
                 }
             }
         }
@@ -238,6 +233,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 if (code == "PICKUP_UNLOCKED") {
                     if (dispensingInProgress) {
                         sounds?.play(KioskSound.ProductReadyToCollect)
+                        showRetrieveDialogForCurrentItem()
                     }
                 } else if (code == "IO_TIMEOUT_RECOVERED") {
                     if (dispensingInProgress) {

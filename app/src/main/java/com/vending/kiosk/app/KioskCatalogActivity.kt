@@ -200,7 +200,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                         tcEstado = "RECOJO_PENDIENTE"
                     )
                     val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
-                    sounds?.play(KioskSound.ProductReadyToCollect)
                     showRetrieveDialogForCurrentItem()
                     dispenseViewModel.updateStatus(
                         "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
@@ -236,9 +235,12 @@ class KioskCatalogActivity : AppCompatActivity() {
             runOnUiThread {
                 val parts = stepMsg.split("|", limit = 2)
                 val code = parts.firstOrNull()?.trim().orEmpty()
-                if (code == "IO_TIMEOUT_RECOVERED") {
+                if (code == "PICKUP_UNLOCKED") {
                     if (dispensingInProgress) {
                         sounds?.play(KioskSound.ProductReadyToCollect)
+                    }
+                } else if (code == "IO_TIMEOUT_RECOVERED") {
+                    if (dispensingInProgress) {
                         showRetrieveDialogForCurrentItem()
                     }
                 } else if (code == "IO_TIMEOUT_PROLONGED") {

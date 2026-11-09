@@ -57,6 +57,7 @@ class VendingFlowController(
     private var ioStableSinceMs = 0L
     private var seenClosedNoProduct = false
     private var seenPickupProgress = false
+    private var seenLockReleased = false
     private var seenDoorOpenedFirstTime = false
     private var seenProductRemovedDoorOpen = false
     private var pickupWhiteDoorVariantMode = false
@@ -125,6 +126,7 @@ class VendingFlowController(
             ioStartMs = 0L
             seenClosedNoProduct = false
             seenPickupProgress = false
+            seenLockReleased = false
             seenDoorOpenedFirstTime = false
             seenProductRemovedDoorOpen = false
             pickupWhiteDoorVariantMode = false
@@ -178,6 +180,7 @@ class VendingFlowController(
                         ioStableSinceMs = 0L
                         seenClosedNoProduct = false
                         seenPickupProgress = false
+                        seenLockReleased = false
                         seenDoorOpenedFirstTime = false
                         seenProductRemovedDoorOpen = false
                         pickupWhiteDoorVariantMode = false
@@ -242,6 +245,7 @@ class VendingFlowController(
                 ioStableSinceMs = 0L
                 seenClosedNoProduct = false
                 seenPickupProgress = false
+                seenLockReleased = false
                 seenDoorOpenedFirstTime = false
                 seenProductRemovedDoorOpen = false
                 pickupWhiteDoorVariantMode = false
@@ -301,6 +305,16 @@ class VendingFlowController(
             return
         }
         if (now - ioStableSinceMs < IO_STABLE_MS) return
+
+        /*
+         * 0x82 (primer click) y 0x8A (el mismo estado con la puerta blanca abierta, que es el caso
+         * del reintento manual) confirman que la cerradura se desbloqueo: recien ahi el cliente
+         * puede retirar el producto. Se avisa una sola vez por unidad.
+         */
+        if (!seenLockReleased && (value == IO_AFTER_FIRST_CLICK || value == IO_AFTER_FIRST_CLICK_WHITE_DOOR_OPEN)) {
+            seenLockReleased = true
+            ui.onStep("PICKUP_UNLOCKED|io=${formatIoLogValue(value)}")
+        }
 
         if (isPickupWhiteDoorVariant(value)) {
             seenPickupWhiteDoorVariant = true
@@ -440,6 +454,7 @@ class VendingFlowController(
                 if (shouldContinueRetry()) {
                     pickupWhiteDoorVariantMode = true
                     seenPickupWhiteDoorVariant = false
+                    seenLockReleased = false
                     delayedPickupCompletionScheduled = false
                     ioStartMs = System.currentTimeMillis() - IO_WAIT_TIMEOUT_MS
                     schedulePollIoPickup()
@@ -533,6 +548,7 @@ class VendingFlowController(
         ioStableSinceMs = 0L
         seenClosedNoProduct = false
         seenPickupProgress = false
+        seenLockReleased = false
         seenDoorOpenedFirstTime = false
         seenProductRemovedDoorOpen = false
         pickupWhiteDoorVariantMode = false

@@ -900,6 +900,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onUserInteraction() {
         super.onUserInteraction()
+        // onUserInteraction se dispara en ACTION_DOWN, antes del hit-test de la ventana: si aqui se
+        // oculta el overlay, ese mismo toque cae sobre el catalogo y selecciona un producto. Con el
+        // video visible el toque lo absorbe el overlay y se cierra recien con su propio clic.
+        if (idleVideoOverlayView?.isVisible == true) return
         exitIdleAndRegisterInteraction()
     }
 

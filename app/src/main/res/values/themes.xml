@@ -15,4 +15,10 @@
         <item name="android:statusBarColor">@color/bp_bg_blue</item>
         <item name="android:navigationBarColor">@color/bp_bg_blue</item>
     </style>
+
+    <style name="Theme.VendingKiosk.OutOfService" parent="Theme.VendingKiosk">
+        <item name="android:windowBackground">#D32F2F</item>
+        <item name="android:statusBarColor">#D32F2F</item>
+        <item name="android:navigationBarColor">#D32F2F</item>
+    </style>
 </resources>

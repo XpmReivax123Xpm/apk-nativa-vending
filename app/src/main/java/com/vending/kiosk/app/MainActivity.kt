@@ -106,6 +106,12 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     is MachineLoginResult.Error -> {
+                        if (refresh.inactive) {
+                            Log.w(TAG, "Auto-resume blocked: machine inactive")
+                            startActivity(Intent(this@MainActivity, MachineOutOfServiceActivity::class.java))
+                            finish()
+                            return@launch
+                        }
                         Log.w(TAG, "Auto-resume refresh failed: ${refresh.message}. Showing normal menu.")
                         showMainMenu()
                     }

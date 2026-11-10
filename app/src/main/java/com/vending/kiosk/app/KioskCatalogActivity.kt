@@ -118,6 +118,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var paidOrderHandledId: Int? = null
     private var catalogLoadInProgress = false
     private var sessionLostHandled = false
+    private var machineOutOfServiceShown = false
     private var btnKioskBackToMain: Button? = null
     private var btnKioskViewLogs: Button? = null
     private var btnKioskViewBitacora: Button? = null
@@ -673,6 +674,16 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun handleAuthSessionLost() {
+        if (MachineAuthGateway.isMachineInactive()) {
+            // La maquina fue desactivada en el backend: no se vuelve al menu, se bloquea el kiosko
+            // hasta que la reactiven. El flag evita abrir dos veces la pantalla si dos flujos
+            // detectan la sesion perdida a la vez.
+            if (machineOutOfServiceShown) return
+            machineOutOfServiceShown = true
+            startActivity(Intent(this, MachineOutOfServiceActivity::class.java))
+            finish()
+            return
+        }
         Toast.makeText(
             this,
             "Sesion de maquina expirada. Selecciona la maquina e ingresa PIN nuevamente.",

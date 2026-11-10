@@ -34,11 +34,21 @@ data class AccessUiState(
     val navigation: AccessNavigation? = null
 )
 
-data class AccessNavigation(
-    val machineId: Int,
-    val machineCode: String,
-    val machineLocation: String
-)
+/**
+ * Destino del acceso cuando el login responde: el kiosko o, si la maquina esta desactivada, la
+ * pantalla de bloqueo.
+ */
+sealed interface AccessNavigation {
+
+    data class Kiosko(
+        val machineId: Int,
+        val machineCode: String,
+        val machineLocation: String
+    ) : AccessNavigation
+
+    /** 403 del backend: la maquina (o su empresa) esta desactivada. */
+    data object Bloqueo : AccessNavigation
+}
 
 class AccessViewModel(
     private val machineAuthGateway: MachineAuthGateway,
@@ -118,8 +128,8 @@ class AccessViewModel(
 
                 when (result) {
                     is MachineLoginResult.Success -> {
-                        // El equipo se guarda SOLO cuando el login salio bien: asi el kiosko no queda
-                        // configurado con un identificador que el backend rechaza.
+                        // El equipo se guarda recien cuando el backend acepto el PIN: asi el kiosko no
+                        // queda configurado con un identificador que el backend rechaza.
                         authSessionManager.saveEquipo(direccionMac, state.pin)
                         authSessionManager.saveSession(
                             accessToken = result.accessToken,
@@ -133,7 +143,7 @@ class AccessViewModel(
                         _uiState.value = _uiState.value.copy(
                             pin = "",
                             error = null,
-                            navigation = AccessNavigation(
+                            navigation = AccessNavigation.Kiosko(
                                 machineId = result.machineId,
                                 machineCode = result.machineCode,
                                 machineLocation = result.machineLocation
@@ -142,7 +152,20 @@ class AccessViewModel(
                     }
 
                     is MachineLoginResult.Error -> {
-                        _uiState.value = _uiState.value.copy(error = result.message)
+                        if (result.inactive) {
+                            // El 403 llega DESPUES de que el backend valido el PIN, asi que el equipo
+                            // queda configurado: la pantalla de bloqueo reintenta con estas mismas
+                            // credenciales hasta que reactiven la maquina, igual que el kiosko.
+                            authSessionManager.saveEquipo(direccionMac, state.pin)
+                            authSessionManager.setKioskAutoResumeEnabled(true)
+                            _uiState.value = _uiState.value.copy(
+                                pin = "",
+                                error = null,
+                                navigation = AccessNavigation.Bloqueo
+                            )
+                        } else {
+                            _uiState.value = _uiState.value.copy(error = result.message)
+                        }
                     }
                 }
             } finally {

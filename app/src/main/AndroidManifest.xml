@@ -13,6 +13,11 @@
             android:name=".app.KioskCatalogActivity"
             android:exported="false" />
         <activity
+            android:name=".app.MachineOutOfServiceActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.VendingKiosk.OutOfService" />
+        <activity
             android:name=".app.KioskAccessActivity"
             android:exported="false" />
         <activity

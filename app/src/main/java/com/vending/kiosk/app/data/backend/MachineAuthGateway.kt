@@ -15,6 +15,15 @@ object MachineAuthGateway {
 
     private const val LOGIN_PATH = "/maquina-auth/login"
 
+    /**
+     * El backend contesta 403 cuando la maquina (o su empresa) esta inactiva. Ese estado es el que
+     * dispara la pantalla de fuera de servicio; se guarda en memoria para que cualquier flujo que
+     * pierda la sesion sepa que la causa no es un token vencido sino la maquina desactivada.
+     */
+    @Volatile private var machineInactive = false
+
+    fun isMachineInactive(): Boolean = machineInactive
+
     fun loginMachine(direccionMac: String, pin: String): MachineLoginResult {
         val mac = direccionMac.trim()
         if (mac.isBlank() || pin.isBlank()) {
@@ -30,7 +39,11 @@ object MachineAuthGateway {
             val response = BackendHttp.request("POST", LOGIN_PATH, body = payload)
 
             if (!response.isSuccess) {
-                return MachineLoginResult.Error(response.errorMessage("No se pudo autenticar la maquina"))
+                if (response.isForbidden) machineInactive = true
+                return MachineLoginResult.Error(
+                    message = response.errorMessage("No se pudo autenticar la maquina"),
+                    inactive = response.isForbidden
+                )
             }
 
             val json = response.jsonObjectOrNull()
@@ -48,6 +61,8 @@ object MachineAuthGateway {
             }
 
             val maquina = json.optJSONObject("Maquina") ?: JSONObject()
+
+            machineInactive = false
 
             MachineLoginResult.Success(
                 accessToken = accessToken,
@@ -98,5 +113,9 @@ sealed interface MachineLoginResult {
         val machineLocation: String = ""
     ) : MachineLoginResult
 
-    data class Error(val message: String) : MachineLoginResult
+    data class Error(
+        val message: String,
+        /** 403 del backend: la maquina (o su empresa) esta desactivada. */
+        val inactive: Boolean = false
+    ) : MachineLoginResult
 }

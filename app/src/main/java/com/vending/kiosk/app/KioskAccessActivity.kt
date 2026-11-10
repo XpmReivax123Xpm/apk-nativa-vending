@@ -13,6 +13,7 @@ import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.device.DeviceIdentifierResult
 import com.vending.kiosk.app.device.DeviceIdentity
+import com.vending.kiosk.app.ui.access.AccessNavigation
 import com.vending.kiosk.app.ui.access.AccessScreen
 import com.vending.kiosk.app.ui.access.AccessViewModel
 import com.vending.kiosk.app.ui.access.DeviceIdentifierScreen
@@ -44,16 +45,30 @@ class KioskAccessActivity : AppCompatActivity() {
             val state by accessViewModel.uiState.collectAsState()
 
             LaunchedEffect(state.navigation) {
-                state.navigation?.let { navigation ->
-                    startActivity(
-                        Intent(this@KioskAccessActivity, KioskCatalogActivity::class.java).apply {
-                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_ID, navigation.machineId)
-                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_CODE, navigation.machineCode)
-                            putExtra(KioskCatalogActivity.EXTRA_MACHINE_LOCATION, navigation.machineLocation)
-                        }
-                    )
-                    accessViewModel.consumeNavigation()
-                    finish()
+                when (val navigation = state.navigation) {
+                    null -> Unit
+
+                    is AccessNavigation.Kiosko -> {
+                        startActivity(
+                            Intent(this@KioskAccessActivity, KioskCatalogActivity::class.java).apply {
+                                putExtra(KioskCatalogActivity.EXTRA_MACHINE_ID, navigation.machineId)
+                                putExtra(KioskCatalogActivity.EXTRA_MACHINE_CODE, navigation.machineCode)
+                                putExtra(KioskCatalogActivity.EXTRA_MACHINE_LOCATION, navigation.machineLocation)
+                            }
+                        )
+                        accessViewModel.consumeNavigation()
+                        finish()
+                    }
+
+                    // La maquina esta desactivada en el backend: el acceso no se queda en el PIN, se
+                    // bloquea hasta que la reactiven (misma pantalla que cuando se cae la sesion).
+                    AccessNavigation.Bloqueo -> {
+                        startActivity(
+                            Intent(this@KioskAccessActivity, MachineOutOfServiceActivity::class.java)
+                        )
+                        accessViewModel.consumeNavigation()
+                        finish()
+                    }
                 }
             }
 

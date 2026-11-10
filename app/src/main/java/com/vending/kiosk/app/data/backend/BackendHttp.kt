@@ -18,6 +18,7 @@ internal data class BackendResponse(
 ) {
     val isSuccess: Boolean get() = statusCode in 200..299
     val isUnauthorized: Boolean get() = statusCode == HttpURLConnection.HTTP_UNAUTHORIZED
+    val isForbidden: Boolean get() = statusCode == HttpURLConnection.HTTP_FORBIDDEN
 
     /**
      * The body as a JSON object, or `null` when the backend sent no readable JSON.

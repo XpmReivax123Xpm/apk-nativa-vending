@@ -46,6 +46,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.repeatOnLifecycle
 import com.vending.kiosk.R
+import com.vending.kiosk.app.audio.KioskSound
+import com.vending.kiosk.app.audio.KioskSounds
 import com.vending.kiosk.app.interaction.BitacoraDispensacionUploader
 import com.vending.kiosk.app.interaction.CustomerInteractionMonitor
 import com.vending.kiosk.app.ui.catalog.CatalogScreen
@@ -116,6 +118,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var paidOrderHandledId: Int? = null
     private var catalogLoadInProgress = false
     private var sessionLostHandled = false
+    private var machineOutOfServiceShown = false
     private var btnKioskBackToMain: Button? = null
     private var btnKioskViewLogs: Button? = null
     private var btnKioskViewBitacora: Button? = null
@@ -145,6 +148,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispenseSuccessTimerRunnable: Runnable? = null
     private val monitoringViewerController = MonitoringViewerController(this)
     private var idleVideoOverlayView: IdleVideoOverlayView? = null
+    private var sounds: KioskSounds? = null
     private var kioskLocked = false
     private val unlockHoldHandler = Handler(Looper.getMainLooper())
     private var unlockHoldTriggered = false
@@ -196,11 +200,6 @@ class KioskCatalogActivity : AppCompatActivity() {
                         tnEstado = 3,
                         tcEstado = "RECOJO_PENDIENTE"
                     )
-                    val current = (dispensingCursor + 1).coerceAtMost(dispensingQueue.size)
-                    showRetrieveDialogForCurrentItem()
-                    dispenseViewModel.updateStatus(
-                        "Por favor retira el producto. Preparando siguiente item ($current de ${dispensingQueue.size})..."
-                    )
                 }
             }
         }
@@ -232,7 +231,12 @@ class KioskCatalogActivity : AppCompatActivity() {
             runOnUiThread {
                 val parts = stepMsg.split("|", limit = 2)
                 val code = parts.firstOrNull()?.trim().orEmpty()
-                if (code == "IO_TIMEOUT_RECOVERED") {
+                if (code == "PICKUP_UNLOCKED") {
+                    if (dispensingInProgress) {
+                        sounds?.play(KioskSound.ProductReadyToCollect)
+                        showRetrieveDialogForCurrentItem()
+                    }
+                } else if (code == "IO_TIMEOUT_RECOVERED") {
                     if (dispensingInProgress) {
                         showRetrieveDialogForCurrentItem()
                     }
@@ -249,6 +253,8 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Un fallo del audio no puede tumbar el kiosko: sin sonido la operacion sigue igual.
+        sounds = runCatching { KioskSounds(applicationContext) }.getOrNull()
         runCatching { initializeScreen() }
             .onFailure { error -> showSafeFallback(error) }
     }
@@ -364,6 +370,8 @@ class KioskCatalogActivity : AppCompatActivity() {
             runCatching { vendFlow.stop() }
         }
         runCatching { serial.close() }
+        sounds?.release()
+        sounds = null
         super.onDestroy()
     }
 
@@ -666,6 +674,16 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun handleAuthSessionLost() {
+        if (MachineAuthGateway.isMachineInactive()) {
+            // La maquina fue desactivada en el backend: no se vuelve al menu, se bloquea el kiosko
+            // hasta que la reactiven. El flag evita abrir dos veces la pantalla si dos flujos
+            // detectan la sesion perdida a la vez.
+            if (machineOutOfServiceShown) return
+            machineOutOfServiceShown = true
+            startActivity(Intent(this, MachineOutOfServiceActivity::class.java))
+            finish()
+            return
+        }
         Toast.makeText(
             this,
             "Sesion de maquina expirada. Selecciona la maquina e ingresa PIN nuevamente.",
@@ -689,14 +707,20 @@ class KioskCatalogActivity : AppCompatActivity() {
                     cartTotalUnits = cartComposeState.totalUnits,
                     cartTotalAmount = cartComposeState.totalAmount,
                     onIncrementProduct = { item ->
-                        if (cartComposeState.items.any { it.planogramCellId == item.planogramCellId }) {
+                        val applied = if (cartComposeState.items.any { it.planogramCellId == item.planogramCellId }) {
                             cartViewModel.increment(item.planogramCellId)
                         } else {
                             cartViewModel.addProduct(item)
                         }
+                        // Sin stock la mutacion no se aplica y ese aviso lo da observeCartState.
+                        if (applied) sounds?.play(KioskSound.ProductSelected)
                         catalogViewModel.preloadCartImages(listOf(item.primaryImageUrl))
                     },
-                    onDecrementProduct = { item -> cartViewModel.decrement(item.planogramCellId) },
+                    onDecrementProduct = { item ->
+                        if (cartViewModel.decrement(item.planogramCellId)) {
+                            sounds?.play(KioskSound.ProductDeselected)
+                        }
+                    },
                     onCartClick = { cartViewModel.openCart() },
                     onPayClick = ::buyCartFromCompose,
                     imageCacheVersion = catalogComposeState.imageCacheVersion,
@@ -725,10 +749,19 @@ class KioskCatalogActivity : AppCompatActivity() {
                 ) {
                     CartScreen(
                         state = cartComposeState,
-                        onIncrement = { cellId -> cartViewModel.increment(cellId) },
-                        onDecrement = { cellId -> cartViewModel.decrement(cellId) },
-                        onRemove = { cellId -> cartViewModel.remove(cellId) },
-                        onClear = { cartViewModel.clear() },
+                        onIncrement = { cellId ->
+                            if (cartViewModel.increment(cellId)) sounds?.play(KioskSound.ProductSelected)
+                        },
+                        onDecrement = { cellId ->
+                            if (cartViewModel.decrement(cellId)) sounds?.play(KioskSound.ProductDeselected)
+                        },
+                        onRemove = { cellId ->
+                            if (cartViewModel.remove(cellId)) sounds?.play(KioskSound.ProductDeselected)
+                        },
+                        onClear = {
+                            if (cartComposeState.items.isNotEmpty()) sounds?.play(KioskSound.ProductDeselected)
+                            cartViewModel.clear()
+                        },
                         onBuy = ::buyCartFromCompose,
                         onClose = ::closeCartFromCompose,
                         onUserInteraction = ::restartCartTimeout,
@@ -826,6 +859,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                     cartComposeState = state
                     handleCartVisibility(state.isCartOpen)
                     if (state.operationNotApplied) {
+                        sounds?.play(KioskSound.ProductDeselected)
                         Toast.makeText(this@KioskCatalogActivity, "Stock maximo alcanzado en carrito", Toast.LENGTH_SHORT).show()
                         cartViewModel.consumeOperationNotApplied()
                     }
@@ -900,6 +934,10 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onUserInteraction() {
         super.onUserInteraction()
+        // onUserInteraction se dispara en ACTION_DOWN, antes del hit-test de la ventana: si aqui se
+        // oculta el overlay, ese mismo toque cae sobre el catalogo y selecciona un producto. Con el
+        // video visible el toque lo absorbe el overlay y se cierra recien con su propio clic.
+        if (idleVideoOverlayView?.isVisible == true) return
         exitIdleAndRegisterInteraction()
     }
 
@@ -1020,6 +1058,7 @@ class KioskCatalogActivity : AppCompatActivity() {
                 val selections = state.items.toPurchaseSelections()
                 if (selections.isEmpty() || paymentMethodLabel.isBlank()) return
                 paymentViewModel.closePayment()
+                sounds?.play(KioskSound.PaymentConfirmed)
                 showDispenseDialogAndStart(selections, result.order, paymentMethodLabel)
             }
 
@@ -1430,6 +1469,10 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showDispenseError(message: String, errorCode: String) {
+        // Un segundo error terminal sobre la misma incidencia no repite el aviso.
+        if (dispenseViewModel.uiState.value.surface != DispenseSurface.Error) {
+            sounds?.play(KioskSound.DispenseStuck)
+        }
         fun List<DispenseQueueItem>.toProductSummaries(): List<DispenseProductSummary> =
             groupingBy { it.item.producto.ifBlank { "Producto sin nombre" } to it.item.imagenUrl }
                 .eachCount()
@@ -1454,6 +1497,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showDispenseIoProlongedWaitDialog() {
+        sounds?.play(KioskSound.ManualRetry)
         dispenseViewModel.showProlongedWait(
             message = "Esto está tardando más de lo esperado. Por favor, presione el botón para un reintento manual.",
             manualRetryState = ManualRetryUiState.Available
@@ -1461,6 +1505,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showDispenseSuccessDialog() {
+        sounds?.play(KioskSound.OrderComplete)
         dispenseViewModel.showSuccess("Dispensado completado correctamente.")
         startDispenseSuccessCountdown()
     }

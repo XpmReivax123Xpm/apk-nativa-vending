@@ -25,9 +25,9 @@ import kotlinx.coroutines.withContext
 /**
  * Bloqueo total mientras la maquina esta desactivada en el backend.
  *
- * No es una pantalla de error: la maquina sigue existiendo y puede reactivarse. Cada 5 s se vuelve
- * a pedir el login con el equipo guardado; cuando el backend lo acepta, se restaura la sesion y se
- * vuelve al kiosko. Mientras tanto la pantalla no deja tocar ni salir: es el unico contenido.
+ * No es una pantalla de error: la maquina sigue existiendo y puede reactivarse. Cada 30 minutos se
+ * vuelve a pedir el login con el equipo guardado; cuando el backend lo acepta, se restaura la sesion
+ * y se vuelve al kiosko. Mientras tanto la pantalla no deja tocar ni salir: es el unico contenido.
  */
 class MachineOutOfServiceActivity : AppCompatActivity() {
 
@@ -147,7 +147,13 @@ class MachineOutOfServiceActivity : AppCompatActivity() {
     }
 
     private companion object {
-        private const val RETRY_INTERVAL_MS = 5_000L
+        /**
+         * Cada sondeo es un login completo (bcrypt del PIN + una linea de log de rechazo en el
+         * servidor), asi que el ritmo lo fija el volumen: cada 5 s son 17.280 peticiones por
+         * maquina y por dia; cada 30 minutos son 48. El costo es la latencia de la reactivacion:
+         * una maquina reactivada puede seguir mostrando esta pantalla hasta media hora.
+         */
+        private const val RETRY_INTERVAL_MS = 30 * 60 * 1_000L
 
         private const val LOCK_WIDTH_DIVISOR = 3
 

@@ -122,6 +122,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.google.android.material:material:1.12.0")
 
+    // MQTT: el SEGUNDO transporte del kiosko, solo para los avisos del backend (el HTTP sigue en
+    // BackendHttp). Cliente Java puro: paho.android.service esta abandonado y no arranca en Android 12+.
+    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")
+
     implementation(platform("androidx.compose:compose-bom:2024.06.00"))
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.compose.runtime:runtime")

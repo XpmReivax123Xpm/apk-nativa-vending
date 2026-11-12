@@ -69,10 +69,24 @@ POST /api/v1/maquina-auth/login   { "tcDireccionMac": "...", "tcPin": "1234" }
 | Reportar la dispensación de una unidad | `POST /pedidos/{pedido}/dispensacion` |
 | Subir la bitácora de esa unidad (gzip) | `POST /pedidos/{pedido}/dispensacion/{pedidoDetalle}/bitacora` |
 | Validar el PIN de salida del kiosko | `POST /maquina-auth/login` (es el mismo PIN; el token se descarta) |
+| Credenciales del canal de avisos (MQTT) | `POST /maquina-auth/broker` (`data: null` si el canal está apagado) |
 
 **Sobre de respuesta:** los recursos vienen envueltos en `{ "data": ... }` y los errores son
 `{ "message": ..., "errors": { campo: [motivos] } }` con su status (401 = sesión vencida, 422 =
 rechazo de negocio). El login NO va envuelto: sus llaves van en la raíz.
+
+### Canal de avisos (MQTT)
+
+Además del HTTP, el kiosko mantiene una conexión con el broker del backend para enterarse de los
+cambios de estado sin sondear. El contrato —temas, payloads y credenciales— está en `docs/MQTT.md`.
+
+- La credencial se pide UNA vez con el token de la máquina; cada llamada rota la contraseña y se
+  devuelve una sola vez. Con el canal apagado la respuesta es `data: null` y queda el sondeo de 30
+  minutos: eso NO es un error.
+- El aviso **no trae el estado**: dice «revisá tu estado» y el kiosko hace el login de siempre, así
+  que el único dato autoritativo sigue siendo el de la API.
+- Un aviso que llega con una venta en curso no se aplica en el acto: se guarda y se aplica recién
+  cuando el pago se cierra y la dispensación termina.
 
 ### Planograma (`GET /maquina/planograma`)
 

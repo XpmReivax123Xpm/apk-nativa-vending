@@ -80,6 +80,8 @@ import com.vending.kiosk.app.data.backend.AdminAccessGateway
 import com.vending.kiosk.app.data.backend.AdminAccessResult
 import com.vending.kiosk.app.data.images.CatalogImageCache
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.mqtt.MaquinaMqttService
+import com.vending.kiosk.app.mqtt.MqttCommandBus
 import com.vending.kiosk.app.domain.cart.CartItem
 import com.vending.kiosk.app.domain.cart.CartUseCase
 import androidx.compose.ui.platform.ComposeView
@@ -91,6 +93,7 @@ import com.vending.kiosk.integration.serial.runtime.SerialManager
 import com.vending.kiosk.integration.serial.runtime.VendingFlowController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -138,6 +141,7 @@ class KioskCatalogActivity : AppCompatActivity() {
     private var dispensingQueue: List<DispenseQueueItem> = emptyList()
     private var dispensingCursor = 0
     private var dispensingInProgress = false
+    private var avisoEstadoPendiente = false
     private var clearCartOnDispenseFinish = false
     private var activeDispensePedidoId = 0
     private val dispenseStatusRetryHandler = Handler(Looper.getMainLooper())
@@ -297,6 +301,9 @@ class KioskCatalogActivity : AppCompatActivity() {
             throw IllegalStateException("Maquina invalida")
         }
 
+        // El canal de avisos del backend: si no hay broker configurado se apaga solo y queda el sondeo.
+        MaquinaMqttService.iniciar(this)
+
         moveUnlockGestureTargetAboveComposeHost()
         setupUnlockGestureOnMachineTitle()
         enterKioskMode()
@@ -326,6 +333,7 @@ class KioskCatalogActivity : AppCompatActivity() {
         observeCatalogState()
         observePaymentState()
         observeDispenseState()
+        observeMqttAvisos()
         catalogViewModel.configureMachine(machineId, machineCode, machineLocation)
         catalogLoadInProgress = true
         catalogViewModel.loadCatalog()
@@ -692,6 +700,53 @@ class KioskCatalogActivity : AppCompatActivity() {
         finish()
     }
 
+    /**
+     * Canal de avisos (MQTT): el backend avisa «cambio tu estado» y se comprueba en el acto.
+     *
+     * No cambia ninguna regla del kiosko: la comprobacion es la misma que la del sondeo —un login con
+     * el equipo y el PIN guardados, donde un 403 significa maquina desactivada—, solo que disparada
+     * por el aviso en vez de por el reloj.
+     */
+    private fun observeMqttAvisos() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                MqttCommandBus.avisosDeEstado.drop(1).collect {
+                    verificarEstadoPorAviso()
+                }
+            }
+        }
+    }
+
+    private fun verificarEstadoPorAviso() {
+        // Una venta en curso no se corta: con el pago abierto o el producto saliendo, el aviso se
+        // guarda y se aplica cuando el kiosko queda libre.
+        if (dispensingInProgress || paymentComposeState.step != PaymentStep.Closed) {
+            avisoEstadoPendiente = true
+            return
+        }
+
+        avisoEstadoPendiente = false
+
+        lifecycleScope.launch {
+            val resultado = withContext(Dispatchers.IO) {
+                MachineAuthGateway.refreshSessionWithStoredMachineCredentials(authSessionManager)
+            }
+
+            if (resultado is MachineLoginResult.Success) return@launch
+            if ((resultado as? MachineLoginResult.Error)?.inactive == true) {
+                handleAuthSessionLost()
+            }
+        }
+    }
+
+    /** Aplica el aviso que llego con una venta en curso, ahora que el kiosko esta libre. */
+    private fun aplicarAvisoPendienteSiCorresponde() {
+        if (!avisoEstadoPendiente) return
+        if (dispensingInProgress || paymentComposeState.step != PaymentStep.Closed) return
+
+        verificarEstadoPorAviso()
+    }
+
     private fun loadCatalog() {
         catalogLoadInProgress = true
         catalogViewModel.loadCatalog()
@@ -1010,6 +1065,7 @@ class KioskCatalogActivity : AppCompatActivity() {
             paymentTimeoutTimer = null
             paymentTimeoutStep = null
             onModalDismissed()
+            aplicarAvisoPendienteSiCorresponde()
         }
 
         if (state.step == PaymentStep.MethodSelection || state.step == PaymentStep.Checkout) {
@@ -1364,6 +1420,9 @@ class KioskCatalogActivity : AppCompatActivity() {
         showDispenseSuccessDialog()
 
         loadCatalog()
+
+        // Si el aviso de «cambia tu estado» llego con la venta en curso, recien ahora se aplica.
+        aplicarAvisoPendienteSiCorresponde()
     }
 
     private fun parseRuntimeDispenseError(raw: String): Pair<String, String> {

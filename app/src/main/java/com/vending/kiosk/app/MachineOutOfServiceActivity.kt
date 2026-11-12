@@ -17,21 +17,31 @@ import com.vending.kiosk.R
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.mqtt.MaquinaMqttService
+import com.vending.kiosk.app.mqtt.MqttCommandBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
  * Bloqueo total mientras la maquina esta desactivada en el backend.
  *
- * No es una pantalla de error: la maquina sigue existiendo y puede reactivarse. Cada 30 minutos se
- * vuelve a pedir el login con el equipo guardado; cuando el backend lo acepta, se restaura la sesion
- * y se vuelve al kiosko. Mientras tanto la pantalla no deja tocar ni salir: es el unico contenido.
+ * No es una pantalla de error: la maquina sigue existiendo y puede reactivarse. La forma normal de
+ * enterarse es el aviso del backend (MQTT), que dispara la comprobacion en el acto; el login cada 30
+ * minutos queda como red de seguridad por si el aviso no llega. Cuando el backend acepta el login se
+ * restaura la sesion y se vuelve al kiosko. Mientras tanto la pantalla no deja tocar ni salir: es el
+ * unico contenido.
  */
 class MachineOutOfServiceActivity : AppCompatActivity() {
 
     private val authSessionManager by lazy { AuthSessionManager(this) }
+
+    /** El reloj y el aviso pueden coincidir: una sola comprobacion a la vez. */
+    private val verificacion = Mutex()
 
     private var lockPulse: ValueAnimator? = null
 
@@ -42,6 +52,8 @@ class MachineOutOfServiceActivity : AppCompatActivity() {
         applyImmersiveUi()
         sizeLockToScreenThird()
         startLockPulse()
+        // El canal del que sale el aviso de reactivacion. Si no hay broker, se apaga solo.
+        MaquinaMqttService.iniciar(this)
         startPolling()
     }
 
@@ -112,6 +124,8 @@ class MachineOutOfServiceActivity : AppCompatActivity() {
     }
 
     private fun startPolling() {
+        // Red de seguridad: si el aviso no llega (broker caido, mensaje perdido), la maquina se
+        // destraba igual por el reloj.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
@@ -120,20 +134,29 @@ class MachineOutOfServiceActivity : AppCompatActivity() {
                 }
             }
         }
+
+        // Camino normal: el backend avisa que la maquina cambio de estado y se comprueba ya.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                MqttCommandBus.avisosDeEstado.drop(1).collect {
+                    tryRestoreKiosk()
+                }
+            }
+        }
     }
 
-    private suspend fun tryRestoreKiosk(): Boolean {
+    private suspend fun tryRestoreKiosk(): Boolean = verificacion.withLock {
         val result = withContext(Dispatchers.IO) {
             MachineAuthGateway.refreshSessionWithStoredMachineCredentials(authSessionManager)
         }
-        if (result !is MachineLoginResult.Success) return false
-        if (isFinishing || isDestroyed) return false
+        if (result !is MachineLoginResult.Success) return@withLock false
+        if (isFinishing || isDestroyed) return@withLock false
 
         authSessionManager.saveMachineLocation(result.machineLocation)
         val equipo = authSessionManager.getEquipo()
         val machineId = equipo?.machineId?.takeIf { it > 0 } ?: result.machineId
         val machineCode = equipo?.machineCode?.ifBlank { result.machineCode } ?: result.machineCode
-        if (machineId <= 0 || machineCode.isBlank()) return false
+        if (machineId <= 0 || machineCode.isBlank()) return@withLock false
 
         startActivity(
             Intent(this, KioskCatalogActivity::class.java).apply {
@@ -143,15 +166,16 @@ class MachineOutOfServiceActivity : AppCompatActivity() {
             }
         )
         finish()
-        return true
+        true
     }
 
     private companion object {
         /**
-         * Cada sondeo es un login completo (bcrypt del PIN + una linea de log de rechazo en el
-         * servidor), asi que el ritmo lo fija el volumen: cada 5 s son 17.280 peticiones por
-         * maquina y por dia; cada 30 minutos son 48. El costo es la latencia de la reactivacion:
-         * una maquina reactivada puede seguir mostrando esta pantalla hasta media hora.
+         * Es la RED DE SEGURIDAD: el camino normal es el aviso por MQTT, que dispara la comprobacion
+         * en el acto. Cada sondeo igual es un login completo (bcrypt del PIN + una linea de log de
+         * rechazo en el servidor), asi que el ritmo lo fija el volumen: cada 5 s son 17.280 peticiones
+         * por maquina y por dia; cada 30 minutos son 48. El costo es la latencia de la reactivacion
+         * cuando el aviso no llega: hasta media hora.
          */
         private const val RETRY_INTERVAL_MS = 30 * 60 * 1_000L
 

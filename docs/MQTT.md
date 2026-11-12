@@ -1,7 +1,8 @@
 # Canal de avisos backend -> maquina (MQTT)
 
-Estado: **diseno cerrado, implementacion pendiente**. El primer paso es el spike (broker local +
-APK minima), no la telemetria.
+Estado: **implementado en los dos repos y compilado; nada desplegado**. Falta el broker en el
+servidor, el DNS y las claves del `.env` del backend. Lo primero antes de prenderlo es correr el ciclo
+en la PC con el emulador (el spike).
 
 ## Que resuelve y que no
 
@@ -123,16 +124,65 @@ Presencia (maquina -> broker, retenida) y testamento:
 
 ## Orden de trabajo
 
-0. Contrato y broker de desarrollo (este documento y `tools/mqtt-broker/`).
-1. **Spike**: mosquitto en la PC + APK minima que conecta, publica un latido y recibe un comando en
-   el emulador. Sin colector, sin cola, sin integracion con las pantallas. Responde la unica pregunta
-   abierta: si el servicio en primer plano aguanta el kiosko en Android 7.
-2. Broker en el VPS + DNS + firewall.
-3. Backend: credenciales + publicar al activar y desactivar.
-4. APK definitiva: servicio, dedupe y las dos pantallas.
-5. Punta a punta con una maquina real, dejando el sondeo de 30 minutos como red.
+| Paso | Estado |
+|---|---|
+| 0. Contrato y broker de desarrollo (`docs/MQTT.md` + `tools/mqtt-broker/`) | hecho |
+| 1. **Spike**: correr el ciclo en la PC (broker local + emulador) | pendiente |
+| 2. Broker en el VPS + DNS + firewall | pendiente |
+| 3. Backend: `POST /maquina-auth/broker`, publicador y `afterCommit` en activar/desactivar | hecho (sin desplegar) |
+| 4. APK: servicio, credenciales, dedupe y las dos pantallas | hecho (compila, sin probar en equipo) |
+| 5. Punta a punta con una maquina real | pendiente |
+
+Lo implementado, por archivo:
+
+- Backend: `config/mqtt.php`, `app/Domains/Vending/Support/MqttPublisher.php`,
+  `app/Domains/Security/Actions/GenerarCredencialBrokerAction.php`, el metodo `broker` de
+  `MaquinaAuthController`, las dos actions de activar/desactivar y los tests
+  `MaquinaBrokerCredencialesTest` / `MaquinaAvisoMqttTest`.
+- APK: `app/.../mqtt/MqttCredentials.kt` (credenciales + almacen), `MqttCredentialsGateway.kt` (HTTP),
+  `MqttCommandBus.kt` (aviso dentro del proceso) y `MaquinaMqttService.kt` (servicio en primer plano);
+  el canal se enciende desde `KioskCatalogActivity` y `MachineOutOfServiceActivity`.
+- La regla de no cortar una venta en curso vive en `KioskCatalogActivity`: el aviso con el pago abierto
+  o el producto saliendo se guarda (`avisoEstadoPendiente`) y se aplica al cerrar la venta.
+- Lo que NO se hizo: la presencia (`maq/<id>/estado` se publica, pero del lado del backend todavia no
+  hay quien la lea para llenar `MAQUINA.EstadoConexion`) y la telemetria. Eso es fase 2.
+
+## Construir sin tocar produccion
+
+Todo el canal se escribe y se prueba sin tocar el servidor, porque las tres piezas nacen APAGADAS y se
+degradan solas:
+
+| Pieza | Que se hace | Donde se prueba | Si el broker no existe |
+|---|---|---|---|
+| APK | Paho, servicio en primer plano, LWT, dedupe, las dos pantallas | emulador + broker local | el servicio no arranca y sigue el sondeo de 30 min |
+| Backend | endpoint de credenciales, publicador, `afterCommit` en las dos actions, comando de presencia | Laravel local + APK del emulador | `MQTT_HOST` vacio: el publicador no hace nada, ni error |
+| Broker | los archivos de configuracion (TLS, ACL, contrasenas) | PC, con certificado autofirmado | es un proceso aparte con su puerto: no toca nginx, PHP ni MySQL |
+
+Con eso el ciclo completo — desactivar en el ERP, el aviso, la pantalla roja, reactivar y volver — se
+corre entero en la PC. Y como el backend y la APK se pueden desplegar con el canal apagado, ninguna de
+las dos cosas cambia el comportamiento actual de las maquinas en la calle.
+
+## Puesta en marcha minima (el dia que se prende)
+
+1. Instalar mosquitto en el servidor: paquete + un archivo de config + unidad de systemd. No se toca
+   nginx, ni PHP, ni MySQL, ni la base.
+2. TLS: **el certificado actual es de Amazon (ALB/ACM) y no se puede copiar al broker** — la clave
+   privada no esta en la instancia. Dos caminos:
+   - NLB en AWS con el mismo wildcard de ACM: el broker escucha en 1883 en la instancia y el NLB hace
+     TLS en el 8883. Cero archivos de certificado en el servidor; el NLB tiene costo mensual.
+   - Certificado propio (Let's Encrypt) en la instancia, con `mqtt.` apuntando a la IP de la instancia.
+     Gratis, pero necesita IP publica y abrir 80 y 8883.
+3. DNS: crear `mqtt.boxipago.com.bo`.
+4. `.env` del backend: las claves `MQTT_*`. Es el unico cambio de configuracion de la aplicacion y se
+   revierte vaciando `MQTT_HOST`.
+5. (Opcional) el comando de presencia en supervisor, igual que el worker de colas.
+
+El encendido puede ser **por maquina**: las credenciales son por maquina, asi que se prende con una
+sola (la de prueba) y el resto sigue exactamente como hoy. Apagarlo es borrar la clave del `.env` y
+reiniciar el worker; las maquinas vuelven al sondeo sin reinstalar nada.
 
 ## Pendientes de decision
 
-- Acceso al VPS para instalar mosquitto y abrir el 8883 (por la red de la empresa no hay SSH).
+- Camino de TLS: NLB con el certificado de ACM, o Let's Encrypt en la instancia.
+- Acceso al servidor para instalar mosquitto y abrir el 8883 (por la red de la empresa no hay SSH).
 - Registro DNS `mqtt.boxipago.com.bo`.

@@ -1,8 +1,8 @@
 # Canal de avisos backend -> maquina (MQTT)
 
-Estado: **implementado en los dos repos y compilado; nada desplegado**. Falta el broker en el
-servidor, el DNS y las claves del `.env` del backend. Lo primero antes de prenderlo es correr el ciclo
-en la PC con el emulador (el spike).
+Estado: **el backend y el broker ya estan en produccion** (`mqtt.boxipago.com.bo:8883`, TLS con
+certificado propio). Lo unico que falta del lado de la APK es que viaje con el `ca.pem` del servidor:
+es el ancla con la que valida ese certificado.
 
 ## Que resuelve y que no
 
@@ -112,6 +112,11 @@ Presencia (maquina -> broker, retenida) y testamento:
 
 - `implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5")`. El
   `paho.android.service` esta abandonado y no arranca en Android 12+.
+- **TLS**: el broker usa un certificado firmado por una CA propia que el almacen de Android no conoce.
+  `BrokerTls` arma el `SSLSocketFactory` con las anclas de `app/src/main/assets/broker/mqtt_ca.pem`
+  —el MISMO `ca.pem` del servidor, sin regenerarlo— y con las del sistema en paralelo, asi que un
+  futuro certificado publico sigue andando sin recompilar. Sin ese archivo el saludo falla con
+  «Trust anchor for certification path not found» y no llega ningun aviso.
 - `AndroidManifest.xml`: `<service android:name=".mqtt.MaquinaMqttService">` +
   `FOREGROUND_SERVICE` (+ `foregroundServiceType="dataSync"` para targetSdk 34; en Android 7 el
   atributo se ignora). Ojo: hoy el manifest no tiene **ni un** service.
@@ -128,8 +133,8 @@ Presencia (maquina -> broker, retenida) y testamento:
 |---|---|
 | 0. Contrato y broker de desarrollo (`docs/MQTT.md` + `tools/mqtt-broker/`) | hecho |
 | 1. **Spike**: correr el ciclo en la PC (broker local + emulador) | pendiente |
-| 2. Broker en el VPS + DNS + firewall | pendiente |
-| 3. Backend: `POST /maquina-auth/broker`, publicador y `afterCommit` en activar/desactivar | hecho (sin desplegar) |
+| 2. Broker en el VPS + DNS + firewall | hecho |
+| 3. Backend: `POST /maquina-auth/broker`, publicador y `afterCommit` en activar/desactivar | hecho (desplegado) |
 | 4. APK: servicio, credenciales, dedupe y las dos pantallas | hecho (compila, sin probar en equipo) |
 | 5. Punta a punta con una maquina real | pendiente |
 

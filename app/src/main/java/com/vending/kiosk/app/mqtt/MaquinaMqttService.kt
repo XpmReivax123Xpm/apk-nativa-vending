@@ -133,6 +133,12 @@ class MaquinaMqttService : Service() {
             setWill(credenciales.temaEstado, estadoSinLinea(), QOS_AVISO, true)
         }
 
+        // El broker de produccion va con TLS y su CA no es publica: sin el ancla propia el saludo
+        // termina en «Trust anchor for certification path not found» y no llega ni un aviso.
+        if (credenciales.tls) {
+            BrokerTls.socketFactory(this@MaquinaMqttService)?.let { opciones.socketFactory = it }
+        }
+
         val caida = CountDownLatch(1)
         val nuevo = try {
             MqttClient(credenciales.uri, credenciales.usuario, MemoryPersistence())
@@ -161,6 +167,10 @@ class MaquinaMqttService : Service() {
             override fun deliveryComplete(token: IMqttDeliveryToken?) = Unit
         })
 
+        // Con el destino a la vista, una prueba en el equipo se diagnostica por log: si el backend
+        // manda 127.0.0.1 en vez del nombre publico, se ve aca.
+        registrar("conectando a ${credenciales.uri} como ${credenciales.usuario}")
+
         try {
             nuevo.connect(opciones)
             conectado = true
@@ -185,7 +195,7 @@ class MaquinaMqttService : Service() {
                 MqttCredentialStore(this).limpiar()
                 registrar("el broker rechazo la credencial: se pedira una nueva")
             } else {
-                registrar("no se pudo conectar: ${excepcion.message}")
+                registrar("no se pudo conectar: ${detalleDe(excepcion)}")
             }
         } finally {
             runCatching { if (nuevo.isConnected) nuevo.disconnect() }
@@ -341,6 +351,14 @@ class MaquinaMqttService : Service() {
     private fun registrar(mensaje: String) {
         Log.d(TAG, mensaje)
     }
+
+    /** Paho deja el motivo real (TLS, DNS, timeout) en la causa: sin ella el log no dice nada util. */
+    private fun detalleDe(excepcion: Throwable): String =
+        generateSequence(excepcion) { it.cause }
+            .take(5)
+            .map { it.message ?: it.javaClass.simpleName }
+            .distinct()
+            .joinToString(" / ")
 
     private sealed interface Credenciales {
         data class Ok(val valor: MqttCredentials) : Credenciales

@@ -149,8 +149,9 @@ Lo implementado, por archivo:
   el canal se enciende desde `KioskCatalogActivity` y `MachineOutOfServiceActivity`.
 - La regla de no cortar una venta en curso vive en `KioskCatalogActivity`: el aviso con el pago abierto
   o el producto saliendo se guarda (`avisoEstadoPendiente`) y se aplica al cerrar la venta.
-- Lo que NO se hizo: la presencia (`maq/<id>/estado` se publica, pero del lado del backend todavia no
-  hay quien la lea para llenar `MAQUINA.EstadoConexion`) y la telemetria. Eso es fase 2.
+- La presencia ya la LEE el backend (`mqtt:presencia` llena `MAQUINA.EstadoConexion`), y al apagarse
+  el servicio se publica `SIN_LINEA` retenido antes del `DISCONNECT`: un cierre limpio NO dispara el
+  testamento, asi que sin ese aviso la maquina quedaria EN_LINEA. Lo que falta es la telemetria.
 
 ## Construir sin tocar produccion
 

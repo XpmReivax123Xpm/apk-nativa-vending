@@ -74,9 +74,14 @@ class MaquinaMqttService : Service() {
 
     override fun onDestroy() {
         detenido = true
-        runCatching { cliente?.disconnect() }
-        hilo?.interrupt()
+
+        // El hilo del canal necesita un tope para alcanzar a publicar la salida: onDestroy corre en
+        // el hilo principal y no puede quedarse esperando el acuse del broker.
+        val enCurso = hilo
         hilo = null
+        enCurso?.interrupt()
+        runCatching { enCurso?.join(TIEMPO_DESPEDIDA_MS) }
+
         super.onDestroy()
     }
 
@@ -198,6 +203,13 @@ class MaquinaMqttService : Service() {
                 registrar("no se pudo conectar: ${detalleDe(excepcion)}")
             }
         } finally {
+            // Apagado limpio: cuando el cliente manda DISCONNECT el broker NO publica el testamento,
+            // asi que sin este aviso la maquina quedaria EN_LINEA. Es el mismo mensaje retenido del
+            // will, para que el backend no tenga que distinguir un caso del otro.
+            if (detenido) {
+                runCatching { nuevo.publish(credenciales.temaEstado, estadoSinLinea(), QOS_AVISO, true) }
+            }
+
             runCatching { if (nuevo.isConnected) nuevo.disconnect() }
             runCatching { nuevo.close() }
             cliente = null
@@ -379,6 +391,9 @@ class MaquinaMqttService : Service() {
         private const val REINTENTO_MIN_MS = 5_000L
         private const val REINTENTO_MAX_MS = 120_000L
         private const val MAX_COMANDOS_RECORDADOS = 50
+
+        /** Tope para que el hilo del canal alcance a publicar el SIN_LINEA cuando la apagan. */
+        private const val TIEMPO_DESPEDIDA_MS = 2_000L
 
         /** Arranca el canal. Se puede llamar desde cualquier pantalla: si ya corre, no hace nada. */
         fun iniciar(contexto: Context) {

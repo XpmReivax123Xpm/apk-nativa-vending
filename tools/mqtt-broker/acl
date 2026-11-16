@@ -1,0 +1,11 @@
+# Cada maquina (usuario = id numerico de MAQUINA) toca SOLO su tema.
+# `backend` es el usuario con el que publica el Laravel.
+#
+# %u es el usuario y %c el clientId: con use_username_as_clientid son el mismo valor.
+
+pattern read  maq/%u/comando
+pattern write maq/%u/estado
+
+user backend
+topic write maq/+/comando
+topic read  maq/+/estado

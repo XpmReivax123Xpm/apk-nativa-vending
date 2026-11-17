@@ -13,6 +13,7 @@ import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.device.DeviceIdentifierResult
 import com.vending.kiosk.app.device.DeviceIdentity
 import com.vending.kiosk.app.device.HardwareWatchdog
+import com.vending.kiosk.app.mqtt.MaquinaMqttService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -159,6 +160,7 @@ class MainActivity : AppCompatActivity() {
         btnExitApp.setOnClickListener {
             autoResumeJob?.takeIf { it.isActive }?.cancel()
             userSelectedMainMenuAction = true
+            MaquinaMqttService.detener(this@MainActivity)
             val homeIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_HOME)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK

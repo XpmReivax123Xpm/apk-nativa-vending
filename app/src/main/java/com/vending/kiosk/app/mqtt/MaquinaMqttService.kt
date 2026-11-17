@@ -88,6 +88,15 @@ class MaquinaMqttService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     /**
+     * Cerrar el kiosco desde recientes tambien es salir: sin esto el servicio sigue vivo y la maquina
+     * seguiria figurando en linea aunque ya nadie la este usando.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        detener()
+        super.onTaskRemoved(rootIntent)
+    }
+
+    /**
      * Bucle del canal: consigue credenciales, conecta y espera. Si la conexion se cae reintenta con
      * espera creciente; si el broker rechaza la credencial la olvida para pedir una nueva.
      */
@@ -403,6 +412,14 @@ class MaquinaMqttService : Service() {
                     Intent(contexto, MaquinaMqttService::class.java)
                 )
             }
+        }
+
+        /**
+         * Corta el canal desde afuera: salir del kiosco. El aviso de SIN_LINEA y el DISCONNECT los
+         * hace el propio servicio al destruirse, asi que esto solo lo apaga.
+         */
+        fun detener(contexto: Context) {
+            runCatching { contexto.stopService(Intent(contexto, MaquinaMqttService::class.java)) }
         }
     }
 }

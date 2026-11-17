@@ -8,4 +8,11 @@
     <string name="mode_vending_tester">Vending Tester</string>
     <string name="mode_vending_calibrator">Vending Calibrator</string>
     <string name="startup_loading_title">Iniciando...</string>
+    <string name="startup_loading_conectando">Conectando...</string>
+    <string name="startup_loading_sin_red">Sin conexión. Reintentando...</string>
+    <string name="startup_loading_reintentando">El servidor no responde. Reintentando...</string>
+    <string name="reboot_button">Reiniciar tablet</string>
+    <string name="reboot_title">Reiniciar la tablet</string>
+    <string name="reboot_message">Se va a reiniciar el equipo en unos segundos. La máquina queda fuera de servicio hasta que vuelva a arrancar.</string>
+    <string name="reboot_confirm">Reiniciar</string>
 </resources>

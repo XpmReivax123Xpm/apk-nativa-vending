@@ -80,6 +80,7 @@ import com.vending.kiosk.app.data.backend.AdminAccessGateway
 import com.vending.kiosk.app.data.backend.AdminAccessResult
 import com.vending.kiosk.app.data.images.CatalogImageCache
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.device.Registro
 import com.vending.kiosk.app.mqtt.MaquinaMqttService
 import com.vending.kiosk.app.mqtt.MqttCommandBus
 import com.vending.kiosk.app.domain.cart.CartItem
@@ -257,6 +258,7 @@ class KioskCatalogActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Registro.i("KioskCatalogActivity: onCreate")
         // Un fallo del audio no puede tumbar el kiosko: sin sonido la operacion sigue igual.
         sounds = runCatching { KioskSounds(applicationContext) }.getOrNull()
         runCatching { initializeScreen() }
@@ -433,7 +435,11 @@ class KioskCatalogActivity : AppCompatActivity() {
         setupDisableAutoResumeButton()
         btnKioskBackToMain?.setOnClickListener {
             if (!kioskUnlockedByPin) return@setOnClickListener
-            startActivity(Intent(this, MainActivity::class.java))
+            // Con el extra, MainActivity muestra el menu en vez de volver a entrar al kiosco: es la
+            // unica puerta al menu de tecnico.
+            startActivity(
+                Intent(this, MainActivity::class.java).putExtra(MainActivity.EXTRA_MENU, true)
+            )
             finish()
         }
         updateBackToMainVisibility()

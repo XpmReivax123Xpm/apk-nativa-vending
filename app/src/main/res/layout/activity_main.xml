@@ -173,6 +173,17 @@
         </LinearLayout>
 
         <Button
+            android:id="@+id/btnRebootTablet"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="#F57C00"
+            android:text="@string/reboot_button"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold" />
+
+        <Button
             android:id="@+id/btnExitApp"
             android:layout_width="match_parent"
             android:layout_height="44dp"
@@ -205,6 +216,17 @@
             android:text="@string/startup_loading_title"
             android:textColor="#FFFFFF"
             android:textSize="24sp" />
+
+        <!-- Estado del arranque: esperando red, conectando o reintentando. -->
+        <TextView
+            android:id="@+id/startupStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:gravity="center"
+            android:text="@string/startup_loading_conectando"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp" />
     </LinearLayout>
 </FrameLayout>
 

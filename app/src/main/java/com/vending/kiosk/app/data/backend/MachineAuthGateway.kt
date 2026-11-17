@@ -2,6 +2,7 @@ package com.vending.kiosk.app.data.backend
 
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import org.json.JSONObject
+import java.net.HttpURLConnection
 
 /**
  * Session of the machine that runs this kiosk.
@@ -42,7 +43,8 @@ object MachineAuthGateway {
                 if (response.isForbidden) machineInactive = true
                 return MachineLoginResult.Error(
                     message = response.errorMessage("No se pudo autenticar la maquina"),
-                    inactive = response.isForbidden
+                    inactive = response.isForbidden,
+                    credencialesRechazadas = esRechazoDeCredenciales(response)
                 )
             }
 
@@ -76,6 +78,15 @@ object MachineAuthGateway {
             MachineLoginResult.Error("Fallo de conexion al autenticar la maquina: ${ex.message ?: "sin detalle"}")
         }
     }
+
+    /**
+     * Respuestas que NO se reintentan solas: la credencial ya no sirve. Insistir con un PIN viejo gasta
+     * intentos del servidor y a los cinco lo bloquea por quince minutos (423).
+     */
+    private fun esRechazoDeCredenciales(response: BackendResponse): Boolean =
+        response.statusCode == HttpURLConnection.HTTP_UNAUTHORIZED ||
+            response.statusCode == 422 ||
+            response.statusCode == 423
 
     /**
      * Se vuelve a autenticar con el identificador de equipo y el PIN que el kiosko ya tiene, y renueva
@@ -116,6 +127,11 @@ sealed interface MachineLoginResult {
     data class Error(
         val message: String,
         /** 403 del backend: la maquina (o su empresa) esta desactivada. */
-        val inactive: Boolean = false
+        val inactive: Boolean = false,
+        /**
+         * La credencial ya no sirve (401 PIN incorrecto, 422 pedido invalido, 423 PIN bloqueado).
+         * Reintentar solo consume intentos del servidor: a los cinco bloquea la maquina.
+         */
+        val credencialesRechazadas: Boolean = false
     ) : MachineLoginResult
 }

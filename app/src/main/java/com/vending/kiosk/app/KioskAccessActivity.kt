@@ -13,6 +13,7 @@ import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.device.DeviceIdentifierResult
 import com.vending.kiosk.app.device.DeviceIdentity
+import com.vending.kiosk.app.device.Registro
 import com.vending.kiosk.app.ui.access.AccessNavigation
 import com.vending.kiosk.app.ui.access.AccessScreen
 import com.vending.kiosk.app.ui.access.AccessViewModel
@@ -27,6 +28,11 @@ class KioskAccessActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        Registro.i("KioskAccessActivity: onCreate")
+
+        // Arranque sin credenciales: se entra sin vuelta al menu, la unica salida es autenticarse.
+        val sinSalida = intent.getBooleanExtra(EXTRA_SIN_SALIDA, false)
 
         val machineAuthGateway = MachineAuthGateway
         val authSessionManager = AuthSessionManager(this)
@@ -96,7 +102,8 @@ class KioskAccessActivity : AppCompatActivity() {
                         onVolverAlMenuClick = {
                             startActivity(Intent(this@KioskAccessActivity, MainActivity::class.java))
                             finish()
-                        }
+                        },
+                        mostrarVolver = !sinSalida
                     )
                 }
 
@@ -108,11 +115,27 @@ class KioskAccessActivity : AppCompatActivity() {
                         onBackClick = {
                             startActivity(Intent(this@KioskAccessActivity, MainActivity::class.java))
                             finish()
-                        }
+                        },
+                        mostrarVolver = !sinSalida
                     )
                 }
             }
         }
+    }
+
+    /**
+     * En el arranque sin credenciales la pantalla no se abandona: la unica salida es un login correcto.
+     * Cuando se entra desde el menu, "atras" vuelve al menu.
+     */
+    override fun onBackPressed() {
+        if (intent.getBooleanExtra(EXTRA_SIN_SALIDA, false)) return
+
+        super.onBackPressed()
+    }
+
+    companion object {
+        /** La pone el arranque cuando manda al login manual: no hay vuelta al menu. */
+        const val EXTRA_SIN_SALIDA = "com.vending.kiosk.extra.SIN_SALIDA"
     }
 }
 

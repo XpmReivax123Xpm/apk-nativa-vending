@@ -17,6 +17,7 @@ import com.vending.kiosk.R
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.device.Registro
 import com.vending.kiosk.app.mqtt.MaquinaMqttService
 import com.vending.kiosk.app.mqtt.MqttCommandBus
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ class MachineOutOfServiceActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Registro.i("MachineOutOfServiceActivity: onCreate")
         setContentView(R.layout.activity_machine_out_of_service)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applyImmersiveUi()

@@ -9,13 +9,13 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.vending.kiosk.BuildConfig
 import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.device.Registro
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
 import org.eclipse.paho.client.mqttv3.MqttClient
@@ -65,6 +65,12 @@ class MaquinaMqttService : Service() {
             detenido = false
             hilo = Thread({ correr() }, "mqtt-maquina").apply {
                 isDaemon = true
+                // El canal es auxiliar: si su hilo muere por algo imprevisto, la tablet tiene que seguir
+                // vendiendo. Sin handler propio, una excepcion en este hilo mata el proceso entero.
+                setUncaughtExceptionHandler { _, excepcion ->
+                    Registro.e("mqtt: el hilo del canal murio", excepcion)
+                    detener()
+                }
                 start()
             }
         }
@@ -88,37 +94,52 @@ class MaquinaMqttService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     /**
+     * Cerrar el kiosco desde recientes tambien es salir: sin esto el servicio sigue vivo y la maquina
+     * seguiria figurando en linea aunque ya nadie la este usando.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        detener()
+        super.onTaskRemoved(rootIntent)
+    }
+
+    /**
      * Bucle del canal: consigue credenciales, conecta y espera. Si la conexion se cae reintenta con
      * espera creciente; si el broker rechaza la credencial la olvida para pedir una nueva.
      */
     private fun correr() {
         var esperaMs = REINTENTO_MIN_MS
 
-        while (!detenido) {
-            when (val credenciales = obtenerCredenciales()) {
-                is Credenciales.CanalApagado -> {
-                    registrar("sin credenciales del broker: el canal queda apagado")
-                    detener()
-                    return
-                }
-
-                is Credenciales.Reintentar -> {
-                    dormir(esperaMs)
-                    esperaMs = (esperaMs * 2).coerceAtMost(REINTENTO_MAX_MS)
-                }
-
-                is Credenciales.Ok -> {
-                    val conecto = conectarYEsperar(credenciales.valor)
-                    if (detenido) return
-
-                    esperaMs = if (conecto) {
-                        REINTENTO_MIN_MS
-                    } else {
-                        (esperaMs * 2).coerceAtMost(REINTENTO_MAX_MS)
+        try {
+            while (!detenido) {
+                when (val credenciales = obtenerCredenciales()) {
+                    is Credenciales.CanalApagado -> {
+                        registrar("sin credenciales del broker: el canal queda apagado")
+                        detener()
+                        return
                     }
-                    dormir(esperaMs)
+
+                    is Credenciales.Reintentar -> {
+                        dormir(esperaMs)
+                        esperaMs = (esperaMs * 2).coerceAtMost(REINTENTO_MAX_MS)
+                    }
+
+                    is Credenciales.Ok -> {
+                        val conecto = conectarYEsperar(credenciales.valor)
+                        if (detenido) return
+
+                        esperaMs = if (conecto) {
+                            REINTENTO_MIN_MS
+                        } else {
+                            (esperaMs * 2).coerceAtMost(REINTENTO_MAX_MS)
+                        }
+                        dormir(esperaMs)
+                    }
                 }
             }
+        } catch (_: InterruptedException) {
+            // onDestroy interrumpe el hilo para que suelte la conexion a la fuerza: es la salida
+            // normal del canal, no un fallo. Se repone la marca para que el hilo termine limpio.
+            Thread.currentThread().interrupt()
         }
     }
 
@@ -361,7 +382,9 @@ class MaquinaMqttService : Service() {
     }
 
     private fun registrar(mensaje: String) {
-        Log.d(TAG, mensaje)
+        // Al archivo, no solo al logcat: en el equipo no hay adb y el canal es lo primero que se mira
+        // cuando una maquina figura offline sin motivo.
+        Registro.i("mqtt: $mensaje")
     }
 
     /** Paho deja el motivo real (TLS, DNS, timeout) en la causa: sin ella el log no dice nada util. */
@@ -381,7 +404,6 @@ class MaquinaMqttService : Service() {
     }
 
     companion object {
-        private const val TAG = "MaquinaMqtt"
         private const val CANAL = "kiosk_mqtt"
         private const val ID_NOTIFICACION = 4101
         private const val TIPO_ESTADO = "estado"
@@ -403,6 +425,14 @@ class MaquinaMqttService : Service() {
                     Intent(contexto, MaquinaMqttService::class.java)
                 )
             }
+        }
+
+        /**
+         * Corta el canal desde afuera: salir del kiosco. El aviso de SIN_LINEA y el DISCONNECT los
+         * hace el propio servicio al destruirse, asi que esto solo lo apaga.
+         */
+        fun detener(contexto: Context) {
+            runCatching { contexto.stopService(Intent(contexto, MaquinaMqttService::class.java)) }
         }
     }
 }

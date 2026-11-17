@@ -50,7 +50,9 @@ import com.vending.kiosk.app.device.DeviceIdentifierFailure
 fun DeviceIdentifierUnavailableScreen(
     failure: DeviceIdentifierFailure,
     onReintentarClick: () -> Unit,
-    onVolverAlMenuClick: () -> Unit
+    onVolverAlMenuClick: () -> Unit,
+    /** false en el arranque sin credenciales: esa pantalla no tiene vuelta al menu. */
+    mostrarVolver: Boolean = true
 ) {
     val primaryBlue = colorResource(R.color.bp_primary_blue)
     val backgroundBlue = colorResource(R.color.bp_bg_blue)
@@ -128,8 +130,10 @@ fun DeviceIdentifierUnavailableScreen(
                         Text(text = "Reintentar", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
 
-                    TextButton(onClick = onVolverAlMenuClick) {
-                        Text(text = "Volver al menu", color = cyan)
+                    if (mostrarVolver) {
+                        TextButton(onClick = onVolverAlMenuClick) {
+                            Text(text = "Volver al menu", color = cyan)
+                        }
                     }
                 }
             }

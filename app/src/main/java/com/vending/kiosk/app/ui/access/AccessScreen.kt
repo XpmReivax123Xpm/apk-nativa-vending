@@ -56,7 +56,9 @@ fun AccessScreen(
     state: AccessUiState,
     onPinChange: (String) -> Unit,
     onEnterClick: () -> Unit,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    /** false en el arranque sin credenciales: esa pantalla no tiene vuelta al menu. */
+    mostrarVolver: Boolean = true
 ) {
     val primaryBlue = colorResource(R.color.bp_primary_blue)
     val backgroundBlue = colorResource(R.color.bp_bg_blue)
@@ -96,8 +98,10 @@ fun AccessScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            TextButton(onClick = onBackClick, enabled = !state.isAuthenticating) {
-                Text(text = "Volver al menu", color = Color.White.copy(alpha = 0.85f))
+            if (mostrarVolver) {
+                TextButton(onClick = onBackClick, enabled = !state.isAuthenticating) {
+                    Text(text = "Volver al menu", color = Color.White.copy(alpha = 0.85f))
+                }
             }
         }
     }

@@ -250,7 +250,14 @@ class KioskCatalogActivity : AppCompatActivity() {
                         showDispenseIoProlongedWaitDialog()
                     }
                 } else if (code == "DRIVER_ZERO_PICKUP_MODE") {
-                    dispensingQueue.getOrNull(dispensingCursor)?.driverZeroDelivered = true
+                    // `delivered` lo decide el controlador con la etapa del ciclo: sin plataforma
+                    // bajando el producto no viajo, aunque el retiro se cierre igual.
+                    val unidad = dispensingQueue.getOrNull(dispensingCursor)
+                    if (stepMsg.contains("delivered=1")) {
+                        unidad?.driverZeroDelivered = true
+                    } else {
+                        unidad?.driverZeroSinProducto = true
+                    }
                 }
             }
         }
@@ -1308,12 +1315,25 @@ class KioskCatalogActivity : AppCompatActivity() {
     private fun onDispenseItemDone() {
         if (!dispensingInProgress) return
         val justDone = dispensingQueue.getOrNull(dispensingCursor)
+        // El driver murio antes de que la plataforma bajara: el ciclo se cierra igual (el cliente
+        // cierra la puerta y confirma el retiro) pero el producto nunca llego a la bandeja.
+        val sinProducto = justDone?.driverZeroSinProducto == true
         if (justDone != null) {
             interactionMonitor.appendBoth(
-                "Dispensacion celda ${justDone.item.codigoCelda} completa | producto=${justDone.item.producto}"
+                if (sinProducto) {
+                    "Dispensacion celda ${justDone.item.codigoCelda} SIN ENTREGA | producto=${justDone.item.producto} | la plataforma nunca bajo"
+                } else {
+                    "Dispensacion celda ${justDone.item.codigoCelda} completa | producto=${justDone.item.producto}"
+                }
             )
         }
-        if (justDone?.driverZeroDelivered == true) {
+        if (sinProducto) {
+            reportDispenseStateByIndex(
+                index = dispensingCursor,
+                tnEstado = 5,
+                tcEstado = "FALLIDO"
+            )
+        } else if (justDone?.driverZeroDelivered == true) {
             // El driver de la placa dejo de responder (0000) pero el producto salio y el retiro se
             // confirmo por IO: la unidad SI se entrego, y el 0000 queda como rastro en el evento.
             reportDispenseStateByIndex(
@@ -1600,10 +1620,18 @@ class KioskCatalogActivity : AppCompatActivity() {
     }
 
     private fun showRetrieveDialogForCurrentItem() {
-        val title = "RETIRE SU PRODUCTO"
-        val message = "Por favor, retire su producto."
+        val unidad = dispensingQueue.getOrNull(dispensingCursor)
+        // Con el driver muerto y la plataforma sin bajar el producto nunca llego a la bandeja: pedirle
+        // al cliente que lo retire seria mandarlo a buscar algo que no esta.
+        val sinProducto = unidad?.driverZeroSinProducto == true
+        val title = if (sinProducto) "NO SALIO EL PRODUCTO" else "RETIRE SU PRODUCTO"
+        val message = if (sinProducto) {
+            "La maquina no pudo entregar el producto. Cierre la puerta y confirme para terminar."
+        } else {
+            "Por favor, retire su producto."
+        }
 
-        val currentItem = dispensingQueue.getOrNull(dispensingCursor)?.item
+        val currentItem = unidad?.item
         dispenseViewModel.showRetrieve(
             title = title,
             message = message,
@@ -1874,5 +1902,6 @@ private data class DispenseQueueItem(
     val item: CeldaUi,
     val tnPedidoDetalle: Int = 0,
     var tnEstadoDispensacion: Int = 0,
-    var driverZeroDelivered: Boolean = false
+    var driverZeroDelivered: Boolean = false,
+    var driverZeroSinProducto: Boolean = false
 )

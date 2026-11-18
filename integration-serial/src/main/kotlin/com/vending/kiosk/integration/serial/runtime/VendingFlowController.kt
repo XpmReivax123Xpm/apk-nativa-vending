@@ -168,8 +168,13 @@ class VendingFlowController(
                     val hasVendIoProgress = vendStage > 0 || seenC2InCurrentVend
                     if (hasVendIoProgress && driverZeroCount >= DRIVER_ZERO_MAX && !forcedPickupByDriverZero) {
                         forcedPickupByDriverZero = true
+                        // La etapa 3 (plataforma BAJANDO, 0xC8) es la unica prueba de que el producto
+                        // viajo: la puerta abierta o la plataforma subiendo no dicen nada. Sin ella el
+                        // ciclo igual se puede cerrar —el cliente cierra la puerta y confirma— pero la
+                        // unidad NO se entrego y la pantalla tiene que reportar fallida, no completa.
+                        val productoViajo = vendStage >= 3
                         ui.onStep(
-                            "DRIVER_ZERO_PICKUP_MODE|count=$driverZeroCount|vendStage=$vendStage|seenC2=$seenC2InCurrentVend|decision=WAIT_IO_PICKUP"
+                            "DRIVER_ZERO_PICKUP_MODE|count=$driverZeroCount|vendStage=$vendStage|seenC2=$seenC2InCurrentVend|delivered=${if (productoViajo) 1 else 0}|decision=WAIT_IO_PICKUP"
                         )
                         h.removeCallbacks(pollDriverRunnable)
                         h.removeCallbacks(pollIoVendRunnable)

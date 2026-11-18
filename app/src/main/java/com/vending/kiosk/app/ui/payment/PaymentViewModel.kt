@@ -8,6 +8,7 @@ import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.data.session.AuthSessionManager
 import com.vending.kiosk.app.domain.cart.CartItem
+import com.vending.kiosk.app.mqtt.MqttCommandBus
 import com.vending.kiosk.integration.backend.contracts.VendingBackendGateway
 import com.vending.kiosk.integration.backend.models.CancelOrderResult
 import com.vending.kiosk.integration.backend.models.ConfirmPaymentCodeResult
@@ -18,16 +19,18 @@ import com.vending.kiosk.integration.backend.models.PaymentStatus
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
@@ -509,7 +512,15 @@ class PaymentViewModel(
                         // con el QR todavia vigente.
                     }
                 }
-                delay(PAYMENT_POLL_INTERVAL_MS)
+
+                // El sondeo es solo la red de respaldo: la espera se corta en cuanto el backend avisa
+                // por MQTT que hay un pago confirmado, y ahi se consulta el estado en el acto. La
+                // espera se recorta al tiempo que le queda al QR, para no pasarse del vencimiento.
+                val restanteMs = (deadlineMs - System.currentTimeMillis()).coerceAtLeast(0)
+
+                withTimeoutOrNull(minOf(PAYMENT_POLL_INTERVAL_MS, restanteMs)) {
+                    MqttCommandBus.avisosDePago.drop(1).first()
+                }
             }
 
             if (isActive) cancelAfterTimeout(pagoId, pedidoId)
@@ -935,7 +946,12 @@ class PaymentViewModel(
             label = "Dispensación de prueba",
             isDispenseTest = true
         )
-        const val PAYMENT_POLL_INTERVAL_MS = 2_000L
+        /**
+         * El sondeo es la RED DE RESPALDO, no el camino normal: el aviso por MQTT corta la espera y
+         * dispara la misma consulta en el acto. Esto es lo que puede tardar en enterarse un pago cuyo
+         * aviso se perdio.
+         */
+        const val PAYMENT_POLL_INTERVAL_MS = 30_000L
         const val PAYMENT_TIMEOUT_MS = 120_000L
         /**
          * Cuanto se sigue mirando el cobro despues de que vence el QR. El codigo ya no se puede

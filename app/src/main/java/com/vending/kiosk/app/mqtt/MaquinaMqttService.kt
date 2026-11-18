@@ -294,7 +294,7 @@ class MaquinaMqttService : Service() {
         val tipo = json.optString("Tipo", "").trim().lowercase(Locale.US)
         val codigo = json.optString("CodigoComando", "").trim()
 
-        if (tipo != TIPO_ESTADO) {
+        if (tipo != TIPO_ESTADO && tipo != TIPO_PAGO) {
             registrar("aviso de tipo desconocido: $tipo")
             return
         }
@@ -304,8 +304,12 @@ class MaquinaMqttService : Service() {
             return
         }
 
-        registrar("aviso de estado recibido ($codigo)")
-        MqttCommandBus.avisarCambioDeEstado()
+        registrar("aviso de $tipo recibido ($codigo)")
+
+        when (tipo) {
+            TIPO_PAGO -> MqttCommandBus.avisarPagoConfirmado()
+            else -> MqttCommandBus.avisarCambioDeEstado()
+        }
     }
 
     private fun esComandoNuevo(codigo: String): Boolean {
@@ -407,6 +411,7 @@ class MaquinaMqttService : Service() {
         private const val CANAL = "kiosk_mqtt"
         private const val ID_NOTIFICACION = 4101
         private const val TIPO_ESTADO = "estado"
+        private const val TIPO_PAGO = "pago"
         private const val QOS_AVISO = 1
         private const val KEEPALIVE_SEGUNDOS = 60
         private const val TIMEOUT_SEGUNDOS = 15

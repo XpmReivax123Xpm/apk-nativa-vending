@@ -16,7 +16,20 @@ object MqttCommandBus {
 
     val avisosDeEstado: StateFlow<Long> = _avisosDeEstado
 
+    private val _avisosDePago = MutableStateFlow(0L)
+
+    /**
+     * «Hay un pago confirmado de esta maquina». No lleva datos a proposito: la pantalla que esta
+     * esperando un cobro hace la misma consulta de estado de siempre, y si no esta esperando nada, el
+     * aviso no hace nada.
+     */
+    val avisosDePago: StateFlow<Long> = _avisosDePago
+
     fun avisarCambioDeEstado() {
         _avisosDeEstado.update { it + 1 }
+    }
+
+    fun avisarPagoConfirmado() {
+        _avisosDePago.update { it + 1 }
     }
 }

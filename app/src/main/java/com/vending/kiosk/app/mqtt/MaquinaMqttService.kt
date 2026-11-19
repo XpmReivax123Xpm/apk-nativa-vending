@@ -288,14 +288,35 @@ class MaquinaMqttService : Service() {
     }
 
     private fun procesarComando(message: MqttMessage?) {
-        val texto = message?.let { runCatching { String(it.payload, Charsets.UTF_8) }.getOrNull() } ?: return
-        val json = runCatching { JSONObject(texto) }.getOrNull() ?: return
+        if (message == null) {
+            registrar("Aviso descartado: el mensaje vino vacio")
+            return
+        }
+
+        val texto = runCatching { String(message.payload, Charsets.UTF_8) }.getOrNull()
+
+        if (texto == null) {
+            registrar("Aviso descartado: payload ilegible (${message.payload?.size ?: 0} bytes)")
+            return
+        }
+
+        val json = runCatching { JSONObject(texto) }.getOrNull()
+
+        if (json == null) {
+            registrar("Aviso descartado: no es json (${texto.take(120)})")
+            return
+        }
 
         val tipo = json.optString("Tipo", "").trim().lowercase(Locale.US)
         val codigo = json.optString("CodigoComando", "").trim()
 
+        if (tipo.isBlank()) {
+            registrar("Aviso descartado: no trae Tipo (${texto.take(120)})")
+            return
+        }
+
         if (tipo != TIPO_ESTADO && tipo != TIPO_PAGO) {
-            registrar("aviso de tipo desconocido: $tipo")
+            registrar("aviso de tipo desconocido: $tipo ($codigo)")
             return
         }
 
@@ -307,7 +328,7 @@ class MaquinaMqttService : Service() {
         registrar("aviso de $tipo recibido ($codigo)")
 
         when (tipo) {
-            TIPO_PAGO -> MqttCommandBus.avisarPagoConfirmado()
+            TIPO_PAGO -> registrar("aviso de pago entregado a la pantalla (avisos=${MqttCommandBus.avisarPagoConfirmado()})")
             else -> MqttCommandBus.avisarCambioDeEstado()
         }
     }

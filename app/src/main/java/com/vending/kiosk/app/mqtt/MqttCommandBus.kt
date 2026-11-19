@@ -2,7 +2,7 @@ package com.vending.kiosk.app.mqtt
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 
 /**
  * El aviso «cambio tu estado» que llega por MQTT, dentro del proceso.
@@ -25,11 +25,7 @@ object MqttCommandBus {
      */
     val avisosDePago: StateFlow<Long> = _avisosDePago
 
-    fun avisarCambioDeEstado() {
-        _avisosDeEstado.update { it + 1 }
-    }
+    fun avisarCambioDeEstado(): Long = _avisosDeEstado.updateAndGet { it + 1 }
 
-    fun avisarPagoConfirmado() {
-        _avisosDePago.update { it + 1 }
-    }
+    fun avisarPagoConfirmado(): Long = _avisosDePago.updateAndGet { it + 1 }
 }

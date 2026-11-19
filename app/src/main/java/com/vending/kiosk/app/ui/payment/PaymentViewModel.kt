@@ -7,6 +7,7 @@ import com.vending.kiosk.app.data.backend.MachineAuthGateway
 import com.vending.kiosk.app.data.backend.MachineLoginResult
 import com.vending.kiosk.app.data.backend.PaymentMethodsGatewayException
 import com.vending.kiosk.app.data.session.AuthSessionManager
+import com.vending.kiosk.app.device.Registro
 import com.vending.kiosk.app.domain.cart.CartItem
 import com.vending.kiosk.app.mqtt.MqttCommandBus
 import com.vending.kiosk.integration.backend.contracts.VendingBackendGateway
@@ -25,7 +26,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -376,6 +376,10 @@ class PaymentViewModel(
             rawExpiration = order.expiration,
             serverNowMs = order.serverNowMs
         )
+        Registro.i(
+            "pago ${order.paymentId} (pedido ${order.orderId}): QR listo, vence en " +
+                "${((qrExpiresAtMs - System.currentTimeMillis()) / 1000).coerceAtLeast(0)}s | metodo=${method.label}"
+        )
         _uiState.value = _uiState.value.copy(
             step = PaymentStep.Qr,
             qrOrder = order,
@@ -465,11 +469,30 @@ class PaymentViewModel(
         paymentPollingJob = viewModelScope.launch {
             val expiresAtMs = qrExpiresAtMs ?: (System.currentTimeMillis() + PAYMENT_TIMEOUT_MS)
             val deadlineMs = expiresAtMs + PAYMENT_CONFIRMATION_GRACE_MS
+            val inicioMs = System.currentTimeMillis()
+            var consultas = 0
+            var avisosVistos = MqttCommandBus.avisosDePago.value
+            var despertoPorAviso = false
+
+            Registro.i(
+                "pago $pagoId (pedido $pedidoId): esperando confirmacion; sondeo cada " +
+                    "${PAYMENT_POLL_INTERVAL_MS / 1000}s y aviso mqtt (avisos=$avisosVistos)"
+            )
 
             while (isActive && System.currentTimeMillis() <= deadlineMs) {
+                consultas++
+                // La foto del contador se toma ANTES de consultar: un aviso que llegue mientras la
+                // consulta viaja tiene que despertar la espera igual, no perderse entre ciclos.
+                val avisoPrevio = avisosVistos
+
                 when (val result = withContext(Dispatchers.IO) { fetchPaymentStatusWithSingleRefresh(pagoId) }) {
                     PaymentPollResult.Paid -> {
                         val order = _uiState.value.qrOrder ?: return@launch
+                        Registro.i(
+                            "pago $pagoId: CONFIRMADO en la consulta $consultas a los " +
+                                "${(System.currentTimeMillis() - inicioMs) / 1000}s del QR " +
+                                "(desperto por ${if (despertoPorAviso) "aviso mqtt" else "sondeo"})"
+                        )
                         complete(PaymentTerminalResult.Paid(order))
                         return@launch
                     }
@@ -488,16 +511,19 @@ class PaymentViewModel(
                     }
 
                     is PaymentPollResult.Cancelled -> {
+                        Registro.w("pago $pagoId: el cobro quedo cancelado en la consulta $consultas: ${result.message}")
                         complete(PaymentTerminalResult.Cancelled(pedidoId, result.message))
                         return@launch
                     }
 
                     is PaymentPollResult.Failed -> {
+                        Registro.w("pago $pagoId: el cobro quedo fallido en la consulta $consultas: ${result.message}")
                         complete(PaymentTerminalResult.Failed(result.message))
                         return@launch
                     }
 
                     is PaymentPollResult.Error -> {
+                        Registro.w("pago $pagoId: no se pudo consultar en la consulta $consultas: ${result.message}")
                         if (result.sessionLost) {
                             _uiState.value = _uiState.value.copy(
                                 statusMessage = result.message,
@@ -517,11 +543,19 @@ class PaymentViewModel(
                 // por MQTT que hay un pago confirmado, y ahi se consulta el estado en el acto. La
                 // espera se recorta al tiempo que le queda al QR, para no pasarse del vencimiento.
                 val restanteMs = (deadlineMs - System.currentTimeMillis()).coerceAtLeast(0)
+                val despertar = withTimeoutOrNull(minOf(PAYMENT_POLL_INTERVAL_MS, restanteMs)) {
+                    MqttCommandBus.avisosDePago.first { it != avisoPrevio }
+                }
 
-                withTimeoutOrNull(minOf(PAYMENT_POLL_INTERVAL_MS, restanteMs)) {
-                    MqttCommandBus.avisosDePago.drop(1).first()
+                despertoPorAviso = despertar != null
+
+                if (despertar != null) {
+                    avisosVistos = despertar
+                    Registro.i("pago $pagoId: aviso mqtt (avisos=$despertar) -> se consulta el estado en el acto")
                 }
             }
+
+            Registro.w("pago $pagoId: se acabo el plazo sin confirmacion despues de $consultas consultas")
 
             if (isActive) cancelAfterTimeout(pagoId, pedidoId)
         }
